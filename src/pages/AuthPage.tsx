@@ -9,7 +9,9 @@ import {
   Plane,
   RefreshCw,
   Sun,
+  Trophy,
 } from 'lucide-react';
+import { LeaderboardPanel } from '../components/LeaderboardPanel';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { APP_BRAND, AUTH_HERO_IMAGE } from '../data';
@@ -163,23 +165,36 @@ export function AuthPage() {
           <span>Đồng bộ Firebase</span>
         </div>
 
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
-        >
-          {theme === 'dark' ? (
-            <>
-              <Sun className="w-3.5 h-3.5 text-amber-400" />
-              Chế độ sáng
-            </>
-          ) : (
-            <>
-              <Moon className="w-3.5 h-3.5 text-blue-600" />
-              Chế độ tối
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              document.getElementById('public-leaderboard')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300/80 dark:border-amber-700/70 bg-amber-50/70 dark:bg-amber-950/40 text-xs font-semibold text-amber-800 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-950/70 transition-colors whitespace-nowrap"
+          >
+            <Trophy className="w-3.5 h-3.5 text-amber-500" />
+            <span>Bảng xếp hạng</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
+          >
+            {theme === 'dark' ? (
+              <>
+                <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Chế độ sáng</span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-3.5 h-3.5 text-blue-600" />
+                <span className="hidden sm:inline">Chế độ tối</span>
+              </>
+            )}
+          </button>
+        </div>
       </header>
 
       {/* Split Editorial Auth Layout */}
@@ -454,6 +469,18 @@ export function AuthPage() {
           </form>
         </div>
       </div>
+
+      {/* Public Live Completion Leaderboard (Accessible Before Sign-In) */}
+      <section
+        id="public-leaderboard"
+        className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 pb-12"
+      >
+        <LeaderboardPanel
+          onRequireLogin={() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+      </section>
 
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 px-6 lg:px-10">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">

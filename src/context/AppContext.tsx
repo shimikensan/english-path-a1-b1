@@ -21,15 +21,18 @@ import {
   seedCurriculumToFirestore,
   subscribeLessons,
   subscribeLevels,
+  subscribePublicLeaderboard,
   subscribeQuizResults,
   subscribeUserProfile,
   subscribeUserProgress,
   subscribeUserVocabulary,
   submitQuizAttempt,
+  syncUserLeaderboardEntry,
   toggleUserVocabularyState,
   updateUserProfileData,
 } from '../services/firestoreService';
 import type {
+  LeaderboardEntryDoc,
   LessonDoc,
   LevelDoc,
   QuizRating,
@@ -59,6 +62,9 @@ interface AppContextValue {
   progressMap: Record<string, UserProgressDoc>;
   quizResults: QuizResultDoc[];
   vocabMap: Record<string, UserVocabularyDoc>;
+  leaderboard: LeaderboardEntryDoc[];
+  leaderboardLoading: boolean;
+  leaderboardError: string | null;
   toasts: ToastMessage[];
   addToast: (type: ToastMessage['type'], message: string) => void;
   dismissToast: (id: string) => void;
@@ -132,9 +138,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [progressMap, setProgressMap] = useState<Record<string, UserProgressDoc>>({});
   const [quizResults, setQuizResults] = useState<QuizResultDoc[]>([]);
   const [vocabMap, setVocabMap] = useState<Record<string, UserVocabularyDoc>>({});
+  const [progressHydrated, setProgressHydrated] = useState(false);
+  const [quizHydrated, setQuizHydrated] = useState(false);
+  const [vocabHydrated, setVocabHydrated] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntryDoc[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const autoSeededRef = useRef(false);
+  const lastLeaderboardSigRef = useRef('');
 
   const addToast = useCallback((type: ToastMessage['type'], message: string) => {
     const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -158,10 +171,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setProgressMap({});
         setQuizResults([]);
         setVocabMap({});
+        setProgressHydrated(false);
+        setQuizHydrated(false);
+        setVocabHydrated(false);
+        lastLeaderboardSigRef.current = '';
         setFirestoreLevels([]);
         setFirestoreLessons([]);
       }
     });
+    return unsub;
+  }, []);
+
+  // Public PII-free leaderboard subscription (available both before login and after login)
+  useEffect(() => {
+    setLeaderboardLoading(true);
+    setLeaderboardError(null);
+    const unsub = subscribePublicLeaderboard(
+      (entries) => {
+        setLeaderboard(entries);
+        setLeaderboardLoading(false);
+        setLeaderboardError(null);
+      },
+      (err) => {
+        console.error('Public leaderboard subscription error:', err);
+        setLeaderboardLoading(false);
+        setLeaderboardError('Chưa thể tải bảng xếp hạng lúc này. Vui lòng thử lại sau ít giây.');
+      }
+    );
     return unsub;
   }, []);
 
@@ -222,17 +258,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         );
         unsubscribers.push(
           subscribeUserProgress(firebaseUser.uid, (map) => {
-            if (!cancelled) setProgressMap(map);
+            if (!cancelled) {
+              setProgressMap(map);
+              setProgressHydrated(true);
+            }
           })
         );
         unsubscribers.push(
           subscribeQuizResults(firebaseUser.uid, (results) => {
-            if (!cancelled) setQuizResults(results);
+            if (!cancelled) {
+              setQuizResults(results);
+              setQuizHydrated(true);
+            }
           })
         );
         unsubscribers.push(
           subscribeUserVocabulary(firebaseUser.uid, (vMap) => {
-            if (!cancelled) setVocabMap(vMap);
+            if (!cancelled) {
+              setVocabMap(vMap);
+              setVocabHydrated(true);
+            }
           })
         );
       } catch (err) {
@@ -266,6 +311,85 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (firestoreLessons.length > 0) return firestoreLessons;
     return ALL_DEFAULT_LESSONS;
   }, [firestoreLessons]);
+
+  // Automatically sync verified learner's public completion stats to /leaderboard/{uid}
+  useEffect(() => {
+    if (
+      !firebaseUser ||
+      !firebaseUser.emailVerified ||
+      !profile ||
+      dataLoading ||
+      !progressHydrated ||
+      !quizHydrated ||
+      !vocabHydrated ||
+      lessons.length === 0
+    ) {
+      return;
+    }
+
+    const totalLessons = Math.max(1, lessons.length);
+    const totalVocab = Math.max(
+      1,
+      lessons.reduce((sum, l) => sum + l.vocabulary.length, 0)
+    );
+    const completedLessons = Object.values(progressMap).filter((p) => p.lessonCompleted).length;
+    const learnedVocabCount = Object.values(vocabMap).filter((v) => v.isLearned).length;
+    const lessonRatio = Math.min(1, completedLessons / totalLessons);
+    const vocabRatio = Math.min(1, learnedVocabCount / totalVocab);
+    const completionPercent = Math.min(
+      100,
+      Math.max(0, Math.round((lessonRatio * 0.6 + vocabRatio * 0.4) * 100))
+    );
+    const averageQuizScore =
+      quizResults.length > 0
+        ? Math.round(quizResults.reduce((sum, r) => sum + r.score, 0) / quizResults.length)
+        : 0;
+
+    const displayName = (profile.fullName || 'Phi công tập sự').trim();
+    const sig = [
+      profile.uid,
+      displayName,
+      profile.currentLevel,
+      completedLessons,
+      totalLessons,
+      completionPercent,
+      learnedVocabCount,
+      averageQuizScore,
+      profile.streakDays ?? 1,
+    ].join('|');
+
+    if (lastLeaderboardSigRef.current === sig) {
+      return;
+    }
+    lastLeaderboardSigRef.current = sig;
+
+    syncUserLeaderboardEntry({
+      uid: profile.uid,
+      displayName,
+      currentLevel: profile.currentLevel,
+      completedLessons,
+      totalLessons,
+      completionPercent,
+      learnedVocabCount,
+      averageQuizScore,
+      streakDays: profile.streakDays ?? 1,
+      isPublic: true,
+    }).catch((err) => {
+      console.error('Failed to sync leaderboard entry:', err);
+      lastLeaderboardSigRef.current = '';
+    });
+  }, [
+    firebaseUser,
+    profile,
+    dataLoading,
+    progressHydrated,
+    quizHydrated,
+    vocabHydrated,
+    lessons,
+    progressMap,
+    vocabMap,
+    quizResults,
+  ]);
 
   // --- Auth Actions ---
 
@@ -465,6 +589,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         progressMap,
         quizResults,
         vocabMap,
+        leaderboard,
+        leaderboardLoading,
+        leaderboardError,
         toasts,
         addToast,
         dismissToast,

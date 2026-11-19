@@ -19,6 +19,7 @@ import { BOOTSTRAPPED_ADMIN_EMAIL, db, handleFirestoreError, OperationType } fro
 import type {
   AdminRecord,
   AdminSecurityVaultDoc,
+  LeaderboardEntryDoc,
   LessonDoc,
   LevelDoc,
   QuizRating,
@@ -736,6 +737,93 @@ export async function adminResetSecurityVault(): Promise<void> {
     await deleteDoc(doc(db, 'admin_security', 'vault'));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// --- Public Learner Completion Leaderboard (PII-Free Projection) ---
+
+export function subscribePublicLeaderboard(
+  onData: (entries: LeaderboardEntryDoc[]) => void,
+  onError?: (error: unknown) => void
+): Unsubscribe {
+  const path = 'leaderboard';
+  const q = query(collection(db, path), where('isPublic', '==', true));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const items = snapshot.docs
+        .map((d) => d.data() as LeaderboardEntryDoc)
+        .sort((a, b) => {
+          if (b.completionPercent !== a.completionPercent) {
+            return b.completionPercent - a.completionPercent;
+          }
+          if (b.completedLessons !== a.completedLessons) {
+            return b.completedLessons - a.completedLessons;
+          }
+          if (b.learnedVocabCount !== a.learnedVocabCount) {
+            return b.learnedVocabCount - a.learnedVocabCount;
+          }
+          if (b.averageQuizScore !== a.averageQuizScore) {
+            return b.averageQuizScore - a.averageQuizScore;
+          }
+          return b.streakDays - a.streakDays;
+        });
+      onData(items);
+    },
+    (error) => {
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
+    }
+  );
+}
+
+export async function syncUserLeaderboardEntry(entry: {
+  uid: string;
+  displayName: string;
+  currentLevel: 'A1' | 'A2' | 'B1';
+  completedLessons: number;
+  totalLessons: number;
+  completionPercent: number;
+  learnedVocabCount: number;
+  averageQuizScore: number;
+  streakDays: number;
+  isPublic?: boolean;
+}): Promise<void> {
+  const path = `leaderboard/${entry.uid}`;
+  const ref = doc(db, 'leaderboard', entry.uid);
+
+  const safeLevel: 'A1' | 'A2' | 'B1' =
+    entry.currentLevel === 'A2' || entry.currentLevel === 'B1' ? entry.currentLevel : 'A1';
+
+  const mutableFields = {
+    displayName: truncate(entry.displayName.trim() || 'Phi công tập sự', 100) || 'Phi công tập sự',
+    currentLevel: safeLevel,
+    completedLessons: Math.max(0, Math.min(500, Math.round(entry.completedLessons))),
+    totalLessons: Math.max(1, Math.min(500, Math.round(entry.totalLessons))),
+    completionPercent: Math.max(0, Math.min(100, Math.round(entry.completionPercent))),
+    learnedVocabCount: Math.max(0, Math.min(5000, Math.round(entry.learnedVocabCount))),
+    averageQuizScore: Math.max(0, Math.min(100, Math.round(entry.averageQuizScore))),
+    streakDays: Math.max(0, Math.min(10000, Math.round(entry.streakDays))),
+    isPublic: entry.isPublic ?? true,
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      await updateDoc(ref, mutableFields);
+    } else {
+      await setDoc(ref, {
+        uid: entry.uid,
+        ...mutableFields,
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
 

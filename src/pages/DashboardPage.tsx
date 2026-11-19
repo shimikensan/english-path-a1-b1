@@ -21,6 +21,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { LeaderboardPanel } from '../components/LeaderboardPanel';
 import { useApp } from '../context/AppContext';
 import { AUTH_HERO_IMAGE, PILOT_RANKS } from '../data';
 import type { AppRoute, LessonDoc } from '../types';
@@ -477,6 +478,13 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
           )}
         </div>
       </section>
+
+      {/* Live Learner Completion Leaderboard Preview (Top 5) */}
+      <LeaderboardPanel
+        compact
+        maxRows={5}
+        onViewAll={() => onNavigate('leaderboard')}
+      />
     </div>
   );
 }

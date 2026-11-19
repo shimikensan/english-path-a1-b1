@@ -26,4 +26,7 @@
 13. **Admin Vault Read/Write by Learner**: Non-admin learner attempts `get`, `list`, `create`, or `update` on `/admin_security/vault`. -> **PERMISSION_DENIED**
 14. **Admin Vault Plaintext or Weak Hash Injection**: Admin attempts to store a plaintext password (`hashHex: "myPassword!"` non-hex or `iterations: 10`) or shadow field `plainPassword` in `/admin_security/vault`. -> **PERMISSION_DENIED**
 15. **Non-Root Admin Vault Wipe**: Secondary admin (not bootstrapped root admin) attempts `delete` on `/admin_security/vault` to bypass the management password. -> **PERMISSION_DENIED**
+16. **Leaderboard PII Injection / Spoofing**: Authenticated user `uidA` attempts to write an `email` field or write to `/leaderboard/uidB` or set `completionPercent: 500`. -> **PERMISSION_DENIED**
+17. **Unauthenticated Leaderboard Write**: Unauthenticated visitor attempts `create`, `update`, or `delete` on `/leaderboard/uidA`. -> **PERMISSION_DENIED**
+
 

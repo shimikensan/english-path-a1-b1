@@ -15,6 +15,7 @@ import {
   Plane,
   ShieldCheck,
   Sun,
+  Trophy,
   UserCircle,
   X,
 } from 'lucide-react';
@@ -45,6 +46,7 @@ const MAIN_NAV: NavItem[] = [
   { id: 'quizzes', label: 'Kiểm tra', icon: ClipboardCheck },
   { id: 'saved', label: 'Từ đã lưu', icon: BookMarked },
   { id: 'progress', label: 'Tiến độ học tập', icon: BarChart3 },
+  { id: 'leaderboard', label: 'Bảng xếp hạng', icon: Trophy },
   { id: 'account', label: 'Tài khoản cá nhân', icon: UserCircle },
 ];
 

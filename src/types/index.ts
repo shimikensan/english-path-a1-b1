@@ -201,6 +201,20 @@ export interface UserVocabularyDoc {
   updatedAt?: Timestamp | Date;
 }
 
+export interface LeaderboardEntryDoc {
+  uid: string;
+  displayName: string;
+  currentLevel: 'A1' | 'A2' | 'B1';
+  completedLessons: number;
+  totalLessons: number;
+  completionPercent: number;
+  learnedVocabCount: number;
+  averageQuizScore: number;
+  streakDays: number;
+  isPublic: boolean;
+  updatedAt?: Timestamp | Date;
+}
+
 export type AppRoute =
   | 'dashboard'
   | 'roadmap'
@@ -210,6 +224,7 @@ export type AppRoute =
   | 'quizzes'
   | 'saved'
   | 'progress'
+  | 'leaderboard'
   | 'account'
   | 'lesson'
   | 'admin';

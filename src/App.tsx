@@ -8,6 +8,7 @@ import { Plane } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
+import { LeaderboardPanel } from './components/LeaderboardPanel';
 import { ToastContainer } from './components/ToastContainer';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -35,6 +36,7 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   quizzes: 'Kiểm tra trắc nghiệm',
   saved: 'Từ vựng đã lưu',
   progress: 'Tiến độ học tập',
+  leaderboard: 'Bảng xếp hạng học viên',
   account: 'Tài khoản cá nhân',
   lesson: 'Chi tiết bài học',
   admin: 'Quản trị hệ thống',
@@ -132,6 +134,7 @@ function AppShell() {
             {route === 'progress' && (
               <ProgressPage onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')} />
             )}
+            {route === 'leaderboard' && <LeaderboardPanel />}
             {route === 'account' && <AccountPage />}
             {route === 'lesson' && (
               <LessonDetailPage

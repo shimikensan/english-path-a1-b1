@@ -495,6 +495,66 @@
         "isLearned",
         "updatedAt"
       ]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Public, PII-free learner completion ranking projection readable before and after sign-in.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "currentLevel": {
+          "type": "string",
+          "enum": ["A1", "A2", "B1"]
+        },
+        "completedLessons": {
+          "type": "number"
+        },
+        "totalLessons": {
+          "type": "number"
+        },
+        "completionPercent": {
+          "type": "number"
+        },
+        "learnedVocabCount": {
+          "type": "number"
+        },
+        "averageQuizScore": {
+          "type": "number"
+        },
+        "streakDays": {
+          "type": "number"
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "currentLevel",
+        "completedLessons",
+        "totalLessons",
+        "completionPercent",
+        "learnedVocabCount",
+        "averageQuizScore",
+        "streakDays",
+        "isPublic",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -529,6 +589,10 @@
     "/user_vocabulary/{vocabDocId}": {
       "schema": { "$ref": "#/entities/UserVocabulary" },
       "description": "Per-user learned and favorite vocabulary items keyed by {uid}_{vocabularyId}."
+    },
+    "/leaderboard/{userId}": {
+      "schema": { "$ref": "#/entities/LeaderboardEntry" },
+      "description": "Public PII-free completion leaderboard readable by visitors and signed-in learners."
     }
   }
 }
