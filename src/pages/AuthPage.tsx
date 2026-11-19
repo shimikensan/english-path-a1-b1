@@ -2,17 +2,17 @@ import React, { useState } from 'react';
 import {
   ArrowRight,
   CheckCircle2,
-  GraduationCap,
   KeyRound,
   LogOut,
   Mail,
   Moon,
+  Plane,
   RefreshCw,
   Sun,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
-import { AUTH_HERO_IMAGE } from '../data';
+import { APP_BRAND, AUTH_HERO_IMAGE } from '../data';
 
 type AuthMode = 'login' | 'register' | 'reset';
 
@@ -147,20 +147,20 @@ export function AuthPage() {
       {/* Minimal 3-zone top bar */}
       <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 lg:px-10 flex items-center justify-between gap-8">
         <div className="flex items-center gap-2.5 whitespace-nowrap shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center">
-            <GraduationCap className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-blue-700 text-white flex items-center justify-center ring-1 ring-amber-400/40">
+            <Plane className="w-4 h-4" />
           </div>
-          <span className="text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
-            ENGLISH PATH A1-B1
+          <span className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
+            {APP_BRAND.fullName}
           </span>
         </div>
 
         <div className="hidden md:flex items-center gap-4 text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
-          <span>30 bài học chuẩn CEFR</span>
+          <span>3 chặng bay CEFR A1–B1</span>
           <span aria-hidden="true">·</span>
-          <span>450 từ vựng có phát âm</span>
+          <span>30 bài học & 450 từ vựng IPA</span>
           <span aria-hidden="true">·</span>
-          <span>Đồng bộ tiến độ Firebase</span>
+          <span>Đồng bộ Firebase</span>
         </div>
 
         <button
@@ -189,30 +189,30 @@ export function AuthPage() {
           {!imgError ? (
             <img
               src={AUTH_HERO_IMAGE}
-              alt="Bàn học tiếng Anh hiện đại với sổ tay và ánh sáng buổi sáng"
+              alt="Cậu bé Pilot vui vẻ trong buồng lái máy bay cùng sổ tay học tiếng Anh trên nền trời xanh"
               referrerPolicy="no-referrer"
               onError={() => setImgError(true)}
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover object-top"
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-blue-800 to-slate-900" />
+            <div className="absolute inset-0 bg-gradient-to-br from-sky-900 via-blue-900 to-slate-950" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/45 to-slate-950/15" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/92 via-slate-950/40 to-transparent" />
 
           <div className="relative z-10 p-6 sm:p-8 text-white space-y-4">
             <p className="text-xs font-semibold text-amber-300 tracking-wide">
-              Lộ trình tiếng Anh cho người Việt · CEFR A1 → A2 → B1
+              Học tiếng Anh cùng Cậu bé Pilot · Chặng bay CEFR A1 → A2 → B1
             </p>
-            <h1 className="text-2xl sm:text-3xl font-extrabold leading-tight">
-              Học tiếng Anh bài bản từng bước, nhớ lâu từ vựng và tự tin giao tiếp.
+            <h1 className="text-2xl sm:text-3xl font-extrabold leading-tight text-balance">
+              Cất cánh cùng Cậu bé Pilot — Chinh phục tiếng Anh từ A1 đến B1.
             </h1>
             <p className="text-sm text-slate-200 leading-relaxed max-w-lg">
-              Mỗi bài học kết hợp 4 phần trọn vẹn: Flashcard phát âm chuẩn IPA, Mẫu câu kèm hội thoại thực tế, Ngữ pháp giải thích dễ hiểu bằng tiếng Việt và Bài kiểm tra 15 câu lưu điểm tự động.
+              Mỗi chặng bay gồm 4 phần trọn vẹn: Flashcard phát âm chuẩn IPA, Mẫu câu kèm hội thoại thực tế, Ngữ pháp giải thích dễ hiểu bằng tiếng Việt và Bài kiểm tra 15 câu lưu điểm tự động.
             </p>
             <div className="pt-3 border-t border-white/15 grid grid-cols-3 gap-4 tabular-nums">
               <div>
                 <div className="text-xl font-bold text-white">30</div>
-                <div className="text-xs text-slate-300">Bài học A1–B1</div>
+                <div className="text-xs text-slate-300">Chặng bài A1–B1</div>
               </div>
               <div>
                 <div className="text-xl font-bold text-white">450</div>
@@ -445,7 +445,7 @@ export function AuthPage() {
                   {submitting
                     ? 'Đang xử lý...'
                     : mode === 'login'
-                      ? 'Đăng nhập vào ENGLISH PATH'
+                      ? 'Đăng nhập ngay'
                       : 'Tạo tài khoản & Bắt đầu học'}
                   <ArrowRight className="w-4 h-4" />
                 </>
@@ -454,6 +454,15 @@ export function AuthPage() {
           </form>
         </div>
       </div>
+
+      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 px-6 lg:px-10">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span>{APP_BRAND.fullName} · Nền tảng học tiếng Anh chuẩn CEFR A1–B1</span>
+          <span className="font-mono font-medium text-slate-600 dark:text-slate-300">
+            {APP_BRAND.copyright}
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

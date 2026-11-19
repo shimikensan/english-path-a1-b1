@@ -1,11 +1,24 @@
 import type { LevelDoc } from '../types';
 
-export const AUTH_HERO_IMAGE = '/src/assets/images/auth_hero_study_1795052122824.jpg';
+export const APP_BRAND = {
+  fullName: 'Học tiếng Anh cùng Cậu bé Pilot',
+  shortName: 'Cậu bé Pilot',
+  tagline: 'Đường bay tiếng Anh CEFR A1–B1',
+  copyright: 'VanBien@copyright',
+} as const;
+
+export const PILOT_RANKS: Record<string, { stage: string; rankVi: string; callsign: string }> = {
+  A1: { stage: 'Chặng 1 · Cất cánh', rankVi: 'Học viên Phi công', callsign: 'Cadet' },
+  A2: { stage: 'Chặng 2 · Vượt mây', rankVi: 'Cơ phó', callsign: 'First Officer' },
+  B1: { stage: 'Chặng 3 · Chinh phục bầu trời', rankVi: 'Cơ trưởng', callsign: 'Captain' },
+};
+
+export const AUTH_HERO_IMAGE = '/src/assets/images/pilot_boy_auth_hero_1795055571818.jpg';
 
 export const LEVEL_BANNERS: Record<string, string> = {
-  A1: '/src/assets/images/level_a1_banner_1795052117279.jpg',
-  A2: '/src/assets/images/level_a2_banner_1795052120535.jpg',
-  B1: '/src/assets/images/level_b1_banner_1795052119872.jpg',
+  A1: '/src/assets/images/pilot_level_a1_runway_1795055570904.jpg',
+  A2: '/src/assets/images/pilot_level_a2_clouds_1795055572291.jpg',
+  B1: '/src/assets/images/pilot_level_b1_horizon_1795055571975.jpg',
 };
 
 export const DEFAULT_LEVELS: LevelDoc[] = [

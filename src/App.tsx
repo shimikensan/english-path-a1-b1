@@ -4,13 +4,14 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { GraduationCap } from 'lucide-react';
+import { Plane } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { ToastContainer } from './components/ToastContainer';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { APP_BRAND } from './data';
 import { AccountPage } from './pages/AccountPage';
 import { AdminPage } from './pages/AdminPage';
 import { AuthPage } from './pages/AuthPage';
@@ -26,8 +27,8 @@ import { VocabularyHubPage } from './pages/VocabularyHubPage';
 import type { AppRoute, LessonTab } from './types';
 
 const ROUTE_TITLES: Record<AppRoute, string> = {
-  dashboard: 'Trang chủ',
-  roadmap: 'Lộ trình học CEFR A1–B1',
+  dashboard: 'Buồng lái · Trang chủ',
+  roadmap: 'Đường bay CEFR A1–B1',
   vocabulary: 'Kho từ vựng',
   patterns: 'Mẫu câu giao tiếp',
   practice: 'Luyện tập tương tác',
@@ -71,13 +72,14 @@ function AppShell() {
   if (!authReady || (firebaseUser && firebaseUser.emailVerified && dataLoading && !profile)) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-4">
-          <GraduationCap className="w-6 h-6" />
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-blue-700 text-white flex items-center justify-center mb-4 shadow-sm">
+          <Plane className="w-6 h-6" />
         </div>
-        <p className="text-base font-bold text-slate-900 dark:text-white">ENGLISH PATH A1–B1</p>
+        <p className="text-base font-bold text-slate-900 dark:text-white">{APP_BRAND.fullName}</p>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Đang đồng bộ tài khoản và lộ trình học tập từ Firebase...
+          Đang chuẩn bị đường bay và đồng bộ tiến độ học tập từ Firebase...
         </p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-6">{APP_BRAND.copyright}</p>
       </div>
     );
   }

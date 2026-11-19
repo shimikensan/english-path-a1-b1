@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { KeyRound, LogOut, Moon, Save, ShieldCheck, Sun } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
+import { PILOT_RANKS } from '../data';
 import { formatTimestampVi } from '../utils/helpers';
 
 export function AccountPage() {
@@ -147,7 +148,7 @@ export function AccountPage() {
             <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
               Cấp độ tiếng Anh đang theo học
             </span>
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               {(['A1', 'A2', 'B1'] as const).map((lvl) => (
                 <button
                   key={lvl}
@@ -159,7 +160,10 @@ export function AccountPage() {
                       : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                   }`}
                 >
-                  CEFR {lvl}
+                  <div>CEFR {lvl}</div>
+                  <div className="text-[11px] font-normal opacity-80 mt-0.5">
+                    {PILOT_RANKS[lvl]?.rankVi}
+                  </div>
                 </button>
               ))}
             </div>

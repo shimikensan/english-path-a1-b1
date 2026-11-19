@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ArrowRight,
   Award,
@@ -6,6 +6,7 @@ import {
   BookOpen,
   CheckCircle2,
   Flame,
+  Plane,
   PlayCircle,
   TrendingUp,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useApp } from '../context/AppContext';
+import { AUTH_HERO_IMAGE, PILOT_RANKS } from '../data';
 import type { AppRoute, LessonDoc } from '../types';
 import { formatShortDateVi, getLocalDateString } from '../utils/helpers';
 
@@ -31,6 +33,7 @@ interface DashboardPageProps {
 
 export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) {
   const { profile, lessons, progressMap, quizResults, vocabMap } = useApp();
+  const [pilotAvatarFailed, setPilotAvatarFailed] = useState(false);
 
   const stats = useMemo(() => {
     const learnedVocabCount = Object.values(vocabMap).filter((v) => v.isLearned).length;
@@ -108,43 +111,90 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
   const activeProgress = stats.activeLesson ? progressMap[stats.activeLesson.lessonId] : undefined;
   const activeVocabLearned = activeProgress?.vocabularyLearned?.length ?? 0;
   const activeVocabTotal = stats.activeLesson?.vocabulary?.length ?? 15;
+  const currentRank = PILOT_RANKS[profile?.currentLevel || 'A1'] || PILOT_RANKS.A1;
+  const overallFlightPct =
+    stats.totalLessons > 0 ? Math.round((stats.completedCount / stats.totalLessons) * 100) : 0;
 
   return (
     <div className="space-y-8">
-      {/* Hero Greeting & Primary CTA */}
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-        <div className="space-y-2 max-w-2xl">
-          <div className="text-xs font-semibold text-blue-700 dark:text-blue-400">
-            Trình độ hiện tại: CEFR {profile?.currentLevel || 'A1'} · Mục tiêu {profile?.dailyGoalMinutes ?? 20} phút/ngày
+      {/* Pilot Cockpit Hero Greeting & Flight Progress */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-sky-900 border border-slate-800 rounded-2xl p-6 sm:p-8 text-white">
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="flex items-start gap-4 sm:gap-5 max-w-2xl">
+            <div className="hidden sm:flex w-16 h-16 rounded-xl overflow-hidden border border-amber-400/40 shrink-0 bg-gradient-to-br from-sky-600 to-blue-800 items-center justify-center">
+              {!pilotAvatarFailed ? (
+                <img
+                  src={AUTH_HERO_IMAGE}
+                  alt="Cậu bé Pilot đồng hành học tiếng Anh"
+                  referrerPolicy="no-referrer"
+                  onError={() => setPilotAvatarFailed(true)}
+                  className="w-full h-full object-cover object-top"
+                />
+              ) : (
+                <Plane className="w-7 h-7 text-amber-300" />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-amber-300">
+                <Plane className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {currentRank.rankVi} ({currentRank.callsign})
+                </span>
+                <span className="text-white/40" aria-hidden="true">
+                  ·
+                </span>
+                <span>CEFR {profile?.currentLevel || 'A1'}</span>
+                <span className="text-white/40" aria-hidden="true">
+                  ·
+                </span>
+                <span>Mục tiêu {profile?.dailyGoalMinutes ?? 20} phút/ngày</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
+                Xin chào phi công {profile?.fullName || 'bạn'}!
+              </h2>
+              <p className="text-sm sm:text-base text-sky-100/90 leading-relaxed">
+                {studiedToday
+                  ? `Hành trình bay hôm nay đã được ghi nhận! Bạn đang giữ chuỗi ${profile?.streakDays ?? 1} ngày học liên tiếp cùng Cậu bé Pilot.`
+                  : `Đường băng đã sẵn sàng. Chỉ cần học 5 từ vựng hoặc hoàn thành 1 bài kiểm tra hôm nay để giữ vững chuỗi ${profile?.streakDays ?? 1} ngày học liên tiếp.`}
+              </p>
+            </div>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Xin chào, {profile?.fullName || 'bạn'}!
-          </h2>
-          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 leading-relaxed">
-            {studiedToday
-              ? `Tuyệt vời! Bạn đã duy trì chuỗi ${profile?.streakDays ?? 1} ngày học liên tiếp hôm nay. Tiếp tục hoàn thành mục tiêu bài học kế tiếp nhé.`
-              : `Hôm nay bạn chưa ghi nhận bài học mới. Chỉ cần học 5 từ vựng hoặc hoàn thành 1 bài kiểm tra để giữ vững chuỗi ${profile?.streakDays ?? 1} ngày học liên tiếp.`}
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          {stats.activeLesson && (
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {stats.activeLesson && (
+              <button
+                type="button"
+                onClick={() => onOpenLesson(stats.activeLesson!.lessonId)}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-amber-500 text-slate-950 text-sm font-bold hover:bg-amber-400 transition-colors whitespace-nowrap"
+              >
+                <PlayCircle className="w-4 h-4" />
+                Tiếp tục học ngay
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => onOpenLesson(stats.activeLesson!.lessonId)}
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap"
+              onClick={() => onNavigate('roadmap')}
+              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-white/25 bg-white/10 text-sm font-semibold text-white hover:bg-white/15 transition-colors whitespace-nowrap"
             >
-              <PlayCircle className="w-4 h-4" />
-              Tiếp tục học ngay
+              Xem đường bay A1–B1
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => onNavigate('roadmap')}
-            className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
-          >
-            Xem lộ trình A1–B1
-          </button>
+          </div>
+        </div>
+
+        {/* Runway Flight Plan Bar */}
+        <div className="relative z-10 mt-6 pt-5 border-t border-white/15 space-y-2">
+          <div className="flex items-center justify-between text-xs text-sky-100/90 tabular-nums">
+            <span>Hành trình chinh phục A1 → A2 → B1</span>
+            <span className="font-semibold text-amber-300">
+              {stats.completedCount}/{stats.totalLessons} chặng bài ({overallFlightPct}%)
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-white/15 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-sky-400 to-amber-400 rounded-full transition-all"
+              style={{ width: `${Math.max(4, overallFlightPct)}%` }}
+            />
+          </div>
         </div>
       </section>
 

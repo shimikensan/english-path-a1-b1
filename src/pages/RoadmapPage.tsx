@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowRight, CheckCircle2, Clock, Search } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { LEVEL_BANNERS } from '../data';
+import { LEVEL_BANNERS, PILOT_RANKS } from '../data';
 
 interface RoadmapPageProps {
   onOpenLesson: (lessonId: string) => void;
@@ -108,7 +108,9 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
                 <div className="relative z-10 w-full p-6 flex flex-col md:flex-row md:items-end justify-between gap-4 text-white">
                   <div className="space-y-1.5 max-w-2xl">
                     <p className="text-xs font-semibold text-amber-300">
-                      {lvl.subtitle || `Chuẩn khung năng lực CEFR ${lvl.levelId}`}
+                      {PILOT_RANKS[lvl.levelId]
+                        ? `${PILOT_RANKS[lvl.levelId].stage} · ${PILOT_RANKS[lvl.levelId].rankVi} (${PILOT_RANKS[lvl.levelId].callsign})`
+                        : lvl.subtitle || `Chuẩn khung năng lực CEFR ${lvl.levelId}`}
                     </p>
                     <h2 className="text-xl sm:text-2xl font-extrabold">{lvl.name}</h2>
                     <p className="text-sm text-slate-200 leading-relaxed">{lvl.description}</p>

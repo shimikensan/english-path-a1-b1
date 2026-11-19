@@ -350,7 +350,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const pendingLevel = (window.localStorage.getItem('english-path-pending-level') as 'A1' | 'A2' | 'B1') || 'A1';
       await ensureUserProfile(refreshed, refreshed.displayName || undefined, pendingLevel);
       window.localStorage.removeItem('english-path-pending-level');
-      addToast('success', 'Email đã được xác thực! Chào mừng bạn đến với ENGLISH PATH.');
+      addToast('success', 'Email đã được xác thực! Chào mừng bạn đến với Học tiếng Anh cùng Cậu bé Pilot.');
       return true;
     }
     addToast('info', 'Email vẫn chưa được xác thực. Vui lòng nhấn vào liên kết trong hộp thư của bạn.');

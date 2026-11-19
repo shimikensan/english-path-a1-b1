@@ -7,12 +7,12 @@ import {
   Compass,
   Dumbbell,
   Flame,
-  GraduationCap,
   Home,
   LogOut,
   Menu,
   MessageSquareQuote,
   Moon,
+  Plane,
   ShieldCheck,
   Sun,
   UserCircle,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
+import { APP_BRAND, PILOT_RANKS } from '../data';
 import type { AppRoute } from '../types';
 
 interface LayoutProps {
@@ -66,15 +67,15 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
           onClick={() => handleSelectRoute('dashboard')}
           className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg"
         >
-          <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
-            <GraduationCap className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-500 to-blue-700 text-white flex items-center justify-center shrink-0 ring-1 ring-amber-400/40">
+            <Plane className="w-5 h-5" />
           </div>
           <div className="min-w-0">
             <div className="text-sm font-extrabold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">
-              ENGLISH PATH
+              {APP_BRAND.shortName}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-              Lộ trình CEFR A1–B1
+              Học tiếng Anh A1–B1
             </div>
           </div>
         </button>
@@ -134,10 +135,11 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
         <div className="flex items-center justify-between gap-2 px-2">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-              {profile?.fullName || 'Học viên'}
+              {profile?.fullName || 'Phi công tập sự'}
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              Trình độ {profile?.currentLevel || 'A1'} · {profile?.streakDays ?? 1} ngày liên tiếp
+              {PILOT_RANKS[profile?.currentLevel || 'A1']?.rankVi || 'Học viên Phi công'} · CEFR{' '}
+              {profile?.currentLevel || 'A1'}
             </p>
           </div>
         </div>
@@ -149,6 +151,9 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
           <LogOut className="w-3.5 h-3.5" />
           Đăng xuất
         </button>
+        <p className="text-[11px] text-center text-slate-400 dark:text-slate-500">
+          {APP_BRAND.copyright}
+        </p>
       </div>
     </div>
   );
@@ -194,12 +199,12 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
           <div className="flex items-center gap-4 shrink-0">
             <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 tabular-nums">
               <Flame className="w-4 h-4 text-amber-500" />
-              <span>{profile?.streakDays ?? 1} ngày</span>
+              <span>{profile?.streakDays ?? 1} ngày bay</span>
               <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
                 ·
               </span>
-              <span className="font-semibold text-blue-700 dark:text-blue-400">
-                CEFR {profile?.currentLevel || 'A1'}
+              <span className="font-semibold text-sky-700 dark:text-sky-400">
+                {PILOT_RANKS[profile?.currentLevel || 'A1']?.rankVi || 'Học viên Phi công'} ({profile?.currentLevel || 'A1'})
               </span>
             </div>
 
@@ -228,6 +233,15 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           {children}
         </main>
+
+        <footer className="border-t border-slate-200/80 dark:border-slate-800/80 py-4 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <span className="font-medium text-slate-600 dark:text-slate-300">
+              {APP_BRAND.fullName} · {APP_BRAND.tagline}
+            </span>
+            <span className="font-mono">{APP_BRAND.copyright}</span>
+          </div>
+        </footer>
       </div>
     </div>
   );
