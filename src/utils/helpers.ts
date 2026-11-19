@@ -137,18 +137,36 @@ export function truncate(str: string, maxLen: number): string {
   return (str ?? '').trim().slice(0, maxLen);
 }
 
-export function formatTimestampVi(value: unknown): string {
-  if (!value) return '—';
-  let date: Date | null = null;
+function toValidDate(value: unknown): Date | null {
+  if (!value) return null;
   if (value instanceof Date) {
-    date = value;
-  } else if (typeof value === 'object' && value !== null && 'toDate' in value) {
-    const fn = (value as { toDate?: () => Date }).toDate;
-    if (typeof fn === 'function') date = fn();
-  } else if (typeof value === 'string') {
-    date = new Date(value);
+    return Number.isNaN(value.getTime()) ? null : value;
   }
-  if (!date || Number.isNaN(date.getTime())) return '—';
+  if (typeof value === 'object') {
+    const record = value as { toDate?: () => Date; toMillis?: () => number; seconds?: number };
+    if (typeof record.toDate === 'function') {
+      const d = record.toDate();
+      return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+    }
+    if (typeof record.toMillis === 'function') {
+      const d = new Date(record.toMillis());
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof record.seconds === 'number') {
+      const d = new Date(record.seconds * 1000);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+export function formatTimestampVi(value: unknown): string {
+  const date = toValidDate(value);
+  if (!date) return '—';
   return new Intl.DateTimeFormat('vi-VN', {
     day: '2-digit',
     month: '2-digit',
@@ -159,17 +177,8 @@ export function formatTimestampVi(value: unknown): string {
 }
 
 export function formatShortDateVi(value: unknown): string {
-  if (!value) return '—';
-  let date: Date | null = null;
-  if (value instanceof Date) {
-    date = value;
-  } else if (typeof value === 'object' && value !== null && 'toDate' in value) {
-    const fn = (value as { toDate?: () => Date }).toDate;
-    if (typeof fn === 'function') date = fn();
-  } else if (typeof value === 'string') {
-    date = new Date(value);
-  }
-  if (!date || Number.isNaN(date.getTime())) return '—';
+  const date = toValidDate(value);
+  if (!date) return '—';
   return new Intl.DateTimeFormat('vi-VN', {
     day: '2-digit',
     month: '2-digit',
