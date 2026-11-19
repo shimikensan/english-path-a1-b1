@@ -117,13 +117,14 @@ export async function recordStudyActivityStreak(profile: UserProfile): Promise<v
   const path = `users/${profile.uid}`;
   const ref = doc(db, 'users', profile.uid);
   const next = calculateUpdatedStreak(profile.streakDays, profile.lastStudyDate);
-  if (next.lastStudyDate === profile.lastStudyDate && next.streakDays === profile.streakDays) {
+  const safeStreak = Math.min(10000, Math.max(0, Math.round(next.streakDays)));
+  if (next.lastStudyDate === profile.lastStudyDate && safeStreak === profile.streakDays) {
     return;
   }
   try {
     await updateDoc(ref, {
-      streakDays: next.streakDays,
-      lastStudyDate: next.lastStudyDate,
+      streakDays: safeStreak,
+      lastStudyDate: truncate(next.lastStudyDate, 20),
       lastLogin: serverTimestamp(),
     });
   } catch (error) {
@@ -365,10 +366,11 @@ export async function toggleUserVocabularyState(
           lastStudyAt: serverTimestamp(),
         });
       }
-      await recordStudyActivityStreak(profile);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, progressPath);
     }
+
+    await recordStudyActivityStreak(profile);
   }
 }
 
@@ -396,6 +398,7 @@ export async function submitQuizAttempt(params: {
   } = params;
 
   const uid = profile.uid;
+  const safeScore = Math.min(100, Math.max(0, Math.round(score)));
   const resultId = `qr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const resultPath = `quiz_results/${resultId}`;
 
@@ -403,9 +406,9 @@ export async function submitQuizAttempt(params: {
     await setDoc(doc(db, 'quiz_results', resultId), {
       uid,
       lessonId: lesson.lessonId,
-      lessonTitle: truncate(lesson.title, 160),
+      lessonTitle: truncate(lesson.title, 160) || 'Bài học',
       levelId: lesson.levelId,
-      score: Math.min(100, Math.max(0, Math.round(score))),
+      score: safeScore,
       totalQuestions,
       correctAnswers,
       wrongAnswers,
@@ -420,16 +423,19 @@ export async function submitQuizAttempt(params: {
   const progressId = `${uid}_${lesson.lessonId}`;
   const progressPath = `user_progress/${progressId}`;
   const progressRef = doc(db, 'user_progress', progressId);
-  const bestScore = Math.max(existingProgress?.quizBestScore ?? 0, Math.round(score));
-  const attempts = (existingProgress?.quizAttempts ?? 0) + 1;
+  const bestScore = Math.max(existingProgress?.quizBestScore ?? 0, safeScore);
+  const attempts = Math.min(1000, (existingProgress?.quizAttempts ?? 0) + 1);
 
   try {
     const pSnap = await getDoc(progressRef);
     if (pSnap.exists()) {
+      const serverData = pSnap.data() as Partial<UserProgressDoc>;
+      const serverBest = Math.min(100, Math.max(serverData.quizBestScore ?? 0, bestScore));
+      const serverAttempts = Math.min(1000, Math.max(attempts, (serverData.quizAttempts ?? 0) + 1));
       await updateDoc(progressRef, {
         lessonCompleted: true,
-        quizBestScore: bestScore,
-        quizAttempts: attempts,
+        quizBestScore: serverBest,
+        quizAttempts: serverAttempts,
         lastStudyAt: serverTimestamp(),
       });
     } else {
@@ -437,7 +443,7 @@ export async function submitQuizAttempt(params: {
         uid,
         lessonId: lesson.lessonId,
         levelId: lesson.levelId,
-        vocabularyLearned: existingProgress?.vocabularyLearned ?? [],
+        vocabularyLearned: (existingProgress?.vocabularyLearned ?? []).slice(0, 40),
         lessonCompleted: true,
         quizBestScore: bestScore,
         quizAttempts: attempts,
@@ -445,10 +451,11 @@ export async function submitQuizAttempt(params: {
         lastStudyAt: serverTimestamp(),
       });
     }
-    await recordStudyActivityStreak(profile);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, progressPath);
   }
+
+  await recordStudyActivityStreak(profile);
 
   return resultId;
 }

@@ -105,10 +105,12 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
       setElapsedSeconds(duration);
       setSubmitted(true);
     } catch (err) {
-      addToast(
-        'error',
-        err instanceof Error ? err.message : 'Không thể lưu kết quả bài kiểm tra.'
-      );
+      const rawMsg = err instanceof Error ? err.message : '';
+      const friendlyMsg =
+        rawMsg && !rawMsg.trim().startsWith('{')
+          ? rawMsg
+          : 'Không thể lưu kết quả bài kiểm tra lên máy chủ. Vui lòng thử lại sau ít giây.';
+      addToast('error', friendlyMsg);
     } finally {
       setSubmitting(false);
     }

@@ -32,6 +32,12 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isOwnedCompositeId(docId) {
+      return isSignedIn()
+        && docId.size() > request.auth.uid.size() + 1
+        && docId[0:request.auth.uid.size() + 1] == request.auth.uid + '_';
+    }
+
     function isBootstrappedAdmin() {
       return isVerifiedUser() && request.auth.token.email == 'buocngoat2020@gmail.com';
     }
@@ -310,7 +316,7 @@ service cloud.firestore {
 
     // --- Collection: levels ---
     match /levels/{levelId} {
-      allow get: if isValidId(levelId) && ((isSignedIn() && existing().isPublished == true) || isAdmin());
+      allow get: if isValidId(levelId) && (isAdmin() || (isSignedIn() && resource != null && existing().isPublished == true));
       allow list: if (isSignedIn() && existing().isPublished == true) || isAdmin();
       allow create: if isAdmin()
         && isValidId(levelId)
@@ -328,7 +334,7 @@ service cloud.firestore {
 
     // --- Collection: lessons ---
     match /lessons/{lessonId} {
-      allow get: if isValidId(lessonId) && ((isSignedIn() && existing().isPublished == true) || isAdmin());
+      allow get: if isValidId(lessonId) && (isAdmin() || (isSignedIn() && resource != null && existing().isPublished == true));
       allow list: if (isSignedIn() && existing().isPublished == true) || isAdmin();
       allow create: if isAdmin()
         && isValidId(lessonId)
@@ -352,7 +358,15 @@ service cloud.firestore {
 
     // --- Collection: user_progress ---
     match /user_progress/{progressId} {
-      allow get: if isValidId(progressId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow get: if isValidId(progressId) && (
+        isAdmin()
+        || (
+          isSignedIn() && (
+            (resource == null && isOwnedCompositeId(progressId))
+            || (resource != null && existing().uid == request.auth.uid)
+          )
+        )
+      );
       allow list: if (isSignedIn() && existing().uid == request.auth.uid) || isAdmin();
       allow create: if isVerifiedUser()
         && isValidId(progressId)
@@ -384,7 +398,7 @@ service cloud.firestore {
 
     // --- Collection: quiz_results (Immutable Score Records) ---
     match /quiz_results/{resultId} {
-      allow get: if isValidId(resultId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow get: if isValidId(resultId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
       allow list: if (isSignedIn() && existing().uid == request.auth.uid) || isAdmin();
       allow create: if isVerifiedUser()
         && isValidId(resultId)
@@ -398,7 +412,15 @@ service cloud.firestore {
 
     // --- Collection: user_vocabulary ---
     match /user_vocabulary/{vocabDocId} {
-      allow get: if isValidId(vocabDocId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow get: if isValidId(vocabDocId) && (
+        isAdmin()
+        || (
+          isSignedIn() && (
+            (resource == null && isOwnedCompositeId(vocabDocId))
+            || (resource != null && existing().uid == request.auth.uid)
+          )
+        )
+      );
       allow list: if (isSignedIn() && existing().uid == request.auth.uid) || isAdmin();
       allow create: if isVerifiedUser()
         && isValidId(vocabDocId)
@@ -427,7 +449,11 @@ service cloud.firestore {
 
     // --- Collection: leaderboard (Public PII-Free Learner Completion Ranking) ---
     match /leaderboard/{userId} {
-      allow get: if isValidId(userId) && (existing().isPublic == true || isOwner(userId) || isAdmin());
+      allow get: if isValidId(userId) && (
+        isOwner(userId)
+        || isAdmin()
+        || (resource != null && existing().isPublic == true)
+      );
       allow list: if existing().isPublic == true || isAdmin();
       allow create: if isVerifiedUser()
         && isValidId(userId)
