@@ -1,0 +1,6 @@
+{
+  "name": "ENGLISH PATH A1-B1",
+  "description": "Nền tảng học tiếng Anh trực tuyến chuẩn CEFR từ A1 đến B1 dành cho người Việt với từ vựng, mẫu câu, ngữ pháp, bài kiểm tra và đồng bộ tiến độ Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

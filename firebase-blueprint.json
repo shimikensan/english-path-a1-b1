@@ -1,0 +1,465 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Learner account profile and personal study preferences (contains PII, owner or admin read only).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Authentication UID matching document ID."
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Learner full display name."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 200,
+          "description": "Learner email address (PII)."
+        },
+        "currentLevel": {
+          "type": "string",
+          "enum": ["A1", "A2", "B1"],
+          "description": "Active CEFR study level."
+        },
+        "streakDays": {
+          "type": "number",
+          "description": "Consecutive study days count."
+        },
+        "lastStudyDate": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "ISO calendar date YYYY-MM-DD of last recorded study activity."
+        },
+        "dailyGoalMinutes": {
+          "type": "number",
+          "description": "Daily target study time in minutes."
+        },
+        "reminderEnabled": {
+          "type": "boolean",
+          "description": "Whether daily study reminder banner is enabled."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of account creation (immutable)."
+        },
+        "lastLogin": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of most recent sign-in."
+        }
+      },
+      "required": [
+        "uid",
+        "fullName",
+        "email",
+        "currentLevel",
+        "streakDays",
+        "lastStudyDate",
+        "dailyGoalMinutes",
+        "reminderEnabled",
+        "createdAt",
+        "lastLogin"
+      ]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Server-checked RBAC admin registry granting administrative access.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "grantedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "grantedBy", "createdAt"]
+    },
+    "Level": {
+      "title": "Level",
+      "description": "CEFR learning level definition (A1, A2, B1, or admin-added level).",
+      "type": "object",
+      "properties": {
+        "levelId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "subtitle": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "order": {
+          "type": "number"
+        },
+        "isPublished": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["levelId", "name", "subtitle", "description", "order", "isPublished", "updatedAt"]
+    },
+    "Lesson": {
+      "title": "Lesson",
+      "description": "Structured CEFR lesson with vocabulary, sentence patterns, grammar guide, and quiz bank.",
+      "type": "object",
+      "properties": {
+        "lessonId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "levelId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "topic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "topicOrder": {
+          "type": "number"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "order": {
+          "type": "number"
+        },
+        "estimatedMinutes": {
+          "type": "number"
+        },
+        "isPublished": {
+          "type": "boolean"
+        },
+        "vocabulary": {
+          "type": "array",
+          "description": "Bounded array of up to 40 vocabulary entries."
+        },
+        "sentencePatterns": {
+          "type": "array",
+          "description": "Bounded array of up to 20 sentence patterns."
+        },
+        "grammar": {
+          "type": "object",
+          "description": "Grammar rules, examples, common mistakes, and practice items."
+        },
+        "quiz": {
+          "type": "array",
+          "description": "Bounded array of up to 40 quiz questions."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "lessonId",
+        "levelId",
+        "topic",
+        "topicOrder",
+        "title",
+        "description",
+        "order",
+        "estimatedMinutes",
+        "isPublished",
+        "vocabulary",
+        "sentencePatterns",
+        "grammar",
+        "quiz",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserProgress": {
+      "title": "UserProgress",
+      "description": "Per-user per-lesson progress tracking.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lessonId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "levelId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "vocabularyLearned": {
+          "type": "array",
+          "description": "Bounded list of learned vocabulary IDs (max 40)."
+        },
+        "lessonCompleted": {
+          "type": "boolean"
+        },
+        "quizBestScore": {
+          "type": "number"
+        },
+        "quizAttempts": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastStudyAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "lessonId",
+        "levelId",
+        "vocabularyLearned",
+        "lessonCompleted",
+        "quizBestScore",
+        "quizAttempts",
+        "createdAt",
+        "lastStudyAt"
+      ]
+    },
+    "QuizResult": {
+      "title": "QuizResult",
+      "description": "Immutable quiz attempt score record per user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lessonId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lessonTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "levelId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "score": {
+          "type": "number"
+        },
+        "totalQuestions": {
+          "type": "number"
+        },
+        "correctAnswers": {
+          "type": "number"
+        },
+        "wrongAnswers": {
+          "type": "number"
+        },
+        "rating": {
+          "type": "string",
+          "enum": ["Excellent", "Very Good", "Good", "Need More Practice", "Keep Learning"]
+        },
+        "durationSeconds": {
+          "type": "number"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "lessonId",
+        "lessonTitle",
+        "levelId",
+        "score",
+        "totalQuestions",
+        "correctAnswers",
+        "wrongAnswers",
+        "rating",
+        "durationSeconds",
+        "completedAt"
+      ]
+    },
+    "UserVocabulary": {
+      "title": "UserVocabulary",
+      "description": "Per-user vocabulary bookmarking and learned status.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "vocabularyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lessonId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "levelId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "word": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "ipa": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "partOfSpeech": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "meaningVi": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "exampleEn": {
+          "type": "string",
+          "maxLength": 350
+        },
+        "exampleVi": {
+          "type": "string",
+          "maxLength": 350
+        },
+        "isFavorite": {
+          "type": "boolean"
+        },
+        "isLearned": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "vocabularyId",
+        "lessonId",
+        "levelId",
+        "word",
+        "ipa",
+        "partOfSpeech",
+        "meaningVi",
+        "exampleEn",
+        "exampleVi",
+        "isFavorite",
+        "isLearned",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private learner profile documents isolated to owner and admins."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Server-verified administrator registry."
+    },
+    "/levels/{levelId}": {
+      "schema": { "$ref": "#/entities/Level" },
+      "description": "CEFR level catalog managed by administrators."
+    },
+    "/lessons/{lessonId}": {
+      "schema": { "$ref": "#/entities/Lesson" },
+      "description": "CEFR lessons containing vocabulary, sentence patterns, grammar, and quiz banks."
+    },
+    "/user_progress/{progressId}": {
+      "schema": { "$ref": "#/entities/UserProgress" },
+      "description": "Per-user lesson progress keyed by {uid}_{lessonId}."
+    },
+    "/quiz_results/{resultId}": {
+      "schema": { "$ref": "#/entities/QuizResult" },
+      "description": "Immutable quiz attempt scores owned by the submitting learner."
+    },
+    "/user_vocabulary/{vocabDocId}": {
+      "schema": { "$ref": "#/entities/UserVocabulary" },
+      "description": "Per-user learned and favorite vocabulary items keyed by {uid}_{vocabularyId}."
+    }
+  }
+}

@@ -1,0 +1,359 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 0: Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Hardened Primitives ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'buocngoat2020@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // --- Entity Validation Blueprints (Anti-Update-Gap) ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'fullName', 'email', 'currentLevel', 'streakDays',
+          'lastStudyDate', 'dailyGoalMinutes', 'reminderEnabled', 'createdAt', 'lastLogin'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'fullName', 'email', 'currentLevel', 'streakDays',
+          'lastStudyDate', 'dailyGoalMinutes', 'reminderEnabled', 'createdAt', 'lastLogin'
+        ])
+        && isValidId(data.uid)
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 100
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.currentLevel is string && data.currentLevel in ['A1', 'A2', 'B1']
+        && data.streakDays is number && data.streakDays >= 0 && data.streakDays <= 10000
+        && data.lastStudyDate is string && data.lastStudyDate.size() <= 20
+        && data.dailyGoalMinutes is number && data.dailyGoalMinutes >= 5 && data.dailyGoalMinutes <= 240
+        && data.reminderEnabled is bool
+        && data.createdAt is timestamp
+        && data.lastLogin is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'email', 'grantedBy', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'grantedBy', 'createdAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.grantedBy is string && data.grantedBy.size() >= 1 && data.grantedBy.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    function isValidLevel(data) {
+      return data.keys().hasAll(['levelId', 'name', 'subtitle', 'description', 'order', 'isPublished', 'updatedAt'])
+        && data.keys().hasOnly(['levelId', 'name', 'subtitle', 'description', 'order', 'isPublished', 'updatedAt'])
+        && isValidId(data.levelId) && data.levelId.size() <= 32
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.subtitle is string && data.subtitle.size() <= 150
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 600
+        && data.order is number && data.order >= 1 && data.order <= 100
+        && data.isPublished is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidLesson(data) {
+      return data.keys().hasAll([
+          'lessonId', 'levelId', 'topic', 'topicOrder', 'title', 'description',
+          'order', 'estimatedMinutes', 'isPublished', 'vocabulary', 'sentencePatterns',
+          'grammar', 'quiz', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'lessonId', 'levelId', 'topic', 'topicOrder', 'title', 'description',
+          'order', 'estimatedMinutes', 'isPublished', 'vocabulary', 'sentencePatterns',
+          'grammar', 'quiz', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.lessonId) && data.lessonId.size() <= 80
+        && isValidId(data.levelId) && data.levelId.size() <= 32
+        && data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 120
+        && data.topicOrder is number && data.topicOrder >= 1 && data.topicOrder <= 100
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 600
+        && data.order is number && data.order >= 1 && data.order <= 500
+        && data.estimatedMinutes is number && data.estimatedMinutes >= 5 && data.estimatedMinutes <= 180
+        && data.isPublished is bool
+        && data.vocabulary is list && data.vocabulary.size() <= 40
+        && (data.vocabulary.size() == 0 || data.vocabulary[0] is map)
+        && data.sentencePatterns is list && data.sentencePatterns.size() <= 20
+        && (data.sentencePatterns.size() == 0 || data.sentencePatterns[0] is map)
+        && data.grammar is map
+        && data.quiz is list && data.quiz.size() <= 40
+        && (data.quiz.size() == 0 || data.quiz[0] is map)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserProgress(data) {
+      return data.keys().hasAll([
+          'uid', 'lessonId', 'levelId', 'vocabularyLearned', 'lessonCompleted',
+          'quizBestScore', 'quizAttempts', 'createdAt', 'lastStudyAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'lessonId', 'levelId', 'vocabularyLearned', 'lessonCompleted',
+          'quizBestScore', 'quizAttempts', 'createdAt', 'lastStudyAt'
+        ])
+        && isValidId(data.uid)
+        && isValidId(data.lessonId) && data.lessonId.size() <= 80
+        && isValidId(data.levelId) && data.levelId.size() <= 32
+        && data.vocabularyLearned is list && data.vocabularyLearned.size() <= 40
+        && (data.vocabularyLearned.size() == 0 || data.vocabularyLearned[0] is string)
+        && data.lessonCompleted is bool
+        && data.quizBestScore is number && data.quizBestScore >= 0 && data.quizBestScore <= 100
+        && data.quizAttempts is number && data.quizAttempts >= 0 && data.quizAttempts <= 1000
+        && data.createdAt is timestamp
+        && data.lastStudyAt is timestamp;
+    }
+
+    function isValidQuizResult(data) {
+      return data.keys().hasAll([
+          'uid', 'lessonId', 'lessonTitle', 'levelId', 'score', 'totalQuestions',
+          'correctAnswers', 'wrongAnswers', 'rating', 'durationSeconds', 'completedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'lessonId', 'lessonTitle', 'levelId', 'score', 'totalQuestions',
+          'correctAnswers', 'wrongAnswers', 'rating', 'durationSeconds', 'completedAt'
+        ])
+        && isValidId(data.uid)
+        && isValidId(data.lessonId) && data.lessonId.size() <= 80
+        && data.lessonTitle is string && data.lessonTitle.size() >= 1 && data.lessonTitle.size() <= 160
+        && isValidId(data.levelId) && data.levelId.size() <= 32
+        && data.score is number && data.score >= 0 && data.score <= 100
+        && data.totalQuestions is number && data.totalQuestions >= 1 && data.totalQuestions <= 100
+        && data.correctAnswers is number && data.correctAnswers >= 0 && data.correctAnswers <= 100
+        && data.wrongAnswers is number && data.wrongAnswers >= 0 && data.wrongAnswers <= 100
+        && data.correctAnswers + data.wrongAnswers == data.totalQuestions
+        && data.rating is string && data.rating in ['Excellent', 'Very Good', 'Good', 'Need More Practice', 'Keep Learning']
+        && data.durationSeconds is number && data.durationSeconds >= 0 && data.durationSeconds <= 7200
+        && data.completedAt is timestamp;
+    }
+
+    function isValidUserVocabulary(data) {
+      return data.keys().hasAll([
+          'uid', 'vocabularyId', 'lessonId', 'levelId', 'word', 'ipa',
+          'partOfSpeech', 'meaningVi', 'exampleEn', 'exampleVi',
+          'isFavorite', 'isLearned', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'vocabularyId', 'lessonId', 'levelId', 'word', 'ipa',
+          'partOfSpeech', 'meaningVi', 'exampleEn', 'exampleVi',
+          'isFavorite', 'isLearned', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && isValidId(data.vocabularyId) && data.vocabularyId.size() <= 80
+        && isValidId(data.lessonId) && data.lessonId.size() <= 80
+        && isValidId(data.levelId) && data.levelId.size() <= 32
+        && data.word is string && data.word.size() >= 1 && data.word.size() <= 100
+        && data.ipa is string && data.ipa.size() <= 100
+        && data.partOfSpeech is string && data.partOfSpeech.size() >= 1 && data.partOfSpeech.size() <= 40
+        && data.meaningVi is string && data.meaningVi.size() >= 1 && data.meaningVi.size() <= 250
+        && data.exampleEn is string && data.exampleEn.size() <= 350
+        && data.exampleVi is string && data.exampleVi.size() <= 350
+        && data.isFavorite is bool
+        && data.isLearned is bool
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection: users (PII Isolated to Owner & Admin) ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && request.auth.uid == userId
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().lastLogin == request.time;
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && (
+          (
+            isOwner(userId)
+            && incoming().uid == existing().uid
+            && incoming().email == existing().email
+            && incoming().createdAt == existing().createdAt
+            && (
+              (
+                incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'currentLevel', 'dailyGoalMinutes', 'reminderEnabled', 'lastLogin'])
+                && incoming().lastLogin == request.time
+              )
+              || (
+                incoming().diff(existing()).affectedKeys().hasOnly(['streakDays', 'lastStudyDate', 'lastLogin'])
+                && incoming().lastLogin == request.time
+              )
+              || (
+                incoming().diff(existing()).affectedKeys().hasOnly(['lastLogin'])
+                && incoming().lastLogin == request.time
+              )
+            )
+          )
+          || isAdmin()
+        );
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // --- Collection: admins (Server-Enforced RBAC Registry) ---
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        && isValidId(adminId)
+        && isValidAdminRecord(incoming())
+        && incoming().uid == adminId
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(adminId) && isAdmin() && adminId != request.auth.uid;
+    }
+
+    // --- Collection: levels ---
+    match /levels/{levelId} {
+      allow get: if isValidId(levelId) && ((isSignedIn() && existing().isPublished == true) || isAdmin());
+      allow list: if (isSignedIn() && existing().isPublished == true) || isAdmin();
+      allow create: if isAdmin()
+        && isValidId(levelId)
+        && isValidLevel(incoming())
+        && incoming().levelId == levelId
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(levelId)
+        && isValidLevel(incoming())
+        && incoming().levelId == existing().levelId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'subtitle', 'description', 'order', 'isPublished', 'updatedAt']);
+      allow delete: if isValidId(levelId) && isAdmin();
+    }
+
+    // --- Collection: lessons ---
+    match /lessons/{lessonId} {
+      allow get: if isValidId(lessonId) && ((isSignedIn() && existing().isPublished == true) || isAdmin());
+      allow list: if (isSignedIn() && existing().isPublished == true) || isAdmin();
+      allow create: if isAdmin()
+        && isValidId(lessonId)
+        && isValidLesson(incoming())
+        && incoming().lessonId == lessonId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(lessonId)
+        && isValidLesson(incoming())
+        && incoming().lessonId == existing().lessonId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'levelId', 'topic', 'topicOrder', 'title', 'description', 'order',
+          'estimatedMinutes', 'isPublished', 'vocabulary', 'sentencePatterns',
+          'grammar', 'quiz', 'updatedAt'
+        ]);
+      allow delete: if isValidId(lessonId) && isAdmin();
+    }
+
+    // --- Collection: user_progress ---
+    match /user_progress/{progressId} {
+      allow get: if isValidId(progressId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow list: if (isSignedIn() && existing().uid == request.auth.uid) || isAdmin();
+      allow create: if isVerifiedUser()
+        && isValidId(progressId)
+        && isValidUserProgress(incoming())
+        && incoming().uid == request.auth.uid
+        && progressId == request.auth.uid + '_' + incoming().lessonId
+        && incoming().createdAt == request.time
+        && incoming().lastStudyAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerifiedUser()
+        && isValidId(progressId)
+        && isValidUserProgress(incoming())
+        && (
+          (
+            existing().uid == request.auth.uid
+            && incoming().uid == existing().uid
+            && incoming().lessonId == existing().lessonId
+            && incoming().levelId == existing().levelId
+            && incoming().createdAt == existing().createdAt
+            && incoming().lastStudyAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'vocabularyLearned', 'lessonCompleted', 'quizBestScore', 'quizAttempts', 'lastStudyAt'
+            ])
+          )
+          || isAdmin()
+        );
+      allow delete: if isValidId(progressId) && isAdmin();
+    }
+
+    // --- Collection: quiz_results (Immutable Score Records) ---
+    match /quiz_results/{resultId} {
+      allow get: if isValidId(resultId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow list: if (isSignedIn() && existing().uid == request.auth.uid) || isAdmin();
+      allow create: if isVerifiedUser()
+        && isValidId(resultId)
+        && isValidQuizResult(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().completedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if false;
+      allow delete: if isValidId(resultId) && isAdmin();
+    }
+
+    // --- Collection: user_vocabulary ---
+    match /user_vocabulary/{vocabDocId} {
+      allow get: if isValidId(vocabDocId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow list: if (isSignedIn() && existing().uid == request.auth.uid) || isAdmin();
+      allow create: if isVerifiedUser()
+        && isValidId(vocabDocId)
+        && isValidUserVocabulary(incoming())
+        && incoming().uid == request.auth.uid
+        && vocabDocId == request.auth.uid + '_' + incoming().vocabularyId
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerifiedUser()
+        && isValidId(vocabDocId)
+        && isValidUserVocabulary(incoming())
+        && (
+          (
+            existing().uid == request.auth.uid
+            && incoming().uid == existing().uid
+            && incoming().vocabularyId == existing().vocabularyId
+            && incoming().lessonId == existing().lessonId
+            && incoming().levelId == existing().levelId
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['isFavorite', 'isLearned', 'updatedAt'])
+          )
+          || isAdmin()
+        );
+      allow delete: if isValidId(vocabDocId) && ((isVerifiedUser() && existing().uid == request.auth.uid) || isAdmin());
+    }
+  }
+}
