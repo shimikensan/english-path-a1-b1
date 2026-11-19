@@ -23,3 +23,7 @@
 10. **ID Poisoning Attack**: User attempts to write to `/user_progress/../../../malicious$id` or a 200-character ID. -> **PERMISSION_DENIED**
 11. **Array Exhaustion (Denial of Wallet)**: Learner updates `/user_progress/uidA_a1-01` with 100 items in `vocabularyLearned` (limit 40). -> **PERMISSION_DENIED**
 12. **Unscoped List Query**: Non-admin user executes `list` on `/quiz_results` without filtering `where('uid', '==', request.auth.uid)`. -> **PERMISSION_DENIED**
+13. **Admin Vault Read/Write by Learner**: Non-admin learner attempts `get`, `list`, `create`, or `update` on `/admin_security/vault`. -> **PERMISSION_DENIED**
+14. **Admin Vault Plaintext or Weak Hash Injection**: Admin attempts to store a plaintext password (`hashHex: "myPassword!"` non-hex or `iterations: 10`) or shadow field `plainPassword` in `/admin_security/vault`. -> **PERMISSION_DENIED**
+15. **Non-Root Admin Vault Wipe**: Secondary admin (not bootstrapped root admin) attempts `delete` on `/admin_security/vault` to bypass the management password. -> **PERMISSION_DENIED**
+

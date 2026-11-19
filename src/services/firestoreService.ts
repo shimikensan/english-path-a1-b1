@@ -18,6 +18,7 @@ import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS, getDefaultLessonsByLevel } from '.
 import { BOOTSTRAPPED_ADMIN_EMAIL, db, handleFirestoreError, OperationType } from '../firebase';
 import type {
   AdminRecord,
+  AdminSecurityVaultDoc,
   LessonDoc,
   LevelDoc,
   QuizRating,
@@ -672,3 +673,69 @@ export async function adminRevokeAdmin(targetUid: string): Promise<void> {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
+
+// --- Admin Security Vault (Secondary Management Password) ---
+
+export async function adminGetSecurityVault(): Promise<AdminSecurityVaultDoc | null> {
+  const path = 'admin_security/vault';
+  try {
+    const snap = await getDoc(doc(db, 'admin_security', 'vault'));
+    if (!snap.exists()) return null;
+    return snap.data() as AdminSecurityVaultDoc;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
+export async function adminSaveSecurityVault(params: {
+  algorithm: 'PBKDF2-SHA256';
+  iterations: number;
+  saltHex: string;
+  hashHex: string;
+  adminUid: string;
+  adminEmail: string;
+}): Promise<AdminSecurityVaultDoc> {
+  const path = 'admin_security/vault';
+  const ref = doc(db, 'admin_security', 'vault');
+  try {
+    const existing = await getDoc(ref);
+    const cleanEmail = truncate(params.adminEmail, 200);
+    if (existing.exists()) {
+      await updateDoc(ref, {
+        algorithm: params.algorithm,
+        iterations: params.iterations,
+        saltHex: params.saltHex,
+        hashHex: params.hashHex,
+        updatedBy: params.adminUid,
+        updatedByEmail: cleanEmail,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(ref, {
+        configId: 'vault',
+        algorithm: params.algorithm,
+        iterations: params.iterations,
+        saltHex: params.saltHex,
+        hashHex: params.hashHex,
+        updatedBy: params.adminUid,
+        updatedByEmail: cleanEmail,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    const fresh = await getDoc(ref);
+    return fresh.data() as AdminSecurityVaultDoc;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function adminResetSecurityVault(): Promise<void> {
+  const path = 'admin_security/vault';
+  try {
+    await deleteDoc(doc(db, 'admin_security', 'vault'));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+

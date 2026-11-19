@@ -144,6 +144,18 @@ export interface AdminRecord {
   createdAt?: Timestamp | Date;
 }
 
+export interface AdminSecurityVaultDoc {
+  configId: 'vault';
+  algorithm: 'PBKDF2-SHA256';
+  iterations: number;
+  saltHex: string;
+  hashHex: string;
+  updatedBy: string;
+  updatedByEmail: string;
+  createdAt?: Timestamp | Date;
+  updatedAt?: Timestamp | Date;
+}
+
 export interface UserProgressDoc {
   id?: string;
   uid: string;

@@ -100,6 +100,71 @@
       },
       "required": ["uid", "email", "grantedBy", "createdAt"]
     },
+    "AdminSecurityVault": {
+      "title": "AdminSecurityVault",
+      "description": "Salted PBKDF2-SHA256 admin management password hash stored strictly for verified administrators.",
+      "type": "object",
+      "properties": {
+        "configId": {
+          "type": "string",
+          "enum": ["vault"],
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "algorithm": {
+          "type": "string",
+          "enum": ["PBKDF2-SHA256"]
+        },
+        "iterations": {
+          "type": "number",
+          "description": "PBKDF2 derivation iteration count (100000 to 500000)."
+        },
+        "saltHex": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128,
+          "pattern": "^[0-9a-f]+$"
+        },
+        "hashHex": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 128,
+          "pattern": "^[0-9a-f]+$"
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedByEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "configId",
+        "algorithm",
+        "iterations",
+        "saltHex",
+        "hashHex",
+        "updatedBy",
+        "updatedByEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "Level": {
       "title": "Level",
       "description": "CEFR learning level definition (A1, A2, B1, or admin-added level).",
@@ -440,6 +505,10 @@
     "/admins/{adminId}": {
       "schema": { "$ref": "#/entities/AdminRecord" },
       "description": "Server-verified administrator registry."
+    },
+    "/admin_security/{configId}": {
+      "schema": { "$ref": "#/entities/AdminSecurityVault" },
+      "description": "Admin-only salted PBKDF2-SHA256 hash for secondary admin management password gate."
     },
     "/levels/{levelId}": {
       "schema": { "$ref": "#/entities/Level" },

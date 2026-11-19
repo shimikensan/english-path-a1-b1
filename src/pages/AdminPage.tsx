@@ -6,7 +6,9 @@ import {
   ClipboardCheck,
   Database,
   Edit3,
+  KeyRound,
   Layers,
+  Lock,
   Plus,
   RefreshCw,
   Save,
@@ -17,11 +19,14 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { AdminPasswordGate } from '../components/admin/AdminPasswordGate';
+import { AdminSecurityTab } from '../components/admin/AdminSecurityTab';
 import { useApp } from '../context/AppContext';
 import { BOOTSTRAPPED_ADMIN_EMAIL } from '../firebase';
 import {
   adminDeleteLesson,
   adminDeleteLevel,
+  adminGetSecurityVault,
   adminGrantAdmin,
   adminListAdmins,
   adminListAllQuizResults,
@@ -33,6 +38,7 @@ import {
 } from '../services/firestoreService';
 import type {
   AdminRecord,
+  AdminSecurityVaultDoc,
   LessonDoc,
   LevelDoc,
   PartOfSpeech,
@@ -45,8 +51,42 @@ import type {
 } from '../types';
 import { formatTimestampVi, getQuizRatingVi, sanitizeId } from '../utils/helpers';
 
-type AdminTab = 'overview' | 'levels' | 'lessons' | 'users';
+type AdminTab = 'overview' | 'levels' | 'lessons' | 'users' | 'security';
 type EditorSection = 'meta' | 'vocabulary' | 'patterns' | 'grammar' | 'quiz';
+
+const ADMIN_SESSION_STORAGE_KEY = 'pilot-admin-vault-session';
+const ADMIN_SESSION_TTL_MS = 30 * 60 * 1000;
+
+function readActiveVaultSession(uid?: string): boolean {
+  if (!uid) return false;
+  try {
+    const raw = window.sessionStorage.getItem(ADMIN_SESSION_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { uid?: string; expiresAt?: number };
+    return parsed.uid === uid && typeof parsed.expiresAt === 'number' && Date.now() < parsed.expiresAt;
+  } catch {
+    return false;
+  }
+}
+
+function writeVaultSession(uid: string): void {
+  try {
+    window.sessionStorage.setItem(
+      ADMIN_SESSION_STORAGE_KEY,
+      JSON.stringify({ uid, expiresAt: Date.now() + ADMIN_SESSION_TTL_MS })
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function clearVaultSession(): void {
+  try {
+    window.sessionStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 interface ConfirmDialogState {
   title: string;
@@ -170,6 +210,10 @@ interface AdminPageProps {
 export function AdminPage({ onBackToDashboard }: AdminPageProps) {
   const { firebaseUser, isAdmin, levels, lessons, firestoreSeeded, addToast } = useApp();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [vaultDoc, setVaultDoc] = useState<AdminSecurityVaultDoc | null>(null);
+  const [vaultUnlocked, setVaultUnlocked] = useState<boolean>(() =>
+    readActiveVaultSession(firebaseUser?.uid)
+  );
 
   // Admin stats & records
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
@@ -207,8 +251,62 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
+  const handleLockAdmin = useCallback(() => {
+    clearVaultSession();
+    setVaultUnlocked(false);
+    setEditingLesson(null);
+    addToast('info', 'Đã khóa phiên Quản trị.');
+  }, [addToast]);
+
+  const handleVaultUnlocked = useCallback(
+    (unlockedVault: AdminSecurityVaultDoc) => {
+      setVaultDoc(unlockedVault);
+      if (firebaseUser?.uid) {
+        writeVaultSession(firebaseUser.uid);
+      }
+      setVaultUnlocked(true);
+    },
+    [firebaseUser?.uid]
+  );
+
+  // Sync unlocked session with active UID & auto-lock when TTL expires
+  useEffect(() => {
+    if (!firebaseUser?.uid || !isAdmin) {
+      setVaultUnlocked(false);
+      return;
+    }
+    if (!readActiveVaultSession(firebaseUser.uid)) {
+      setVaultUnlocked(false);
+      return;
+    }
+    // Load vault metadata when resuming an active unlocked session
+    if (!vaultDoc) {
+      void adminGetSecurityVault()
+        .then((docData) => {
+          if (docData) {
+            setVaultDoc(docData);
+          } else {
+            clearVaultSession();
+            setVaultUnlocked(false);
+          }
+        })
+        .catch(() => {
+          clearVaultSession();
+          setVaultUnlocked(false);
+        });
+    }
+    const interval = window.setInterval(() => {
+      if (!readActiveVaultSession(firebaseUser.uid)) {
+        clearVaultSession();
+        setVaultUnlocked(false);
+        addToast('info', 'Phiên Quản trị đã tự động khóa sau 30 phút để bảo mật.');
+      }
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [firebaseUser?.uid, isAdmin, vaultDoc, addToast]);
+
   const loadAdminOverview = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!isAdmin || !vaultUnlocked) return;
     setLoadingAdminData(true);
     try {
       const [users, admins, results] = await Promise.all([
@@ -235,7 +333,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     } finally {
       setLoadingAdminData(false);
     }
-  }, [isAdmin, addToast]);
+  }, [isAdmin, vaultUnlocked, addToast]);
 
   useEffect(() => {
     void loadAdminOverview();
@@ -284,6 +382,15 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
           </button>
         )}
       </div>
+    );
+  }
+
+  if (!vaultUnlocked) {
+    return (
+      <AdminPasswordGate
+        onUnlocked={handleVaultUnlocked}
+        onBackToDashboard={onBackToDashboard}
+      />
     );
   }
 
@@ -596,15 +703,26 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
   return (
     <div className="space-y-6">
       {/* Header & Admin Sub-Navigation */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-            <ShieldCheck className="w-4 h-4" />
-            <span>Bảng điều khiển Quản trị viên</span>
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+              <ShieldCheck className="w-4 h-4" />
+              <span>Bảng điều khiển Quản trị viên · Đã xác thực mật khẩu</span>
+            </div>
+            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
+              Quản lý giáo trình CEFR A1–B1 & Học viên
+            </h2>
           </div>
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
-            Quản lý giáo trình CEFR A1–B1 & Học viên
-          </h2>
+
+          <button
+            type="button"
+            onClick={handleLockAdmin}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-950/70 transition-colors self-start whitespace-nowrap"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            Khóa quản trị
+          </button>
         </div>
 
         <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl self-start">
@@ -613,6 +731,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
             { id: 'levels' as const, label: `Cấp độ (${levels.length})`, icon: Layers },
             { id: 'lessons' as const, label: `Bài học (${lessons.length})`, icon: BookOpen },
             { id: 'users' as const, label: `Người dùng (${usersList.length})`, icon: Users },
+            { id: 'security' as const, label: 'Mật khẩu & Bảo mật', icon: KeyRound },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -1184,6 +1303,15 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
             </table>
           </div>
         </div>
+      )}
+
+      {/* TAB 5: ADMIN PASSWORD & SECURITY */}
+      {activeTab === 'security' && (
+        <AdminSecurityTab
+          vault={vaultDoc}
+          onVaultUpdated={(nextVault) => setVaultDoc(nextVault)}
+          onLockNow={handleLockAdmin}
+        />
       )}
 
       {/* FULL LESSON EDITOR MODAL */}

@@ -73,6 +73,26 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidAdminSecurityVault(data) {
+      return data.keys().hasAll([
+          'configId', 'algorithm', 'iterations', 'saltHex', 'hashHex',
+          'updatedBy', 'updatedByEmail', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'configId', 'algorithm', 'iterations', 'saltHex', 'hashHex',
+          'updatedBy', 'updatedByEmail', 'createdAt', 'updatedAt'
+        ])
+        && data.configId == 'vault'
+        && data.algorithm == 'PBKDF2-SHA256'
+        && data.iterations is number && data.iterations >= 100000 && data.iterations <= 500000
+        && data.saltHex is string && data.saltHex.size() >= 16 && data.saltHex.size() <= 128 && data.saltHex.matches('^[0-9a-f]+$')
+        && data.hashHex is string && data.hashHex.size() >= 32 && data.hashHex.size() <= 128 && data.hashHex.matches('^[0-9a-f]+$')
+        && isValidId(data.updatedBy) && data.updatedBy == request.auth.uid
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 200
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     function isValidLevel(data) {
       return data.keys().hasAll(['levelId', 'name', 'subtitle', 'description', 'order', 'isPublished', 'updatedAt'])
         && data.keys().hasOnly(['levelId', 'name', 'subtitle', 'description', 'order', 'isPublished', 'updatedAt'])
@@ -237,6 +257,31 @@ service cloud.firestore {
         && incoming().createdAt == request.time;
       allow update: if false;
       allow delete: if isValidId(adminId) && isAdmin() && adminId != request.auth.uid;
+    }
+
+    // --- Collection: admin_security (Admin Vault Password Hash) ---
+    match /admin_security/{configId} {
+      allow get: if isValidId(configId) && configId == 'vault' && isAdmin();
+      allow list: if false;
+      allow create: if isVerifiedUser()
+        && isValidId(configId)
+        && configId == 'vault'
+        && isValidAdminSecurityVault(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isVerifiedUser()
+        && isValidId(configId)
+        && configId == 'vault'
+        && isValidAdminSecurityVault(incoming())
+        && incoming().configId == existing().configId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'algorithm', 'iterations', 'saltHex', 'hashHex', 'updatedBy', 'updatedByEmail', 'updatedAt'
+        ])
+        && isAdmin();
+      allow delete: if isValidId(configId) && configId == 'vault' && isBootstrappedAdmin();
     }
 
     // --- Collection: levels ---

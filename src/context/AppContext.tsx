@@ -378,6 +378,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOutUser = useCallback(async () => {
+    try {
+      window.sessionStorage.removeItem('pilot-admin-vault-session');
+    } catch {
+      // Ignore storage errors
+    }
     await signOut(auth);
     addToast('info', 'Đã đăng xuất khỏi tài khoản.');
   }, [addToast]);
