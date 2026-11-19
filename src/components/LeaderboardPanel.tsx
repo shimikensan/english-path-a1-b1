@@ -35,11 +35,11 @@ function getRankVisual(rank: number) {
   if (rank === 1) {
     return {
       icon: Trophy,
-      iconColor: 'text-amber-500 dark:text-amber-400',
-      numberColor: 'text-amber-600 dark:text-amber-400',
-      avatarBg: 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700',
-      barClass: 'bg-gradient-to-r from-amber-500 to-amber-400',
-      cardAccent: 'border-amber-300/90 dark:border-amber-700/70 bg-amber-50/40 dark:bg-amber-950/20',
+      iconColor: 'text-[#FF6B00] dark:text-[#FF8524]',
+      numberColor: 'text-[#D94E00] dark:text-[#FF8524]',
+      avatarBg: 'bg-[#FF6B00]/15 dark:bg-[#FF6B00]/20 text-[#D94E00] dark:text-[#FF8524] border-[#FF6B00]/50',
+      barClass: 'bg-gradient-to-r from-[#FF6B00] to-[#FF9A3C]',
+      cardAccent: 'border-[#FF6B00]/50 dark:border-[#FF6B00]/45 bg-[#FF6B00]/[0.05] dark:bg-[#FF6B00]/[0.07]',
       label: 'Hạng 1 · Cơ trưởng dẫn đầu',
     };
   }
@@ -49,7 +49,7 @@ function getRankVisual(rank: number) {
       iconColor: 'text-slate-500 dark:text-slate-300',
       numberColor: 'text-slate-700 dark:text-slate-200',
       avatarBg: 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-600',
-      barClass: 'bg-gradient-to-r from-blue-600 to-sky-500',
+      barClass: 'bg-gradient-to-r from-[#1E62B8] to-[#5AA3F8]',
       cardAccent: 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900',
       label: 'Hạng 2 · Á quân đường bay',
     };
@@ -57,11 +57,11 @@ function getRankVisual(rank: number) {
   if (rank === 3) {
     return {
       icon: Medal,
-      iconColor: 'text-orange-600 dark:text-orange-400',
-      numberColor: 'text-orange-700 dark:text-orange-400',
-      avatarBg: 'bg-orange-100 dark:bg-orange-950/70 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-700',
-      barClass: 'bg-gradient-to-r from-sky-600 to-blue-500',
-      cardAccent: 'border-orange-200 dark:border-orange-900/60 bg-white dark:bg-slate-900',
+      iconColor: 'text-amber-600 dark:text-amber-300',
+      numberColor: 'text-amber-700 dark:text-amber-300',
+      avatarBg: 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700',
+      barClass: 'bg-gradient-to-r from-[#FF6B00]/85 to-[#5AA3F8]',
+      cardAccent: 'border-slate-300 dark:border-slate-700/90 bg-white dark:bg-slate-900',
       label: 'Hạng 3 · Phi công xuất sắc',
     };
   }
@@ -69,8 +69,8 @@ function getRankVisual(rank: number) {
     icon: null,
     iconColor: 'text-slate-400',
     numberColor: 'text-slate-600 dark:text-slate-400',
-    avatarBg: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
-    barClass: 'bg-blue-600 dark:bg-blue-500',
+    avatarBg: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700',
+    barClass: 'bg-[#FF6B00] dark:bg-[#FF7E1F]',
     cardAccent: 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900',
     label: `Hạng ${rank}`,
   };
@@ -136,7 +136,7 @@ export function LeaderboardPanel({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-amber-500" />
+              <Trophy className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 Bảng xếp hạng học viên · Top {maxRows ?? 5}
               </h3>
@@ -145,7 +145,7 @@ export function LeaderboardPanel({
               {currentUserRanked ? (
                 <>
                   Thứ hạng hiện tại của bạn:{' '}
-                  <span className="font-semibold text-blue-700 dark:text-blue-400 tabular-nums">
+                  <span className="font-semibold text-[#D94E00] dark:text-[#FF8524] tabular-nums">
                     #{currentUserRanked.globalRank}/{rankedAll.length}
                   </span>{' '}
                   ·{' '}
@@ -162,7 +162,7 @@ export function LeaderboardPanel({
             <button
               type="button"
               onClick={onViewAll}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap self-start sm:self-center"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#D94E00] dark:text-[#FF8524] hover:underline whitespace-nowrap self-start sm:self-center"
             >
               Xem toàn bộ bảng xếp hạng
               <ArrowRight className="w-3.5 h-3.5" />
@@ -201,7 +201,7 @@ export function LeaderboardPanel({
                 <div
                   key={entry.uid}
                   className={`py-3 px-3 -mx-3 rounded-xl flex items-center gap-3 sm:gap-4 transition-colors ${
-                    isMe ? 'bg-blue-50/70 dark:bg-blue-950/40' : ''
+                    isMe ? 'bg-[#FF6B00]/10 dark:bg-[#FF6B00]/12' : ''
                   }`}
                 >
                   <div className="w-8 flex items-center justify-center shrink-0 tabular-nums">
@@ -226,7 +226,7 @@ export function LeaderboardPanel({
                         {entry.displayName}
                       </span>
                       {isMe && (
-                        <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 shrink-0">
+                        <span className="text-xs font-semibold text-[#D94E00] dark:text-[#FF8524] shrink-0">
                           (Bạn)
                         </span>
                       )}
@@ -264,61 +264,61 @@ export function LeaderboardPanel({
   return (
     <div className="space-y-6">
       {/* Aviation Header & Live Summary */}
-      <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-sky-900 border border-slate-800 rounded-2xl p-6 sm:p-8 text-white">
+      <section className="bg-gradient-to-br from-[#07111F] via-[#0D1F38] to-[#132B4D] cockpit-grid border border-slate-700/80 rounded-2xl p-6 sm:p-8 text-white">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#FF8524]">
               <Plane className="w-3.5 h-3.5 shrink-0" />
               <span>Bảng xếp hạng trực tuyến · Đồng bộ Cloud Firestore</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
               Bảng xếp hạng Phi công học tập
             </h2>
-            <p className="text-sm text-sky-100/90 leading-relaxed">
+            <p className="text-sm text-slate-300 leading-relaxed">
               Tỷ lệ hoàn thiện tổng hợp của từng học viên trên lộ trình CEFR A1–B1 (tính theo 60% bài học đã hoàn thành + 40% từ vựng đã thuộc). Ai cũng có thể theo dõi trước và sau khi đăng nhập.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6 pt-4 lg:pt-0 border-t lg:border-t-0 border-white/15 shrink-0 tabular-nums">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6 pt-4 lg:pt-0 border-t lg:border-t-0 border-slate-700/70 shrink-0 tabular-nums">
             <div>
-              <div className="flex items-center gap-1.5 text-xs text-sky-200/80 mb-1">
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-1">
                 <Users className="w-3.5 h-3.5" />
                 <span>Học viên tham gia</span>
               </div>
               <div className="text-2xl font-extrabold text-white">{rankedAll.length}</div>
             </div>
             <div>
-              <div className="flex items-center gap-1.5 text-xs text-sky-200/80 mb-1">
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>Hoàn thiện TB</span>
               </div>
-              <div className="text-2xl font-extrabold text-amber-300">{avgCompletion}%</div>
+              <div className="text-2xl font-extrabold text-[#FF8524]">{avgCompletion}%</div>
             </div>
             <div className="col-span-2 sm:col-span-1">
-              <div className="flex items-center gap-1.5 text-xs text-sky-200/80 mb-1">
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-1">
                 <Trophy className="w-3.5 h-3.5" />
                 <span>{profile ? 'Thứ hạng của bạn' : 'Tham gia ngay'}</span>
               </div>
               {profile && currentUserRanked ? (
                 <div className="text-2xl font-extrabold text-white">
                   #{currentUserRanked.globalRank}
-                  <span className="text-sm font-semibold text-amber-300 ml-1.5">
+                  <span className="text-sm font-semibold text-[#FF8524] ml-1.5">
                     ({currentUserRanked.completionPercent}%)
                   </span>
                 </div>
               ) : profile ? (
-                <div className="text-sm font-semibold text-sky-100 mt-1.5">Đang đồng bộ...</div>
+                <div className="text-sm font-semibold text-slate-300 mt-1.5">Đang đồng bộ...</div>
               ) : onRequireLogin ? (
                 <button
                   type="button"
                   onClick={onRequireLogin}
-                  className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors"
+                  className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF6B00] text-white text-xs font-bold hover:bg-[#FF7E1F] transition-colors shadow-[0_0_16px_rgba(255,107,0,0.28)]"
                 >
                   Đăng nhập ghi danh
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               ) : (
-                <div className="text-sm font-semibold text-sky-100 mt-1.5">Khách tham quan</div>
+                <div className="text-sm font-semibold text-slate-300 mt-1.5">Khách tham quan</div>
               )}
             </div>
           </div>
@@ -405,7 +405,7 @@ export function LeaderboardPanel({
       <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
         <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           {/* Segmented Level Filter */}
-          <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl self-start">
+          <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/70 dark:border-slate-700/70 rounded-xl self-start">
             {(['ALL', 'A1', 'A2', 'B1'] as const).map((lvl) => {
               const active = levelFilter === lvl;
               return (
@@ -415,7 +415,7 @@ export function LeaderboardPanel({
                   onClick={() => setLevelFilter(lvl)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap tabular-nums ${
                     active
-                      ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                      ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
@@ -433,7 +433,7 @@ export function LeaderboardPanel({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm tên học viên..."
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]"
             />
           </div>
         </div>
@@ -494,7 +494,7 @@ export function LeaderboardPanel({
                       key={entry.uid}
                       className={`transition-colors ${
                         isMe
-                          ? 'bg-blue-50/80 dark:bg-blue-950/40'
+                          ? 'bg-[#FF6B00]/10 dark:bg-[#FF6B00]/12'
                           : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                       }`}
                     >
@@ -520,7 +520,7 @@ export function LeaderboardPanel({
                             <div className="font-semibold text-slate-900 dark:text-white truncate">
                               {entry.displayName}
                               {isMe && (
-                                <span className="ml-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400">
+                                <span className="ml-1.5 text-xs font-semibold text-[#D94E00] dark:text-[#FF8524]">
                                   (Bạn)
                                 </span>
                               )}

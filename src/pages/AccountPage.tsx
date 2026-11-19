@@ -121,7 +121,7 @@ export function AccountPage() {
                 maxLength={100}
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]"
               />
             </div>
 
@@ -139,7 +139,7 @@ export function AccountPage() {
                 max={240}
                 value={dailyGoalMinutes}
                 onChange={(e) => setDailyGoalMinutes(Number(e.target.value) || 20)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00] tabular-nums"
               />
             </div>
           </div>
@@ -156,7 +156,7 @@ export function AccountPage() {
                   onClick={() => setCurrentLevel(lvl)}
                   className={`py-2.5 px-3 rounded-xl border text-xs sm:text-sm font-semibold transition-colors ${
                     currentLevel === lvl
-                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
+                      ? 'border-[#FF6B00] bg-[#FF6B00]/12 dark:bg-[#FF6B00]/15 text-[#D94E00] dark:text-[#FF8524]'
                       : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                   }`}
                 >
@@ -182,7 +182,7 @@ export function AccountPage() {
               type="checkbox"
               checked={reminderEnabled}
               onChange={(e) => setReminderEnabled(e.target.checked)}
-              className="w-4 h-4 accent-blue-600"
+              className="w-4 h-4 accent-[#FF6B00]"
             />
           </label>
 
@@ -190,7 +190,7 @@ export function AccountPage() {
             <button
               type="submit"
               disabled={savingProfile}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF6B00] text-white text-sm font-bold hover:bg-[#FF7E1F] transition-colors disabled:opacity-60"
             >
               <Save className="w-4 h-4" />
               {savingProfile ? 'Đang lưu...' : 'Lưu thay đổi'}
@@ -202,7 +202,7 @@ export function AccountPage() {
       {/* Password Management */}
       <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 space-y-4">
         <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <KeyRound className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <KeyRound className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
           Đổi mật khẩu tài khoản
         </h3>
 
@@ -260,10 +260,10 @@ export function AccountPage() {
       <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-            Giao diện hiển thị & Phiên đăng nhập
+            Giao diện Buồng lái & Phiên đăng nhập
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Đang sử dụng chế độ {theme === 'dark' ? 'Tối (Dark Mode)' : 'Sáng (Light Mode)'}.
+            Đang sử dụng chế độ {theme === 'dark' ? 'Buồng lái Đêm (Navy · Steel · Neon Orange)' : 'Ban ngày (Cockpit Daylight)'}.
           </p>
         </div>
 
@@ -273,7 +273,7 @@ export function AccountPage() {
             onClick={toggleTheme}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-600" />}
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-[#FF8524]" /> : <Moon className="w-4 h-4 text-slate-700" />}
             Đổi giao diện
           </button>
           <button

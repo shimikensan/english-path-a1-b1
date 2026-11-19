@@ -24,13 +24,13 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
     <div className="space-y-8">
       {/* Header & Filter Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-slate-800 rounded-xl self-start">
+        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl self-start">
           <button
             type="button"
             onClick={() => setSelectedLevel('ALL')}
             className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap ${
               selectedLevel === 'ALL'
-                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -45,7 +45,7 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
                 onClick={() => setSelectedLevel(lvl.levelId)}
                 className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap ${
                   selectedLevel === lvl.levelId
-                    ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                    ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
@@ -62,7 +62,7 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Tìm chủ đề hoặc tên bài học..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]"
           />
         </div>
       </div>
@@ -91,7 +91,7 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
           return (
             <section key={lvl.levelId} className="space-y-5">
               {/* Level Banner Header */}
-              <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-blue-950 min-h-[170px] flex items-end">
+              <div className="relative cockpit-radar-panel overflow-hidden bg-blue-950 min-h-[170px] flex items-end">
                 {bannerSrc && !failedBanners[lvl.levelId] ? (
                   <img
                     src={bannerSrc}
@@ -140,11 +140,11 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
                     return (
                       <div
                         key={lesson.lessonId}
-                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between gap-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+                        className="bg-white dark:bg-slate-900 cockpit-radar-panel cockpit-radar-panel-interactive p-5 flex flex-col justify-between gap-4"
                       >
                         <div className="space-y-2.5">
                           <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-                            <span className="font-semibold text-blue-700 dark:text-blue-400">
+                            <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
                               {String(idx + 1).padStart(2, '0')}. {lesson.topic}
                             </span>
                             {isCompleted ? (
@@ -186,7 +186,7 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
                           <button
                             type="button"
                             onClick={() => onOpenLesson(lesson.lessonId)}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap shrink-0"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#FF6B00] text-white text-xs font-bold hover:bg-[#FF7E1F] transition-colors whitespace-nowrap shrink-0"
                           >
                             {isCompleted ? 'Ôn lại' : learnedCount > 0 ? 'Học tiếp' : 'Bắt đầu'}
                             <ArrowRight className="w-3.5 h-3.5" />

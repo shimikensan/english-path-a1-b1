@@ -15,9 +15,9 @@ export function GrammarSection({ lesson, onNextSection }: GrammarSectionProps) {
   return (
     <div className="space-y-8">
       {/* Main Grammar Overview & Formula */}
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 space-y-6">
+      <section className="bg-white dark:bg-slate-900 cockpit-radar-panel p-6 sm:p-8 space-y-6">
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-blue-700 dark:text-blue-400">
+          <div className="text-xs font-semibold text-[#D94E00] dark:text-[#FF8524]">
             Kiến thức ngữ pháp trọng tâm · {lesson.levelId}
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
@@ -29,8 +29,8 @@ export function GrammarSection({ lesson, onNextSection }: GrammarSectionProps) {
         </div>
 
         {/* Formula box */}
-        <div className="p-4 sm:p-5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900">
-          <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1.5">
+        <div className="p-4 sm:p-5 rounded-xl bg-amber-50/70 dark:bg-slate-800/80 border border-[#FF6B00]/35">
+          <div className="text-xs font-semibold text-[#D94E00] dark:text-[#FF8524] mb-1.5">
             Công thức ghi nhớ
           </div>
           <div className="text-sm sm:text-base font-mono font-semibold text-slate-900 dark:text-white break-words">
@@ -106,7 +106,7 @@ export function GrammarSection({ lesson, onNextSection }: GrammarSectionProps) {
       </section>
 
       {/* Interactive Mini Practice */}
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 space-y-5">
+      <section className="bg-white dark:bg-slate-900 cockpit-radar-panel p-6 sm:p-8 space-y-5">
         <div>
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">
             Thực hành nhanh ngữ pháp
@@ -190,7 +190,7 @@ export function GrammarSection({ lesson, onNextSection }: GrammarSectionProps) {
         <button
           type="button"
           onClick={onNextSection}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-bold transition-colors shadow-[0_0_16px_rgba(255,107,0,0.22)]"
         >
           Chuyển sang Phần 4: Làm bài Kiểm tra 15 câu
           <ChevronRight className="w-4 h-4" />

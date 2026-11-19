@@ -48,14 +48,14 @@ export function LessonDetailPage({
 
   if (!lesson) {
     return (
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center space-y-4">
+      <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-8 text-center space-y-4">
         <p className="text-base font-bold text-slate-900 dark:text-white">
           Không tìm thấy bài học yêu cầu
         </p>
         <button
           type="button"
           onClick={onBack}
-          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold"
+          className="px-4 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-semibold transition-colors"
         >
           Quay lại Lộ trình học
         </button>
@@ -66,19 +66,19 @@ export function LessonDetailPage({
   return (
     <div className="space-y-6">
       {/* Lesson Header */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+      <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 sm:p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-[#D94E00] dark:hover:text-[#FF8524] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Quay lại lộ trình
           </button>
 
           <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-            <span className="font-semibold text-blue-700 dark:text-blue-400">
+            <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
               Level {lesson.levelId}
             </span>
             <span aria-hidden="true">·</span>
@@ -116,8 +116,8 @@ export function LessonDetailPage({
                 onClick={() => setActiveTab(t.id)}
                 className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap ${
                   isActive
-                    ? 'border-blue-600 bg-blue-600 text-white'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-blue-700'
+                    ? 'border-[#FF6B00] bg-[#FF6B00] text-white shadow-[0_0_16px_rgba(255,107,0,0.24)]'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 hover:border-[#FF6B00]/50'
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />

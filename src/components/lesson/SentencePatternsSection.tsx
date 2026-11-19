@@ -14,25 +14,25 @@ export function SentencePatternsSection({ lesson, onNextSection }: SentencePatte
         {lesson.sentencePatterns.map((pattern, idx) => (
           <article
             key={pattern.id}
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5"
+            className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 sm:p-6 space-y-5"
           >
             {/* Header & Structure */}
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
               <div className="space-y-1">
-                <div className="text-xs font-semibold text-blue-700 dark:text-blue-400">
+                <div className="text-xs font-semibold text-[#D94E00] dark:text-[#FF8524]">
                   Mẫu câu {String(idx + 1).padStart(2, '0')}
                 </div>
                 <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
                   {pattern.structure}
                 </h3>
-                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
                   {pattern.meaningVi}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => speakEnglish(pattern.exampleEn)}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors self-start whitespace-nowrap"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-[#FF6B00]/30 text-[#D94E00] dark:text-[#FF8524] text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors self-start whitespace-nowrap"
               >
                 <Volume2 className="w-4 h-4" />
                 Nghe câu mẫu
@@ -112,7 +112,7 @@ export function SentencePatternsSection({ lesson, onNextSection }: SentencePatte
         <button
           type="button"
           onClick={onNextSection}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-bold transition-colors shadow-[0_0_16px_rgba(255,107,0,0.22)]"
         >
           Chuyển sang Phần 3: Ngữ pháp
           <ChevronRight className="w-4 h-4" />

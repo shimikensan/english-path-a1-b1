@@ -77,7 +77,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
     <div className="space-y-6">
       {/* Mode Controls & Accent Switch */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-slate-800 rounded-xl self-start">
+        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl self-start">
           <button
             type="button"
             onClick={() => {
@@ -87,7 +87,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
             }}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
               viewMode === 'flashcard'
-                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -99,7 +99,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
             onClick={() => setViewMode('list')}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
               viewMode === 'list'
-                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -115,7 +115,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
             }}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
               viewMode === 'review_learned'
-                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -132,7 +132,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
               onClick={() => setAccent('en-US')}
               className={`px-2.5 py-1 rounded-md font-semibold transition-colors ${
                 accent === 'en-US'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400'
+                  ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524]'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -143,7 +143,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
               onClick={() => setAccent('en-GB')}
               className={`px-2.5 py-1 rounded-md font-semibold transition-colors ${
                 accent === 'en-GB'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400'
+                  ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524]'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -156,7 +156,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
       {/* Flashcard / Review Learned Mode */}
       {viewMode !== 'list' ? (
         activeDeck.length === 0 ? (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 text-center space-y-3">
+          <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-10 text-center space-y-3">
             <p className="text-base font-bold text-slate-900 dark:text-white">
               Bạn chưa đánh dấu từ nào đã học trong bài này
             </p>
@@ -166,7 +166,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
             <button
               type="button"
               onClick={() => setViewMode('flashcard')}
-              className="mt-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+              className="mt-2 px-4 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-xs font-semibold transition-colors"
             >
               Quay lại học Flashcard
             </button>
@@ -201,9 +201,9 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
                 }`}
               >
                 {/* Front Face (English) */}
-                <div className="flashcard-face absolute inset-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 flex flex-col justify-between shadow-xs">
+                <div className="flashcard-face absolute inset-0 bg-white dark:bg-slate-900 cockpit-radar-panel p-6 sm:p-8 flex flex-col justify-between">
                   <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span>
+                    <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
                       {lesson.levelId} · {currentWord.partOfSpeech}
                     </span>
                     <span>Nhấn vào thẻ để xem nghĩa tiếng Việt</span>
@@ -213,7 +213,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
                     <div className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                       {currentWord.word}
                     </div>
-                    <div className="text-base font-mono text-blue-600 dark:text-blue-400">
+                    <div className="text-base font-mono text-[#D94E00] dark:text-[#FF8524]">
                       {currentWord.ipa}
                     </div>
                     <div className="pt-2">
@@ -223,7 +223,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
                           e.stopPropagation();
                           speakEnglish(currentWord.word, { accent });
                         }}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-[#FF6B00]/30 text-[#D94E00] dark:text-[#FF8524] text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
                       >
                         <Volume2 className="w-4 h-4" />
                         Nghe phát âm
@@ -238,8 +238,8 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
                 </div>
 
                 {/* Back Face (Vietnamese + Example) */}
-                <div className="flashcard-face flashcard-back absolute inset-0 bg-blue-50/70 dark:bg-slate-900 border border-blue-200 dark:border-blue-900 rounded-2xl p-6 sm:p-8 flex flex-col justify-between shadow-xs">
-                  <div className="flex items-center justify-between text-xs text-blue-700 dark:text-blue-400">
+                <div className="flashcard-face flashcard-back absolute inset-0 bg-amber-50/50 dark:bg-slate-900 cockpit-radar-panel p-6 sm:p-8 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs text-[#D94E00] dark:text-[#FF8524]">
                     <span className="font-semibold">
                       {currentWord.word} · {currentWord.partOfSpeech}
                     </span>
@@ -251,7 +251,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
                       {currentWord.meaningVi}
                     </div>
 
-                    <div className="pt-4 border-t border-blue-200/70 dark:border-slate-800 space-y-1.5 text-left max-w-lg mx-auto">
+                    <div className="pt-4 border-t border-amber-200/70 dark:border-slate-800 space-y-1.5 text-left max-w-lg mx-auto">
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-sm sm:text-base font-serif text-slate-900 dark:text-slate-100 leading-relaxed">
                           "{currentWord.exampleEn}"
@@ -262,7 +262,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
                             e.stopPropagation();
                             speakEnglish(currentWord.exampleEn, { accent });
                           }}
-                          className="p-2 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-slate-800 shrink-0"
+                          className="p-2 rounded-lg text-[#D94E00] dark:text-[#FF8524] hover:bg-amber-100 dark:hover:bg-slate-800 shrink-0"
                           aria-label="Nghe câu ví dụ"
                         >
                           <Volume2 className="w-4 h-4" />
@@ -325,7 +325,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
                   className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${
                     isCurrentLearned
                       ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-[#FF6B00] text-white hover:bg-[#FF7E1F]'
                   }`}
                 >
                   <CheckCircle2 className="w-4 h-4" />
@@ -337,7 +337,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
         ) : null
       ) : (
         /* Full List Mode */
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800">
+        <div className="bg-white dark:bg-slate-900 cockpit-radar-panel overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
           {lesson.vocabulary.map((vocab, idx) => {
             const isFav = Boolean(vocabMap[vocab.id]?.isFavorite);
             const isLearned = Boolean(vocabMap[vocab.id]?.isLearned);
@@ -418,7 +418,7 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
         <button
           type="button"
           onClick={onNextSection}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-bold transition-colors shadow-[0_0_16px_rgba(255,107,0,0.22)]"
         >
           Chuyển sang Phần 2: Mẫu câu
           <ChevronRight className="w-4 h-4" />

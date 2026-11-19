@@ -18,7 +18,7 @@ export function QuizzesHubPage({ onStartLessonQuiz }: QuizzesHubPageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-slate-900 dark:text-white">
             Ngân hàng 30 bài kiểm tra trắc nghiệm chuẩn CEFR
@@ -28,7 +28,7 @@ export function QuizzesHubPage({ onStartLessonQuiz }: QuizzesHubPageProps) {
           </p>
         </div>
 
-        <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl self-start">
+        <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl self-start">
           {['ALL', 'A1', 'A2', 'B1'].map((lvl) => (
             <button
               key={lvl}
@@ -36,7 +36,7 @@ export function QuizzesHubPage({ onStartLessonQuiz }: QuizzesHubPageProps) {
               onClick={() => setLevelFilter(lvl)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
                 levelFilter === lvl
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -56,11 +56,11 @@ export function QuizzesHubPage({ onStartLessonQuiz }: QuizzesHubPageProps) {
           return (
             <div
               key={lesson.lessonId}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between gap-4"
+              className="bg-white dark:bg-slate-900 cockpit-radar-panel cockpit-radar-panel-interactive p-5 flex flex-col justify-between gap-4"
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                  <span className="font-semibold text-blue-700 dark:text-blue-400">
+                  <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
                     {lesson.levelId} · {lesson.topic}
                   </span>
                   {done && (
@@ -83,7 +83,7 @@ export function QuizzesHubPage({ onStartLessonQuiz }: QuizzesHubPageProps) {
               <button
                 type="button"
                 onClick={() => onStartLessonQuiz(lesson.lessonId)}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-xs font-bold transition-colors"
               >
                 <ClipboardCheck className="w-4 h-4" />
                 {done ? 'Làm lại bài kiểm tra' : 'Bắt đầu kiểm tra'}

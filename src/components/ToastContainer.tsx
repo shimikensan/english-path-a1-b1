@@ -18,7 +18,7 @@ export function ToastContainer() {
           ) : toast.type === 'error' ? (
             <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
           ) : (
-            <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+            <Info className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524] shrink-0 mt-0.5" />
           );
 
         return (

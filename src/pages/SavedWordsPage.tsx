@@ -58,7 +58,7 @@ export function SavedWordsPage({ onOpenLesson }: SavedWordsPageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-slate-900 dark:text-white">
             Sổ tay từ vựng cá nhân
@@ -97,7 +97,7 @@ export function SavedWordsPage({ onOpenLesson }: SavedWordsPageProps) {
       </div>
 
       {items.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 text-center space-y-2">
+        <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-10 text-center space-y-2">
           <p className="text-base font-bold text-slate-900 dark:text-white">
             {tab === 'favorites' ? 'Chưa có từ yêu thích nào' : 'Chưa có từ nào được đánh dấu đã thuộc'}
           </p>
@@ -106,7 +106,7 @@ export function SavedWordsPage({ onOpenLesson }: SavedWordsPageProps) {
           </p>
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800">
+        <div className="bg-white dark:bg-slate-900 cockpit-radar-panel overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
           {items.map((item) => (
             <div
               key={item.vocabularyId}

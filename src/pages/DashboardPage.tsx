@@ -23,6 +23,7 @@ import {
 } from 'recharts';
 import { LeaderboardPanel } from '../components/LeaderboardPanel';
 import { useApp } from '../context/AppContext';
+import { useTheme } from '../context/ThemeContext';
 import { AUTH_HERO_IMAGE, PILOT_RANKS } from '../data';
 import type { AppRoute, LessonDoc } from '../types';
 import { formatShortDateVi, getLocalDateString } from '../utils/helpers';
@@ -34,7 +35,9 @@ interface DashboardPageProps {
 
 export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) {
   const { profile, lessons, progressMap, quizResults, vocabMap } = useApp();
+  const { theme } = useTheme();
   const [pilotAvatarFailed, setPilotAvatarFailed] = useState(false);
+  const isDark = theme === 'dark';
 
   const stats = useMemo(() => {
     const learnedVocabCount = Object.values(vocabMap).filter((v) => v.isLearned).length;
@@ -119,10 +122,10 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
   return (
     <div className="space-y-8">
       {/* Pilot Cockpit Hero Greeting & Flight Progress */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-sky-900 border border-slate-800 rounded-2xl p-6 sm:p-8 text-white">
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#07111F] via-[#0D1F38] to-[#132B4D] cockpit-grid border border-slate-700/80 rounded-2xl p-6 sm:p-8 text-white">
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="flex items-start gap-4 sm:gap-5 max-w-2xl">
-            <div className="hidden sm:flex w-16 h-16 rounded-xl overflow-hidden border border-amber-400/40 shrink-0 bg-gradient-to-br from-sky-600 to-blue-800 items-center justify-center">
+            <div className="hidden sm:flex w-16 h-16 rounded-xl overflow-hidden border border-[#FF6B00]/50 shrink-0 bg-gradient-to-br from-[#132B4D] to-[#07111F] items-center justify-center shadow-[0_0_18px_rgba(255,107,0,0.2)]">
               {!pilotAvatarFailed ? (
                 <img
                   src={AUTH_HERO_IMAGE}
@@ -132,20 +135,20 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
                   className="w-full h-full object-cover object-top"
                 />
               ) : (
-                <Plane className="w-7 h-7 text-amber-300" />
+                <Plane className="w-7 h-7 text-[#FF8524]" />
               )}
             </div>
             <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-amber-300">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#FF8524]">
                 <Plane className="w-3.5 h-3.5 shrink-0" />
                 <span>
                   {currentRank.rankVi} ({currentRank.callsign})
                 </span>
-                <span className="text-white/40" aria-hidden="true">
+                <span className="text-slate-500" aria-hidden="true">
                   ·
                 </span>
                 <span>CEFR {profile?.currentLevel || 'A1'}</span>
-                <span className="text-white/40" aria-hidden="true">
+                <span className="text-slate-500" aria-hidden="true">
                   ·
                 </span>
                 <span>Mục tiêu {profile?.dailyGoalMinutes ?? 20} phút/ngày</span>
@@ -153,7 +156,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
               <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
                 Xin chào phi công {profile?.fullName || 'bạn'}!
               </h2>
-              <p className="text-sm sm:text-base text-sky-100/90 leading-relaxed">
+              <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
                 {studiedToday
                   ? `Hành trình bay hôm nay đã được ghi nhận! Bạn đang giữ chuỗi ${profile?.streakDays ?? 1} ngày học liên tiếp cùng Cậu bé Pilot.`
                   : `Đường băng đã sẵn sàng. Chỉ cần học 5 từ vựng hoặc hoàn thành 1 bài kiểm tra hôm nay để giữ vững chuỗi ${profile?.streakDays ?? 1} ngày học liên tiếp.`}
@@ -166,7 +169,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
               <button
                 type="button"
                 onClick={() => onOpenLesson(stats.activeLesson!.lessonId)}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-amber-500 text-slate-950 text-sm font-bold hover:bg-amber-400 transition-colors whitespace-nowrap"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#FF6B00] text-white text-sm font-bold hover:bg-[#FF7E1F] transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(255,107,0,0.3)]"
               >
                 <PlayCircle className="w-4 h-4" />
                 Tiếp tục học ngay
@@ -175,7 +178,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
             <button
               type="button"
               onClick={() => onNavigate('roadmap')}
-              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-white/25 bg-white/10 text-sm font-semibold text-white hover:bg-white/15 transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-slate-600/80 bg-slate-800/50 text-sm font-semibold text-slate-100 hover:bg-slate-800 hover:border-slate-500 transition-colors whitespace-nowrap"
             >
               Xem đường bay A1–B1
             </button>
@@ -183,16 +186,16 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
         </div>
 
         {/* Runway Flight Plan Bar */}
-        <div className="relative z-10 mt-6 pt-5 border-t border-white/15 space-y-2">
-          <div className="flex items-center justify-between text-xs text-sky-100/90 tabular-nums">
+        <div className="relative z-10 mt-6 pt-5 border-t border-slate-700/70 space-y-2">
+          <div className="flex items-center justify-between text-xs text-slate-300 tabular-nums">
             <span>Hành trình chinh phục A1 → A2 → B1</span>
-            <span className="font-semibold text-amber-300">
+            <span className="font-semibold text-[#FF8524]">
               {stats.completedCount}/{stats.totalLessons} chặng bài ({overallFlightPct}%)
             </span>
           </div>
-          <div className="h-2 rounded-full bg-white/15 overflow-hidden">
+          <div className="h-2 rounded-full bg-slate-800/90 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-sky-400 to-amber-400 rounded-full transition-all"
+              className="h-full bg-gradient-to-r from-[#FF6B00] to-[#FF9A3C] rounded-full transition-all"
               style={{ width: `${Math.max(4, overallFlightPct)}%` }}
             />
           </div>
@@ -290,10 +293,10 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
       {/* Active Lesson & Recommended Next Lesson */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {stats.activeLesson && (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex flex-col justify-between gap-5">
+          <div className="bg-white dark:bg-slate-900 cockpit-radar-panel cockpit-radar-panel-interactive p-6 flex flex-col justify-between gap-5">
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-semibold text-blue-700 dark:text-blue-400">
+                <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
                   Bài học đang học · {stats.activeLesson.levelId}
                 </span>
                 <span>{stats.activeLesson.topic}</span>
@@ -315,7 +318,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
                 </div>
                 <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                   <div
-                    className="h-full bg-blue-600 rounded-full transition-all"
+                    className="h-full bg-gradient-to-r from-[#FF6B00] to-[#FF9A3C] rounded-full transition-all"
                     style={{
                       width: `${Math.min(100, Math.round((activeVocabLearned / Math.max(1, activeVocabTotal)) * 100))}%`,
                     }}
@@ -327,7 +330,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
             <button
               type="button"
               onClick={() => onOpenLesson(stats.activeLesson!.lessonId)}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#FF6B00] text-white text-sm font-bold hover:bg-[#FF7E1F] transition-colors"
             >
               Tiếp tục bài học này
               <ArrowRight className="w-4 h-4" />
@@ -336,7 +339,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
         )}
 
         {stats.recommendedLesson && (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex flex-col justify-between gap-5">
+          <div className="bg-white dark:bg-slate-900 cockpit-radar-panel cockpit-radar-panel-interactive p-6 flex flex-col justify-between gap-5">
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
                 <span className="font-semibold text-amber-600 dark:text-amber-400">
@@ -386,23 +389,29 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
                 Tỷ lệ bài học đã hoàn thành (%) trên từng cấp độ A1, A2 và B1
               </p>
             </div>
-            <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <TrendingUp className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
           </div>
           <div className="h-60 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.levelChartData} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} />
-                <XAxis dataKey="level" tick={{ fontSize: 12 }} stroke="#64748b" />
-                <YAxis domain={[0, 100]} unit="%" tick={{ fontSize: 12 }} stroke="#64748b" />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={isDark ? '#2E445E' : '#94a3b8'}
+                  strokeOpacity={isDark ? 0.5 : 0.25}
+                />
+                <XAxis dataKey="level" tick={{ fontSize: 12 }} stroke={isDark ? '#93A8C0' : '#4C627B'} />
+                <YAxis domain={[0, 100]} unit="%" tick={{ fontSize: 12 }} stroke={isDark ? '#93A8C0' : '#4C627B'} />
                 <Tooltip
                   formatter={(value) => [`${value}%`, 'Hoàn thành']}
                   contentStyle={{
                     borderRadius: 10,
-                    border: '1px solid #cbd5e1',
+                    backgroundColor: isDark ? '#0D1C30' : '#FFFFFF',
+                    border: isDark ? '1px solid #2E445E' : '1px solid #D1DCE8',
+                    color: isDark ? '#F1F5F9' : '#0D1C30',
                     fontSize: 12,
                   }}
                 />
-                <Bar dataKey="percent" fill="#2563eb" radius={[6, 6, 0, 0]} maxBarSize={54} />
+                <Bar dataKey="percent" fill="#FF6B00" radius={[6, 6, 0, 0]} maxBarSize={54} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -422,7 +431,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
             <button
               type="button"
               onClick={() => onNavigate('progress')}
-              className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
+              className="text-xs font-semibold text-[#D94E00] dark:text-[#FF8524] hover:underline whitespace-nowrap"
             >
               Xem chi tiết
             </button>
@@ -434,25 +443,31 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
                 <AreaChart data={stats.quizTrend} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
                   <defs>
                     <linearGradient id="scoreFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.28} />
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.02} />
+                      <stop offset="5%" stopColor="#FF6B00" stopOpacity={0.32} />
+                      <stop offset="95%" stopColor="#FF6B00" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} />
-                  <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#64748b" />
-                  <YAxis domain={[0, 100]} unit="%" tick={{ fontSize: 12 }} stroke="#64748b" />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={isDark ? '#2E445E' : '#94a3b8'}
+                    strokeOpacity={isDark ? 0.5 : 0.25}
+                  />
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke={isDark ? '#93A8C0' : '#4C627B'} />
+                  <YAxis domain={[0, 100]} unit="%" tick={{ fontSize: 12 }} stroke={isDark ? '#93A8C0' : '#4C627B'} />
                   <Tooltip
                     formatter={(value) => [`${value}%`, 'Điểm số']}
                     contentStyle={{
                       borderRadius: 10,
-                      border: '1px solid #cbd5e1',
+                      backgroundColor: isDark ? '#0D1C30' : '#FFFFFF',
+                      border: isDark ? '1px solid #2E445E' : '1px solid #D1DCE8',
+                      color: isDark ? '#F1F5F9' : '#0D1C30',
                       fontSize: 12,
                     }}
                   />
                   <Area
                     type="monotone"
                     dataKey="score"
-                    stroke="#2563eb"
+                    stroke="#FF6B00"
                     strokeWidth={2.5}
                     fill="url(#scoreFill)"
                   />
@@ -460,7 +475,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-60 flex flex-col items-center justify-center text-center px-4 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+            <div className="h-60 flex flex-col items-center justify-center text-center px-4 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
               <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Chưa có dữ liệu điểm kiểm tra
               </p>
@@ -470,7 +485,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
               <button
                 type="button"
                 onClick={() => onNavigate('quizzes')}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 rounded-lg bg-[#FF6B00] text-white text-xs font-bold hover:bg-[#FF7E1F] transition-colors"
               >
                 Làm bài kiểm tra đầu tiên
               </button>

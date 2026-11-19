@@ -5,17 +5,289 @@
   --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --font-serif: "Lora", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Cockpit UI Neutral Palette: Deep Navy Blue & Brushed Steel Grey */
+  --color-slate-50: #f1f5f9;
+  --color-slate-100: #e6edf5;
+  --color-slate-200: #d1dce8;
+  --color-slate-300: #b8c8da;
+  --color-slate-400: #93a8c0;
+  --color-slate-500: #6d839c;
+  --color-slate-600: #4c627b;
+  --color-slate-700: #2e445e;
+  --color-slate-800: #1b2e46;
+  --color-slate-900: #0d1c30;
+  --color-slate-950: #07111f;
+
+  /* Cockpit Avionics Navy & Radar Blue */
+  --color-blue-50: #eef6ff;
+  --color-blue-100: #d9ebff;
+  --color-blue-200: #b6d8ff;
+  --color-blue-300: #85beff;
+  --color-blue-400: #5aa3f8;
+  --color-blue-500: #3381e0;
+  --color-blue-600: #1e62b8;
+  --color-blue-700: #164c94;
+  --color-blue-800: #13396e;
+  --color-blue-900: #0f294f;
+  --color-blue-950: #081830;
+
+  /* Cockpit Signal Neon Orange (Navigation & Warning Accents) */
+  --color-amber-50: #fff4eb;
+  --color-amber-100: #ffe4cc;
+  --color-amber-200: #ffc594;
+  --color-amber-300: #ffa154;
+  --color-amber-400: #ff8524;
+  --color-amber-500: #ff6b00;
+  --color-amber-600: #e05600;
+  --color-amber-700: #b84400;
+  --color-amber-800: #8f3500;
+  --color-amber-900: #6b2904;
+  --color-amber-950: #3d1500;
+
+  --color-orange-400: #ff8c33;
+  --color-orange-500: #ff6b00;
+  --color-orange-600: #e55900;
+
+  /* Named Cockpit Semantic Tokens */
+  --color-cockpit-navy: #07111f;
+  --color-cockpit-panel: #0d1c30;
+  --color-cockpit-steel: #2e445e;
+  --color-cockpit-orange: #ff6b00;
+  --color-cockpit-orange-glow: #ff8524;
 }
 
 @layer base {
   html {
     font-family: var(--font-sans);
     scroll-behavior: smooth;
+    accent-color: #ff6b00;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html.dark body {
+    letter-spacing: 0.006em;
   }
 
   h1, h2, h3 {
     text-wrap: balance;
   }
+
+  :focus-visible {
+    outline: 2px solid #ff6b00;
+    outline-offset: 2px;
+  }
+}
+
+/* Subtle Cockpit Instrument Grid Backdrop for Dark Navy Hero & Auth Panels */
+.cockpit-grid {
+  background-image:
+    linear-gradient(to right, rgba(147, 168, 192, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(147, 168, 192, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Global Heads-Up Display (HUD) Pure-CSS Overlay System */
+.hud-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(46, 68, 94, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(46, 68, 94, 0.06) 1px, transparent 1px),
+    linear-gradient(to right, rgba(224, 86, 0, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(224, 86, 0, 0.045) 1px, transparent 1px);
+  background-size: 32px 32px, 32px 32px, 160px 160px, 160px 160px;
+  mask-image: radial-gradient(ellipse 90% 85% at 50% 50%, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0.92) 100%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 85% at 50% 50%, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0.92) 100%);
+}
+
+.dark .hud-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(147, 168, 192, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(147, 168, 192, 0.055) 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 107, 0, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 107, 0, 0.055) 1px, transparent 1px);
+}
+
+.hud-corner {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-style: solid;
+  border-width: 0;
+  border-color: rgba(224, 86, 0, 0.48);
+}
+
+.dark .hud-corner {
+  border-color: rgba(255, 107, 0, 0.6);
+}
+
+.hud-corner::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-style: solid;
+  border-width: 0;
+  border-color: rgba(76, 98, 123, 0.45);
+}
+
+.dark .hud-corner::after {
+  border-color: rgba(147, 168, 192, 0.42);
+}
+
+.hud-corner-tl {
+  top: 12px;
+  left: 12px;
+  border-top-width: 1.5px;
+  border-left-width: 1.5px;
+}
+
+.hud-corner-tl::after {
+  top: 4px;
+  left: 4px;
+  border-top-width: 1px;
+  border-left-width: 1px;
+}
+
+.hud-corner-tr {
+  top: 12px;
+  right: 12px;
+  border-top-width: 1.5px;
+  border-right-width: 1.5px;
+}
+
+.hud-corner-tr::after {
+  top: 4px;
+  right: 4px;
+  border-top-width: 1px;
+  border-right-width: 1px;
+}
+
+.hud-corner-bl {
+  bottom: 12px;
+  left: 12px;
+  border-bottom-width: 1.5px;
+  border-left-width: 1.5px;
+}
+
+.hud-corner-bl::after {
+  bottom: 4px;
+  left: 4px;
+  border-bottom-width: 1px;
+  border-left-width: 1px;
+}
+
+.hud-corner-br {
+  bottom: 12px;
+  right: 12px;
+  border-bottom-width: 1.5px;
+  border-right-width: 1.5px;
+}
+
+.hud-corner-br::after {
+  bottom: 4px;
+  right: 4px;
+  border-bottom-width: 1px;
+  border-right-width: 1px;
+}
+
+/* Horizontal heading calibration ticks (top & bottom viewport center) */
+.hud-ticks-x {
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      rgba(76, 98, 123, 0.32) 0px,
+      rgba(76, 98, 123, 0.32) 1px,
+      transparent 1px,
+      transparent 12px
+    ),
+    repeating-linear-gradient(
+      to right,
+      rgba(224, 86, 0, 0.5) 0px,
+      rgba(224, 86, 0, 0.5) 1.5px,
+      transparent 1.5px,
+      transparent 60px
+    );
+  mask-image: linear-gradient(to right, transparent 0%, black 22%, black 78%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 22%, black 78%, transparent 100%);
+}
+
+.dark .hud-ticks-x {
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      rgba(147, 168, 192, 0.28) 0px,
+      rgba(147, 168, 192, 0.28) 1px,
+      transparent 1px,
+      transparent 12px
+    ),
+    repeating-linear-gradient(
+      to right,
+      rgba(255, 107, 0, 0.55) 0px,
+      rgba(255, 107, 0, 0.55) 1.5px,
+      transparent 1.5px,
+      transparent 60px
+    );
+}
+
+/* Vertical pitch/altitude ladder ticks (left & right viewport edges on md+) */
+.hud-ticks-y {
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(76, 98, 123, 0.3) 0px,
+      rgba(76, 98, 123, 0.3) 1px,
+      transparent 1px,
+      transparent 14px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(224, 86, 0, 0.45) 0px,
+      rgba(224, 86, 0, 0.45) 1.5px,
+      transparent 1.5px,
+      transparent 70px
+    );
+  mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+}
+
+.dark .hud-ticks-y {
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(147, 168, 192, 0.25) 0px,
+      rgba(147, 168, 192, 0.25) 1px,
+      transparent 1px,
+      transparent 14px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 107, 0, 0.5) 0px,
+      rgba(255, 107, 0, 0.5) 1.5px,
+      transparent 1.5px,
+      transparent 70px
+    );
+}
+
+/* Custom Cockpit Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(109, 131, 156, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 107, 0, 0.6);
 }
 
 .tabular-nums {
@@ -45,8 +317,47 @@
   transform: rotateY(180deg);
 }
 
+/* Radar-Screen Lesson Content Containers (20px radius + crisp thin neon orange border) */
+.cockpit-radar-panel {
+  border-radius: 20px;
+  border: 1px solid rgba(224, 86, 0, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(255, 107, 0, 0.08),
+    0 8px 24px -16px rgba(224, 86, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.dark .cockpit-radar-panel {
+  border-color: rgba(255, 107, 0, 0.52);
+  box-shadow:
+    0 0 18px -5px rgba(255, 107, 0, 0.26),
+    inset 0 1px 0 rgba(255, 133, 36, 0.16),
+    inset 0 0 24px -16px rgba(255, 107, 0, 0.14);
+}
+
+.cockpit-radar-panel-interactive {
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.cockpit-radar-panel-interactive:hover {
+  border-color: rgba(255, 107, 0, 0.82);
+  box-shadow:
+    0 0 0 1px rgba(255, 107, 0, 0.16),
+    0 10px 26px -14px rgba(255, 107, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.dark .cockpit-radar-panel-interactive:hover {
+  border-color: rgba(255, 126, 31, 0.86);
+  box-shadow:
+    0 0 24px -4px rgba(255, 107, 0, 0.38),
+    inset 0 1px 0 rgba(255, 154, 60, 0.24),
+    inset 0 0 28px -14px rgba(255, 107, 0, 0.2);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .flashcard-inner {
+  .flashcard-inner,
+  .cockpit-radar-panel-interactive {
     transition: none;
   }
 }

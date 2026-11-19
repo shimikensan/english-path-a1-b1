@@ -73,15 +73,15 @@ function AppShell() {
   // Initial auth & Firestore hydration screen
   if (!authReady || (firebaseUser && firebaseUser.emailVerified && dataLoading && !profile)) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-blue-700 text-white flex items-center justify-center mb-4 shadow-sm">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 cockpit-grid flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF6B00] to-[#D94E00] text-white flex items-center justify-center mb-4 ring-1 ring-[#FF8C2E]/50 shadow-[0_0_24px_rgba(255,107,0,0.32)]">
           <Plane className="w-6 h-6" />
         </div>
         <p className="text-base font-bold text-slate-900 dark:text-white">{APP_BRAND.fullName}</p>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Đang chuẩn bị đường bay và đồng bộ tiến độ học tập từ Firebase...
+          Đang khởi động bảng điều khiển buồng lái và đồng bộ tiến độ từ Firebase...
         </p>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-6">{APP_BRAND.copyright}</p>
+        <p className="text-xs font-mono text-slate-400 dark:text-slate-500 mt-6">{APP_BRAND.copyright}</p>
       </div>
     );
   }

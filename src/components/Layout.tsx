@@ -19,6 +19,7 @@ import {
   UserCircle,
   X,
 } from 'lucide-react';
+import { HudOverlay } from './HudOverlay';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { APP_BRAND, PILOT_RANKS } from '../data';
@@ -67,9 +68,9 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
         <button
           type="button"
           onClick={() => handleSelectRoute('dashboard')}
-          className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg"
+          className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B00] rounded-lg"
         >
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-500 to-blue-700 text-white flex items-center justify-center shrink-0 ring-1 ring-amber-400/40">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#FF6B00] to-[#D94E00] text-white flex items-center justify-center shrink-0 ring-1 ring-[#FF8C2E]/50 shadow-[0_0_16px_rgba(255,107,0,0.28)]">
             <Plane className="w-5 h-5" />
           </div>
           <div className="min-w-0">
@@ -104,11 +105,11 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
               onClick={() => handleSelectRoute(item.id)}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 active
-                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-semibold'
+                  ? 'bg-[#FF6B00]/12 dark:bg-[#FF6B00]/15 text-[#D94E00] dark:text-[#FF8524] font-semibold ring-1 ring-[#FF6B00]/30'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`} />
+              <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-[#FF6B00] dark:text-[#FF8524]' : 'text-slate-400 dark:text-slate-500'}`} />
               <span className="truncate">{item.label}</span>
             </button>
           );
@@ -121,8 +122,8 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
               onClick={() => handleSelectRoute('admin')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 currentRoute === 'admin'
-                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 font-semibold'
-                  : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50/70 dark:hover:bg-amber-950/30'
+                  ? 'bg-[#FF6B00]/15 dark:bg-[#FF6B00]/18 text-[#D94E00] dark:text-[#FF8524] font-semibold ring-1 ring-[#FF6B00]/40'
+                  : 'text-amber-700 dark:text-[#FF8524] hover:bg-[#FF6B00]/10'
               }`}
             >
               <ShieldCheck className="w-4 h-4 shrink-0" />
@@ -200,12 +201,12 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
 
           <div className="flex items-center gap-4 shrink-0">
             <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 tabular-nums">
-              <Flame className="w-4 h-4 text-amber-500" />
+              <Flame className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
               <span>{profile?.streakDays ?? 1} ngày bay</span>
               <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
                 ·
               </span>
-              <span className="font-semibold text-sky-700 dark:text-sky-400">
+              <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
                 {PILOT_RANKS[profile?.currentLevel || 'A1']?.rankVi || 'Học viên Phi công'} ({profile?.currentLevel || 'A1'})
               </span>
             </div>
@@ -214,29 +215,32 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
               type="button"
               onClick={toggleTheme}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
-              aria-label={theme === 'dark' ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối'}
+              aria-label={theme === 'dark' ? 'Chuyển sang chế độ ban ngày' : 'Chuyển sang chế độ buồng lái đêm'}
             >
               {theme === 'dark' ? (
                 <>
-                  <Sun className="w-4 h-4 text-amber-400" />
-                  <span className="hidden sm:inline">Sáng</span>
+                  <Sun className="w-4 h-4 text-[#FF8524]" />
+                  <span className="hidden sm:inline">Ban ngày</span>
                 </>
               ) : (
                 <>
-                  <Moon className="w-4 h-4 text-blue-600" />
-                  <span className="hidden sm:inline">Tối</span>
+                  <Moon className="w-4 h-4 text-slate-700" />
+                  <span className="hidden sm:inline">Buồng lái đêm</span>
                 </>
               )}
             </button>
           </div>
         </header>
 
+        {/* Subtle Cockpit Heads-Up Display (HUD) Overlay */}
+        <HudOverlay variant="workspace" />
+
         {/* Main Workspace Canvas */}
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           {children}
         </main>
 
-        <footer className="border-t border-slate-200/80 dark:border-slate-800/80 py-4 px-4 sm:px-6 lg:px-8">
+        <footer className="relative z-10 border-t border-slate-200/80 dark:border-slate-800/80 py-4 px-4 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
             <span className="font-medium text-slate-600 dark:text-slate-300">
               {APP_BRAND.fullName} · {APP_BRAND.tagline}

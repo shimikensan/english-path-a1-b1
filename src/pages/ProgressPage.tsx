@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useApp } from '../context/AppContext';
+import { useTheme } from '../context/ThemeContext';
 import { formatTimestampVi, getQuizRatingVi } from '../utils/helpers';
 
 interface ProgressPageProps {
@@ -18,6 +19,8 @@ interface ProgressPageProps {
 
 export function ProgressPage({ onOpenLesson }: ProgressPageProps) {
   const { profile, levels, lessons, progressMap, quizResults, vocabMap } = useApp();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   const levelBreakdown = useMemo(() => {
     return levels.map((lvl) => {
@@ -59,14 +62,14 @@ export function ProgressPage({ onOpenLesson }: ProgressPageProps) {
           >
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">{item.name}</h3>
-              <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400 tabular-nums">
+              <span className="text-sm font-extrabold text-[#D94E00] dark:text-[#FF8524] tabular-nums">
                 {item.pct}%
               </span>
             </div>
 
             <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
               <div
-                className="h-full bg-blue-600 rounded-full transition-all"
+                className="h-full bg-gradient-to-r from-[#FF6B00] to-[#FF9A3C] rounded-full transition-all"
                 style={{ width: `${item.pct}%` }}
               />
             </div>
@@ -121,14 +124,24 @@ export function ProgressPage({ onOpenLesson }: ProgressPageProps) {
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={levelBreakdown} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} />
-              <XAxis dataKey="levelId" tick={{ fontSize: 12 }} stroke="#64748b" />
-              <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
-              <Tooltip
-                contentStyle={{ borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 12 }}
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke={isDark ? '#2E445E' : '#94a3b8'}
+                strokeOpacity={isDark ? 0.5 : 0.25}
               />
-              <Bar dataKey="learnedVocab" name="Từ đã học" fill="#2563eb" radius={[6, 6, 0, 0]} maxBarSize={44} />
-              <Bar dataKey="avgScore" name="Điểm TB (%)" fill="#f59e0b" radius={[6, 6, 0, 0]} maxBarSize={44} />
+              <XAxis dataKey="levelId" tick={{ fontSize: 12 }} stroke={isDark ? '#93A8C0' : '#4C627B'} />
+              <YAxis tick={{ fontSize: 12 }} stroke={isDark ? '#93A8C0' : '#4C627B'} />
+              <Tooltip
+                contentStyle={{
+                  borderRadius: 10,
+                  backgroundColor: isDark ? '#0D1C30' : '#FFFFFF',
+                  border: isDark ? '1px solid #2E445E' : '1px solid #D1DCE8',
+                  color: isDark ? '#F1F5F9' : '#0D1C30',
+                  fontSize: 12,
+                }}
+              />
+              <Bar dataKey="learnedVocab" name="Từ đã học" fill="#3381E0" radius={[6, 6, 0, 0]} maxBarSize={44} />
+              <Bar dataKey="avgScore" name="Điểm TB (%)" fill="#FF6B00" radius={[6, 6, 0, 0]} maxBarSize={44} />
             </BarChart>
           </ResponsiveContainer>
         </div>

@@ -11,6 +11,7 @@ import {
   Sun,
   Trophy,
 } from 'lucide-react';
+import { HudOverlay } from '../components/HudOverlay';
 import { LeaderboardPanel } from '../components/LeaderboardPanel';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
@@ -88,7 +89,7 @@ export function AuthPage() {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-5">
+          <div className="w-12 h-12 rounded-xl bg-[#FF6B00]/15 text-[#FF6B00] dark:text-[#FF8524] border border-[#FF6B00]/30 flex items-center justify-center mb-5">
             <Mail className="w-6 h-6" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
@@ -114,7 +115,7 @@ export function AuthPage() {
                   setSubmitting(false);
                 }
               }}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#FF6B00] text-white text-sm font-semibold hover:bg-[#FF7E1F] transition-colors disabled:opacity-60 shadow-[0_0_20px_rgba(255,107,0,0.24)]"
             >
               <CheckCircle2 className="w-4 h-4" />
               Tôi đã xác thực — Vào học ngay
@@ -145,11 +146,14 @@ export function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
+    <div className="relative min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
+      {/* Subtle Cockpit Heads-Up Display (HUD) Overlay */}
+      <HudOverlay variant="fullscreen" />
+
       {/* Minimal 3-zone top bar */}
-      <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 lg:px-10 flex items-center justify-between gap-8">
+      <header className="relative z-30 h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 lg:px-10 flex items-center justify-between gap-8">
         <div className="flex items-center gap-2.5 whitespace-nowrap shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-blue-700 text-white flex items-center justify-center ring-1 ring-amber-400/40">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#FF6B00] to-[#D94E00] text-white flex items-center justify-center ring-1 ring-[#FF8C2E]/50 shadow-[0_0_14px_rgba(255,107,0,0.3)]">
             <Plane className="w-4 h-4" />
           </div>
           <span className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
@@ -171,9 +175,9 @@ export function AuthPage() {
             onClick={() => {
               document.getElementById('public-leaderboard')?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300/80 dark:border-amber-700/70 bg-amber-50/70 dark:bg-amber-950/40 text-xs font-semibold text-amber-800 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-950/70 transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FF6B00]/50 bg-[#FF6B00]/10 dark:bg-[#FF6B00]/15 text-xs font-semibold text-[#D94E00] dark:text-[#FF8524] hover:bg-[#FF6B00]/20 transition-colors whitespace-nowrap"
           >
-            <Trophy className="w-3.5 h-3.5 text-amber-500" />
+            <Trophy className="w-3.5 h-3.5 text-[#FF6B00] dark:text-[#FF8524]" />
             <span>Bảng xếp hạng</span>
           </button>
 
@@ -184,13 +188,13 @@ export function AuthPage() {
           >
             {theme === 'dark' ? (
               <>
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">Chế độ sáng</span>
+                <Sun className="w-3.5 h-3.5 text-[#FF8524]" />
+                <span className="hidden sm:inline">Ban ngày</span>
               </>
             ) : (
               <>
-                <Moon className="w-3.5 h-3.5 text-blue-600" />
-                <span className="hidden sm:inline">Chế độ tối</span>
+                <Moon className="w-3.5 h-3.5 text-slate-700" />
+                <span className="hidden sm:inline">Buồng lái đêm</span>
               </>
             )}
           </button>
@@ -198,9 +202,9 @@ export function AuthPage() {
       </header>
 
       {/* Split Editorial Auth Layout */}
-      <div className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+      <div className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         {/* Left Visual Showcase */}
-        <div className="lg:col-span-6 relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-blue-950 min-h-[300px] lg:min-h-[580px] flex flex-col justify-end">
+        <div className="lg:col-span-6 relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700/80 bg-[#07111F] min-h-[300px] lg:min-h-[580px] flex flex-col justify-end">
           {!imgError ? (
             <img
               src={AUTH_HERO_IMAGE}
@@ -210,12 +214,12 @@ export function AuthPage() {
               className="absolute inset-0 w-full h-full object-cover object-top"
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-sky-900 via-blue-900 to-slate-950" />
+            <div className="absolute inset-0 bg-gradient-to-br from-[#0D1C30] via-[#09182E] to-[#07111F]" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/92 via-slate-950/40 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#07111F]/95 via-[#07111F]/50 to-transparent" />
 
           <div className="relative z-10 p-6 sm:p-8 text-white space-y-4">
-            <p className="text-xs font-semibold text-amber-300 tracking-wide">
+            <p className="text-xs font-semibold text-[#FF8524] tracking-wide">
               Học tiếng Anh cùng Cậu bé Pilot · Chặng bay CEFR A1 → A2 → B1
             </p>
             <h1 className="text-2xl sm:text-3xl font-extrabold leading-tight text-balance">
@@ -242,9 +246,9 @@ export function AuthPage() {
         </div>
 
         {/* Right Form Card */}
-        <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 lg:p-10 flex flex-col justify-center">
+        <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-6 sm:p-8 lg:p-10 flex flex-col justify-center">
           {/* Segmented Mode Switch */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mb-6">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/70 dark:border-slate-700/70 rounded-xl mb-6">
             <button
               type="button"
               onClick={() => {
@@ -254,7 +258,7 @@ export function AuthPage() {
               }}
               className={`flex-1 py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
                 mode === 'login'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -269,7 +273,7 @@ export function AuthPage() {
               }}
               className={`flex-1 py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
                 mode === 'register'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -284,7 +288,7 @@ export function AuthPage() {
               }}
               className={`flex-1 py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
                 mode === 'reset'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -377,7 +381,7 @@ export function AuthPage() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Ví dụ: Nguyễn Minh Anh"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]"
                 />
               </div>
             )}
@@ -396,7 +400,7 @@ export function AuthPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="ban@example.com"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]"
               />
             </div>
 
@@ -416,7 +420,7 @@ export function AuthPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Tối thiểu 6 ký tự"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]"
                 />
               </div>
             )}
@@ -434,7 +438,7 @@ export function AuthPage() {
                       onClick={() => setLevel(lvl)}
                       className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-colors ${
                         level === lvl
-                          ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
+                          ? 'border-[#FF6B00] bg-[#FF6B00]/12 dark:bg-[#FF6B00]/15 text-[#D94E00] dark:text-[#FF8524]'
                           : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                     >
@@ -448,7 +452,7 @@ export function AuthPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60"
+              className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#FF6B00] text-white text-sm font-bold hover:bg-[#FF7E1F] transition-colors disabled:opacity-60 shadow-[0_0_20px_rgba(255,107,0,0.24)]"
             >
               {mode === 'reset' ? (
                 <>
@@ -473,7 +477,7 @@ export function AuthPage() {
       {/* Public Live Completion Leaderboard (Accessible Before Sign-In) */}
       <section
         id="public-leaderboard"
-        className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 pb-12"
+        className="relative z-10 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 pb-12"
       >
         <LeaderboardPanel
           onRequireLogin={() => {
@@ -482,7 +486,7 @@ export function AuthPage() {
         />
       </section>
 
-      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 px-6 lg:px-10">
+      <footer className="relative z-10 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 px-6 lg:px-10">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
           <span>{APP_BRAND.fullName} · Nền tảng học tiếng Anh chuẩn CEFR A1–B1</span>
           <span className="font-mono font-medium text-slate-600 dark:text-slate-300">
