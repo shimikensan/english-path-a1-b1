@@ -8,6 +8,7 @@ import {
   Clock,
   FlaskConical,
   Headphones,
+  Image as ImageIcon,
   MessageSquareQuote,
   Radar,
   RotateCcw,
@@ -18,11 +19,13 @@ import {
   Volume2,
   XCircle,
 } from 'lucide-react';
+import { VisualVocabDeck } from '../components/specialized/VisualVocabDeck';
 import { useApp } from '../context/AppContext';
 import {
   ESP_ACRONYMS,
   ESP_SCENARIOS,
   ESP_TRACKS,
+  ESP_VISUAL_CARDS,
   type EspTrackId,
 } from '../data';
 import type { LessonTab, VocabularyItem } from '../types';
@@ -33,7 +36,7 @@ interface SpecializedHubPageProps {
   onOpenLesson: (lessonId: string, tab?: LessonTab) => void;
 }
 
-type WorkspaceTab = 'lessons' | 'acronyms' | 'scenarios' | 'listening';
+type WorkspaceTab = 'lessons' | 'visual_cards' | 'acronyms' | 'scenarios' | 'listening';
 
 const TRACK_ICONS: Record<EspTrackId, React.ComponentType<{ className?: string }>> = {
   ew_uav: Radar,
@@ -373,7 +376,7 @@ export function SpecializedHubPage({ onOpenLesson }: SpecializedHubPageProps) {
             </div>
           </div>
 
-          {/* 4 Interactive Learning Mode Tabs */}
+          {/* 5 Interactive Learning Mode Tabs */}
           <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 rounded-xl">
             {(
               [
@@ -381,6 +384,11 @@ export function SpecializedHubPage({ onOpenLesson }: SpecializedHubPageProps) {
                   id: 'lessons',
                   label: `Bài học chuyên ngành (${trackLessons.length})`,
                   icon: BookOpen,
+                },
+                {
+                  id: 'visual_cards',
+                  label: `Thẻ từ trực quan (${ESP_VISUAL_CARDS.filter((c) => c.trackId === selectedTrackId).length})`,
+                  icon: ImageIcon,
                 },
                 {
                   id: 'acronyms',
@@ -536,7 +544,16 @@ export function SpecializedHubPage({ onOpenLesson }: SpecializedHubPageProps) {
           </div>
         )}
 
-        {/* TAB 2: ACRONYMS & CODES DECODER */}
+        {/* TAB 2: VISUAL ILLUSTRATED VOCABULARY CARDS */}
+        {workspaceTab === 'visual_cards' && (
+          <VisualVocabDeck
+            selectedTrackId={selectedTrackId}
+            accent={accent}
+            onOpenLesson={onOpenLesson}
+          />
+        )}
+
+        {/* TAB 3: ACRONYMS & CODES DECODER */}
         {workspaceTab === 'acronyms' && (
           <div className="space-y-4">
             <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">

@@ -7,6 +7,8 @@ import { ESP_ACRONYMS, ESP_SCENARIOS, ESP_TRACKS, LESSONS_ESP } from './lessonsE
 export { APP_BRAND, AUTH_HERO_IMAGE, DEFAULT_LEVELS, LEVEL_BANNERS, PILOT_RANKS } from './levels';
 export { ESP_ACRONYMS, ESP_SCENARIOS, ESP_TRACKS, LESSONS_A1, LESSONS_A2, LESSONS_B1, LESSONS_ESP };
 export type { EspAcronymItem, EspScenarioItem, EspTrackId, EspTrackMeta } from './lessonsESP';
+export { ESP_VISUAL_CARDS, ESP_VOCAB_IMAGE_MAP } from './espVisualCards';
+export type { EspVisualVocabCard } from './espVisualCards';
 
 export const ALL_DEFAULT_LESSONS: LessonDoc[] = [
   ...LESSONS_A1,

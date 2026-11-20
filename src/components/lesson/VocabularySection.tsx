@@ -8,8 +8,10 @@ import {
   List,
   RotateCw,
   Volume2,
+  X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { ESP_VOCAB_IMAGE_MAP } from '../../data';
 import type { LessonDoc, VocabularyItem } from '../../types';
 import { speakEnglish, type SpeechAccent } from '../../utils/speech';
 
@@ -27,6 +29,13 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
   const [isFlipped, setIsFlipped] = useState(false);
   const [accent, setAccent] = useState<SpeechAccent>('en-US');
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const [previewMedia, setPreviewMedia] = useState<{
+    word: string;
+    meaningVi: string;
+    imageUrl: string;
+    captionVi: string;
+  } | null>(null);
 
   const learnedIds = useMemo(() => {
     const set = new Set<string>();
@@ -184,58 +193,112 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
             </div>
 
             {/* 3D Flippable Flashcard */}
-            <div className="flashcard-scene">
-              <div
-                onClick={() => setIsFlipped((prev) => !prev)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setIsFlipped((prev) => !prev);
-                  }
-                }}
-                aria-label="Nhấn để lật thẻ từ vựng"
-                className={`flashcard-inner relative w-full min-h-[320px] cursor-pointer ${
-                  isFlipped ? 'is-flipped' : ''
-                }`}
-              >
-                {/* Front Face (English) */}
-                <div className="flashcard-face absolute inset-0 bg-white dark:bg-slate-900 cockpit-radar-panel p-6 sm:p-8 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
-                      {lesson.levelId} · {currentWord.partOfSpeech}
-                    </span>
-                    <span>Nhấn vào thẻ để xem nghĩa tiếng Việt</span>
-                  </div>
+            {(() => {
+              const currentVisual =
+                currentWord && !failedImages[currentWord.id]
+                  ? ESP_VOCAB_IMAGE_MAP[currentWord.id]
+                  : undefined;
 
-                  <div className="text-center space-y-3 py-4">
-                    <div className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                      {currentWord.word}
-                    </div>
-                    <div className="text-base font-mono text-[#D94E00] dark:text-[#FF8524]">
-                      {currentWord.ipa}
-                    </div>
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          speakEnglish(currentWord.word, { accent });
-                        }}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-[#FF6B00]/30 text-[#D94E00] dark:text-[#FF8524] text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
-                      >
-                        <Volume2 className="w-4 h-4" />
-                        Nghe phát âm
-                      </button>
-                    </div>
-                  </div>
+              return (
+                <div className="flashcard-scene">
+                  <div
+                    onClick={() => setIsFlipped((prev) => !prev)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setIsFlipped((prev) => !prev);
+                      }
+                    }}
+                    aria-label="Nhấn để lật thẻ từ vựng"
+                    className={`flashcard-inner relative w-full ${
+                      currentVisual ? 'min-h-[380px]' : 'min-h-[320px]'
+                    } cursor-pointer ${isFlipped ? 'is-flipped' : ''}`}
+                  >
+                    {/* Front Face (English + optional visual illustration) */}
+                    <div className="flashcard-face absolute inset-0 bg-white dark:bg-slate-900 cockpit-radar-panel p-5 sm:p-7 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
+                          {lesson.levelId === 'ESP' ? 'Chuyên ngành' : lesson.levelId} ·{' '}
+                          {currentWord.partOfSpeech}
+                        </span>
+                        <span>Nhấn vào thẻ để xem nghĩa tiếng Việt</span>
+                      </div>
 
-                  <div className="flex items-center justify-center gap-2 text-xs text-slate-400 dark:text-slate-500">
-                    <RotateCw className="w-3.5 h-3.5" />
-                    <span>Lật thẻ</span>
-                  </div>
-                </div>
+                      {currentVisual ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center py-3">
+                          <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-slate-950 border border-slate-200 dark:border-slate-800">
+                            <img
+                              src={currentVisual.imageUrl}
+                              alt={currentVisual.altVi}
+                              referrerPolicy="no-referrer"
+                              onError={() =>
+                                setFailedImages((prev) => ({
+                                  ...prev,
+                                  [currentWord.id]: true,
+                                }))
+                              }
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/40 to-transparent px-3 py-2">
+                              <p className="text-[11px] font-medium text-slate-100 leading-snug">
+                                {currentVisual.captionVi}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="text-center sm:text-left space-y-2.5">
+                            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                              {currentWord.word}
+                            </div>
+                            <div className="text-sm sm:text-base font-mono text-[#D94E00] dark:text-[#FF8524]">
+                              {currentWord.ipa}
+                            </div>
+                            <div className="pt-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  speakEnglish(currentWord.word, { accent });
+                                }}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-[#FF6B00]/30 text-[#D94E00] dark:text-[#FF8524] text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
+                              >
+                                <Volume2 className="w-4 h-4" />
+                                Nghe phát âm
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center space-y-3 py-4">
+                          <div className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                            {currentWord.word}
+                          </div>
+                          <div className="text-base font-mono text-[#D94E00] dark:text-[#FF8524]">
+                            {currentWord.ipa}
+                          </div>
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speakEnglish(currentWord.word, { accent });
+                              }}
+                              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-[#FF6B00]/30 text-[#D94E00] dark:text-[#FF8524] text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
+                            >
+                              <Volume2 className="w-4 h-4" />
+                              Nghe phát âm
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                        <RotateCw className="w-3.5 h-3.5" />
+                        <span>Lật thẻ</span>
+                      </div>
+                    </div>
 
                 {/* Back Face (Vietnamese + Example) */}
                 <div className="flashcard-face flashcard-back absolute inset-0 bg-amber-50/50 dark:bg-slate-900 cockpit-radar-panel p-6 sm:p-8 flex flex-col justify-between">
@@ -281,6 +344,8 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
                 </div>
               </div>
             </div>
+              );
+            })()}
 
             {/* Action Controls Row */}
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -341,35 +406,64 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
           {lesson.vocabulary.map((vocab, idx) => {
             const isFav = Boolean(vocabMap[vocab.id]?.isFavorite);
             const isLearned = Boolean(vocabMap[vocab.id]?.isLearned);
+            const visual = !failedImages[vocab.id] ? ESP_VOCAB_IMAGE_MAP[vocab.id] : undefined;
             return (
               <div
                 key={vocab.id}
                 className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4"
               >
-                <div className="space-y-1.5 flex-1 min-w-0">
-                  <div className="flex flex-wrap items-baseline gap-2.5">
-                    <span className="text-xs font-mono text-slate-400 tabular-nums">
-                      {String(idx + 1).padStart(2, '0')}
-                    </span>
-                    <span className="text-base font-bold text-slate-900 dark:text-white">
-                      {vocab.word}
-                    </span>
-                    <span className="text-xs font-mono text-blue-600 dark:text-blue-400">
-                      {vocab.ipa}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      ({vocab.partOfSpeech})
-                    </span>
-                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                      — {vocab.meaningVi}
-                    </span>
+                <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                  {visual && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreviewMedia({
+                          word: vocab.word,
+                          meaningVi: vocab.meaningVi,
+                          imageUrl: visual.imageUrl,
+                          captionVi: visual.captionVi,
+                        })
+                      }
+                      className="w-24 aspect-[4/3] rounded-xl overflow-hidden border border-[#FF6B00]/40 bg-slate-950 shrink-0 hover:opacity-90 transition-opacity"
+                      title="Nhấn để phóng to hình minh họa"
+                    >
+                      <img
+                        src={visual.imageUrl}
+                        alt={visual.altVi}
+                        referrerPolicy="no-referrer"
+                        onError={() =>
+                          setFailedImages((prev) => ({ ...prev, [vocab.id]: true }))
+                        }
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  )}
+
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex flex-wrap items-baseline gap-2.5">
+                      <span className="text-xs font-mono text-slate-400 tabular-nums">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+                      <span className="text-base font-bold text-slate-900 dark:text-white">
+                        {vocab.word}
+                      </span>
+                      <span className="text-xs font-mono text-blue-600 dark:text-blue-400">
+                        {vocab.ipa}
+                      </span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        ({vocab.partOfSpeech})
+                      </span>
+                      <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                        — {vocab.meaningVi}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+                      <span className="font-serif text-slate-800 dark:text-slate-200">
+                        {vocab.exampleEn}
+                      </span>{' '}
+                      · {vocab.exampleVi}
+                    </p>
                   </div>
-                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 pl-6">
-                    <span className="font-serif text-slate-800 dark:text-slate-200">
-                      {vocab.exampleEn}
-                    </span>{' '}
-                    · {vocab.exampleVi}
-                  </p>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 pl-6 md:pl-0">
@@ -424,6 +518,57 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Lightbox Modal for Enlarged Visual Illustration */}
+      {previewMedia && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setPreviewMedia(null)}
+        >
+          <div
+            className="w-full max-w-xl bg-white dark:bg-slate-900 cockpit-radar-panel overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  {previewMedia.word}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {previewMedia.meaningVi}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewMedia(null)}
+                className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Đóng ảnh minh họa"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="aspect-[4/3] w-full bg-slate-950">
+              <img
+                src={previewMedia.imageUrl}
+                alt={previewMedia.captionVi}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="px-5 py-3.5 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between gap-3">
+              <span>{previewMedia.captionVi}</span>
+              <button
+                type="button"
+                onClick={() => speakEnglish(previewMedia.word, { accent })}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF6B00] text-white font-semibold whitespace-nowrap"
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+                Nghe phát âm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
