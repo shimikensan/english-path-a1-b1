@@ -91,7 +91,7 @@ export function Layout({
               {APP_BRAND.shortName}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-              A1–B1 & Chuyên ngành
+              A1–C1 & Chuyên ngành
             </div>
           </div>
         </button>

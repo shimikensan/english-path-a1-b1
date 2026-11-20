@@ -3,7 +3,7 @@ import type { LevelDoc } from '../types';
 export const APP_BRAND = {
   fullName: 'Học tiếng Anh cùng Cậu bé Pilot',
   shortName: 'Cậu bé Pilot',
-  tagline: 'Đường bay tiếng Anh CEFR A1–B1 & Chuyên ngành',
+  tagline: 'Đường bay tiếng Anh CEFR A1–C1 & Chuyên ngành',
   copyright: 'VanBien@copyright',
 } as const;
 
@@ -11,7 +11,9 @@ export const PILOT_RANKS: Record<string, { stage: string; rankVi: string; callsi
   A1: { stage: 'Chặng 1 · Cất cánh', rankVi: 'Học viên Phi công', callsign: 'Cadet' },
   A2: { stage: 'Chặng 2 · Vượt mây', rankVi: 'Cơ phó', callsign: 'First Officer' },
   B1: { stage: 'Chặng 3 · Chinh phục bầu trời', rankVi: 'Cơ trưởng', callsign: 'Captain' },
-  ESP: { stage: 'Chặng 4 · Nhiệm vụ chuyên ngành', rankVi: 'Phi công Chuyên nhiệm', callsign: 'Mission Specialist' },
+  B2: { stage: 'Chặng 4 · Bay tầm cao', rankVi: 'Phi công Trưởng tuyến', callsign: 'Senior Captain' },
+  C1: { stage: 'Chặng 5 · Làm chủ bầu trời', rankVi: 'Cơ trưởng Huấn luyện', callsign: 'Flight Commander' },
+  ESP: { stage: 'Chặng 6 · Nhiệm vụ chuyên ngành', rankVi: 'Phi công Chuyên nhiệm', callsign: 'Mission Specialist' },
 };
 
 export const AUTH_HERO_IMAGE = '/src/assets/images/pilot_boy_auth_hero_1795055571818.jpg';
@@ -20,6 +22,8 @@ export const LEVEL_BANNERS: Record<string, string> = {
   A1: '/src/assets/images/pilot_level_a1_runway_1795055570904.jpg',
   A2: '/src/assets/images/pilot_level_a2_clouds_1795055572291.jpg',
   B1: '/src/assets/images/pilot_level_b1_horizon_1795055571975.jpg',
+  B2: '/src/assets/images/pilot_level_b2_stratosphere_1795147951664.jpg',
+  C1: '/src/assets/images/pilot_level_c1_command_1795147951700.jpg',
   ESP: '/src/assets/images/esp_level_banner_1795136380676.jpg',
 };
 
@@ -52,12 +56,30 @@ export const DEFAULT_LEVELS: LevelDoc[] = [
     isPublished: true,
   },
   {
+    levelId: 'B2',
+    name: 'Level B2 — Upper-Intermediate',
+    subtitle: 'Lập luận sắc bén, đàm phán chuyên nghiệp & phân tích chuyên sâu',
+    description:
+      'Nâng tầm diễn đạt học thuật và công việc quốc tế qua 6 chuyên đề: lãnh đạo, công nghệ & AI, báo cáo phân tích, tư duy phản biện, phát triển bền vững và đàm phán cấp cao.',
+    order: 4,
+    isPublished: true,
+  },
+  {
+    levelId: 'C1',
+    name: 'Level C1 — Advanced',
+    subtitle: 'Làm chủ sắc thái ngôn ngữ, hùng biện chiến lược & nghiên cứu học thuật',
+    description:
+      'Dành cho học viên xuất sắc chinh phục trình độ cao cấp: điều hành chiến lược, đạo đức công nghệ, tranh biện học thuật, ngoại giao đa văn hóa, quản trị khủng hoảng và viết luận đỉnh cao.',
+    order: 5,
+    isPublished: true,
+  },
+  {
     levelId: 'ESP',
     name: 'Tiếng Anh Chuyên ngành — ESP',
     subtitle: 'Chế áp vô tuyến & UAV · Kiểm tra an ninh · Kiểm nghiệm thực phẩm',
     description:
-      'Chặng nâng cao ngay sau A1–B1 giúp học viên làm chủ 135 thuật ngữ kỹ thuật, mẫu câu tác chiến/nghiệp vụ, từ viết tắt chuyên ngành và mô phỏng tình huống thực tế.',
-    order: 4,
+      'Chặng chuyên sâu giúp học viên làm chủ 135 thuật ngữ kỹ thuật, mẫu câu tác chiến/nghiệp vụ, từ viết tắt chuyên ngành và mô phỏng tình huống thực tế.',
+    order: 6,
     isPublished: true,
   },
 ];

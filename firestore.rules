@@ -61,7 +61,7 @@ service cloud.firestore {
         && isValidId(data.uid)
         && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 100
         && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
-        && data.currentLevel is string && data.currentLevel in ['A1', 'A2', 'B1']
+        && data.currentLevel is string && data.currentLevel in ['A1', 'A2', 'B1', 'B2', 'C1']
         && data.streakDays is number && data.streakDays >= 0 && data.streakDays <= 10000
         && data.lastStudyDate is string && data.lastStudyDate.size() <= 20
         && data.dailyGoalMinutes is number && data.dailyGoalMinutes >= 5 && data.dailyGoalMinutes <= 240
@@ -225,7 +225,7 @@ service cloud.firestore {
         ])
         && isValidId(data.uid)
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
-        && data.currentLevel is string && data.currentLevel in ['A1', 'A2', 'B1']
+        && data.currentLevel is string && data.currentLevel in ['A1', 'A2', 'B1', 'B2', 'C1']
         && data.completedLessons is number && data.completedLessons >= 0 && data.completedLessons <= 500
         && data.totalLessons is number && data.totalLessons >= 1 && data.totalLessons <= 500
         && data.completionPercent is number && data.completionPercent >= 0 && data.completionPercent <= 100

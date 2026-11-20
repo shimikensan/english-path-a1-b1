@@ -1,6 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type CEFRLevelId = 'A1' | 'A2' | 'B1' | string;
+export type LearnerCEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
+export type CEFRLevelId = LearnerCEFRLevel | 'ESP' | string;
 
 export type PartOfSpeech =
   | 'noun'
@@ -128,7 +129,7 @@ export interface UserProfile {
   uid: string;
   fullName: string;
   email: string;
-  currentLevel: 'A1' | 'A2' | 'B1';
+  currentLevel: LearnerCEFRLevel;
   streakDays: number;
   lastStudyDate: string;
   dailyGoalMinutes: number;
@@ -204,7 +205,7 @@ export interface UserVocabularyDoc {
 export interface LeaderboardEntryDoc {
   uid: string;
   displayName: string;
-  currentLevel: 'A1' | 'A2' | 'B1';
+  currentLevel: LearnerCEFRLevel;
   completedLessons: number;
   totalLessons: number;
   completionPercent: number;

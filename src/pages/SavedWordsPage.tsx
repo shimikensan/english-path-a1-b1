@@ -102,7 +102,7 @@ export function SavedWordsPage({ onOpenLesson }: SavedWordsPageProps) {
             {tab === 'favorites' ? 'Chưa có từ yêu thích nào' : 'Chưa có từ nào được đánh dấu đã thuộc'}
           </p>
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            Khi học Flashcard hoặc tra từ vựng trong các bài học A1–B1, hãy nhấn biểu tượng trái tim hoặc nút "Đánh dấu đã học" để lưu vào sổ tay này.
+            Khi học Flashcard hoặc tra từ vựng trong các bài học A1–C1 & Chuyên ngành, hãy nhấn biểu tượng trái tim hoặc nút "Đánh dấu đã học" để lưu vào sổ tay này.
           </p>
         </div>
       ) : (

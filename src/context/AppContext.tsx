@@ -33,6 +33,7 @@ import {
 } from '../services/firestoreService';
 import type {
   LeaderboardEntryDoc,
+  LearnerCEFRLevel,
   LessonDoc,
   LevelDoc,
   QuizRating,
@@ -42,6 +43,28 @@ import type {
   UserVocabularyDoc,
   VocabularyItem,
 } from '../types';
+
+const CANONICAL_LEVEL_RANK: Record<string, number> = {
+  A1: 1,
+  A2: 2,
+  B1: 3,
+  B2: 4,
+  C1: 5,
+  ESP: 6,
+};
+
+function getLevelSortRank(levelId: string, fallbackOrder: number): number {
+  return CANONICAL_LEVEL_RANK[levelId] ?? 100 + fallbackOrder;
+}
+
+const VALID_LEARNER_LEVELS: ReadonlySet<LearnerCEFRLevel> = new Set(['A1', 'A2', 'B1', 'B2', 'C1']);
+
+function parseLearnerLevel(raw: string | null): LearnerCEFRLevel {
+  if (raw && VALID_LEARNER_LEVELS.has(raw as LearnerCEFRLevel)) {
+    return raw as LearnerCEFRLevel;
+  }
+  return 'A1';
+}
 
 export interface ToastMessage {
   id: string;
@@ -70,7 +93,7 @@ interface AppContextValue {
   dismissToast: (id: string) => void;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
-  signUpWithEmail: (fullName: string, email: string, password: string, level: 'A1' | 'A2' | 'B1') => Promise<void>;
+  signUpWithEmail: (fullName: string, email: string, password: string, level: LearnerCEFRLevel) => Promise<void>;
   sendResetPasswordEmail: (email: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   refreshVerificationStatus: () => Promise<boolean>;
@@ -78,7 +101,7 @@ interface AppContextValue {
   signOutUser: () => Promise<void>;
   updateProfileSettings: (updates: {
     fullName?: string;
-    currentLevel?: 'A1' | 'A2' | 'B1';
+    currentLevel?: LearnerCEFRLevel;
     dailyGoalMinutes?: number;
     reminderEnabled?: boolean;
   }) => Promise<void>;
@@ -237,7 +260,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           subscribeLessons(adminFlag, (lsns) => {
             if (!cancelled) {
               setFirestoreLessons(lsns);
-              // Automatically seed default A1-B1 curriculum on first Admin sign-in if Firestore lessons is empty
+              // Automatically seed default A1-C1 & ESP curriculum on first Admin sign-in if Firestore lessons is empty
               if (adminFlag && lsns.length === 0 && !autoSeededRef.current) {
                 autoSeededRef.current = true;
                 seedCurriculumToFirestore()
@@ -245,7 +268,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                     if (!cancelled) {
                       addToast(
                         'info',
-                        `Đã tự động đồng bộ ${res.lessonsCount} bài học chuẩn A1–B1 lên Firestore.`
+                        `Đã tự động đồng bộ ${res.lessonsCount} bài học chuẩn A1–C1 & Chuyên ngành lên Firestore.`
                       );
                     }
                   })
@@ -306,18 +329,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (firestoreLevels.length === 0) return DEFAULT_LEVELS;
     const existingIds = new Set(firestoreLevels.map((l) => l.levelId));
     const missingDefaults = DEFAULT_LEVELS.filter(
-      (l) => l.levelId === 'ESP' && !existingIds.has(l.levelId)
+      (l) => (l.levelId === 'B2' || l.levelId === 'C1' || l.levelId === 'ESP') && !existingIds.has(l.levelId)
     );
-    return [...firestoreLevels, ...missingDefaults].sort((a, b) => a.order - b.order);
+    return [...firestoreLevels, ...missingDefaults].sort(
+      (a, b) => getLevelSortRank(a.levelId, a.order) - getLevelSortRank(b.levelId, b.order)
+    );
   }, [firestoreLevels]);
 
   const lessons = useMemo<LessonDoc[]>(() => {
     if (firestoreLessons.length === 0) return ALL_DEFAULT_LESSONS;
     const existingIds = new Set(firestoreLessons.map((l) => l.lessonId));
-    const missingEsp = ALL_DEFAULT_LESSONS.filter(
-      (l) => l.levelId === 'ESP' && !existingIds.has(l.lessonId)
+    const missingExtended = ALL_DEFAULT_LESSONS.filter(
+      (l) =>
+        (l.levelId === 'B2' || l.levelId === 'C1' || l.levelId === 'ESP') &&
+        !existingIds.has(l.lessonId)
     );
-    return [...firestoreLessons, ...missingEsp].sort((a, b) => a.order - b.order);
+    return [...firestoreLessons, ...missingExtended].sort((a, b) => {
+      const rankDiff = getLevelSortRank(a.levelId, 99) - getLevelSortRank(b.levelId, 99);
+      if (rankDiff !== 0) return rankDiff;
+      return a.order - b.order;
+    });
   }, [firestoreLessons]);
 
   // Automatically sync verified learner's public completion stats to /leaderboard/{uid}
@@ -427,7 +458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signUpWithEmail = useCallback(
-    async (fullName: string, email: string, password: string, level: 'A1' | 'A2' | 'B1') => {
+    async (fullName: string, email: string, password: string, level: LearnerCEFRLevel) => {
       try {
         const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
         await updateProfile(cred.user, { displayName: fullName.trim() });
@@ -479,7 +510,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Force React state refresh with a fresh reference via token refresh
       await refreshed.getIdToken(true);
       setFirebaseUser({ ...refreshed } as User);
-      const pendingLevel = (window.localStorage.getItem('english-path-pending-level') as 'A1' | 'A2' | 'B1') || 'A1';
+      const pendingLevel = parseLearnerLevel(window.localStorage.getItem('english-path-pending-level'));
       await ensureUserProfile(refreshed, refreshed.displayName || undefined, pendingLevel);
       window.localStorage.removeItem('english-path-pending-level');
       addToast('success', 'Email đã được xác thực! Chào mừng bạn đến với Học tiếng Anh cùng Cậu bé Pilot.');
@@ -524,7 +555,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateProfileSettings = useCallback(
     async (updates: {
       fullName?: string;
-      currentLevel?: 'A1' | 'A2' | 'B1';
+      currentLevel?: LearnerCEFRLevel;
       dailyGoalMinutes?: number;
       reminderEnabled?: boolean;
     }) => {

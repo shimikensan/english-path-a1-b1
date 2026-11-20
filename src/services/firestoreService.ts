@@ -20,6 +20,7 @@ import type {
   AdminRecord,
   AdminSecurityVaultDoc,
   LeaderboardEntryDoc,
+  LearnerCEFRLevel,
   LessonDoc,
   LevelDoc,
   QuizRating,
@@ -36,7 +37,7 @@ import { calculateUpdatedStreak, sanitizeId, truncate } from '../utils/helpers';
 export async function ensureUserProfile(
   firebaseUser: User,
   preferredName?: string,
-  preferredLevel: 'A1' | 'A2' | 'B1' = 'A1'
+  preferredLevel: LearnerCEFRLevel = 'A1'
 ): Promise<UserProfile> {
   const path = `users/${firebaseUser.uid}`;
   const ref = doc(db, 'users', firebaseUser.uid);
@@ -83,7 +84,7 @@ export async function updateUserProfileData(
   uid: string,
   updates: {
     fullName?: string;
-    currentLevel?: 'A1' | 'A2' | 'B1';
+    currentLevel?: LearnerCEFRLevel;
     dailyGoalMinutes?: number;
     reminderEnabled?: boolean;
   }
@@ -463,7 +464,7 @@ export async function submitQuizAttempt(params: {
 // --- Admin Curriculum & Seeding Mutations ---
 
 export async function seedCurriculumToFirestore(
-  targetLevel?: 'A1' | 'A2' | 'B1' | 'ESP'
+  targetLevel?: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'ESP'
 ): Promise<{
   levelsCount: number;
   lessonsCount: number;
@@ -793,7 +794,7 @@ export function subscribePublicLeaderboard(
 export async function syncUserLeaderboardEntry(entry: {
   uid: string;
   displayName: string;
-  currentLevel: 'A1' | 'A2' | 'B1';
+  currentLevel: LearnerCEFRLevel;
   completedLessons: number;
   totalLessons: number;
   completionPercent: number;
@@ -805,8 +806,13 @@ export async function syncUserLeaderboardEntry(entry: {
   const path = `leaderboard/${entry.uid}`;
   const ref = doc(db, 'leaderboard', entry.uid);
 
-  const safeLevel: 'A1' | 'A2' | 'B1' =
-    entry.currentLevel === 'A2' || entry.currentLevel === 'B1' ? entry.currentLevel : 'A1';
+  const safeLevel: LearnerCEFRLevel =
+    entry.currentLevel === 'A2' ||
+    entry.currentLevel === 'B1' ||
+    entry.currentLevel === 'B2' ||
+    entry.currentLevel === 'C1'
+      ? entry.currentLevel
+      : 'A1';
 
   const mutableFields = {
     displayName: truncate(entry.displayName.trim() || 'Phi công tập sự', 100) || 'Phi công tập sự',

@@ -85,10 +85,15 @@ export function SpecializedHubPage({ onOpenLesson }: SpecializedHubPageProps) {
     [selectedTrackId]
   );
 
-  // Foundation A1–B1 completion readout & overall ESP progress
+  // Foundation CEFR A1–C1 completion readout & overall ESP progress
   const overviewStats = useMemo(() => {
     const coreLessons = lessons.filter(
-      (l) => l.levelId === 'A1' || l.levelId === 'A2' || l.levelId === 'B1'
+      (l) =>
+        l.levelId === 'A1' ||
+        l.levelId === 'A2' ||
+        l.levelId === 'B1' ||
+        l.levelId === 'B2' ||
+        l.levelId === 'C1'
     );
     const coreCompleted = coreLessons.filter(
       (l) => progressMap[l.lessonId]?.lessonCompleted
@@ -195,20 +200,20 @@ export function SpecializedHubPage({ onOpenLesson }: SpecializedHubPageProps) {
           <div className="space-y-2 max-w-3xl">
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#FF8524]">
               <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              <span>Chặng 4 · Tiếng Anh Chuyên ngành (ESP — Sau nền tảng A1–B1)</span>
+              <span>Chặng 6 · Tiếng Anh Chuyên ngành (ESP — Mở rộng sau nền tảng CEFR A1–C1)</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-balance">
               Huấn luyện tiếng Anh thực chiến theo 3 chuyên ngành trọng yếu
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Thiết kế nối tiếp ngay sau khi hoàn thành A1–B1, tập trung vào thuật ngữ kỹ thuật chuẩn quốc tế,
+              Thiết kế nối tiếp cùng hệ thống CEFR A1–C1, tập trung vào thuật ngữ kỹ thuật chuẩn quốc tế,
               mẫu câu điều hành – kiểm tra – báo cáo, bộ giải mã từ viết tắt, mô phỏng tình huống thực tế và luyện nghe phản xạ thuật ngữ.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3 shrink-0 sm:min-w-[280px]">
             <div className="rounded-xl bg-slate-900/75 border border-slate-700/80 p-3.5">
-              <div className="text-[11px] font-medium text-slate-400">Nền tảng A1–B1</div>
+              <div className="text-[11px] font-medium text-slate-400">Nền tảng CEFR A1–C1</div>
               <div className="text-xl font-extrabold text-white tabular-nums mt-0.5">
                 {overviewStats.coreCompleted}/{overviewStats.coreTotal}
                 <span className="text-xs font-semibold text-slate-400 ml-1">bài</span>

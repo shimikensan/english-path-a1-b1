@@ -22,7 +22,7 @@ interface LeaderboardPanelProps {
   onRequireLogin?: () => void;
 }
 
-type LevelFilter = 'ALL' | 'A1' | 'A2' | 'B1';
+type LevelFilter = 'ALL' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -111,6 +111,8 @@ export function LeaderboardPanel({
       A1: leaderboard.filter((e) => e.currentLevel === 'A1').length,
       A2: leaderboard.filter((e) => e.currentLevel === 'A2').length,
       B1: leaderboard.filter((e) => e.currentLevel === 'B1').length,
+      B2: leaderboard.filter((e) => e.currentLevel === 'B2').length,
+      C1: leaderboard.filter((e) => e.currentLevel === 'C1').length,
     };
   }, [leaderboard]);
 
@@ -275,7 +277,7 @@ export function LeaderboardPanel({
               Bảng xếp hạng Phi công học tập
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Tỷ lệ hoàn thiện tổng hợp của từng học viên trên lộ trình CEFR A1–B1 (tính theo 60% bài học đã hoàn thành + 40% từ vựng đã thuộc). Ai cũng có thể theo dõi trước và sau khi đăng nhập.
+              Tỷ lệ hoàn thiện tổng hợp của từng học viên trên lộ trình CEFR A1–C1 & Chuyên ngành (tính theo 60% bài học đã hoàn thành + 40% từ vựng đã thuộc). Ai cũng có thể theo dõi trước và sau khi đăng nhập.
             </p>
           </div>
 
@@ -405,8 +407,8 @@ export function LeaderboardPanel({
       <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
         <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           {/* Segmented Level Filter */}
-          <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/70 dark:border-slate-700/70 rounded-xl self-start">
-            {(['ALL', 'A1', 'A2', 'B1'] as const).map((lvl) => {
+          <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/70 dark:border-slate-700/70 rounded-xl self-start">
+            {(['ALL', 'A1', 'A2', 'B1', 'B2', 'C1'] as const).map((lvl) => {
               const active = levelFilter === lvl;
               return (
                 <button
@@ -419,7 +421,7 @@ export function LeaderboardPanel({
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  {lvl === 'ALL' ? 'Tất cả' : `CEFR ${lvl}`} ({levelCounts[lvl]})
+                  {lvl === 'ALL' ? 'Tất cả' : lvl} ({levelCounts[lvl]})
                 </button>
               );
             })}

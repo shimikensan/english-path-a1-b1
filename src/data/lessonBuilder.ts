@@ -30,7 +30,7 @@ export type PatternSeedTuple = [
 
 export interface LessonBlueprint {
   lessonId: string;
-  levelId: 'A1' | 'A2' | 'B1' | 'ESP';
+  levelId: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'ESP';
   topic: string;
   topicOrder: number;
   title: string;

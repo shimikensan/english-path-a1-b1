@@ -50,8 +50,8 @@ export function PatternsHubPage({ onOpenLesson }: PatternsHubPageProps) {
           />
         </div>
 
-        <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl self-start">
-          {['ALL', 'A1', 'A2', 'B1', 'ESP'].map((lvl) => (
+        <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl self-start">
+          {['ALL', 'A1', 'A2', 'B1', 'B2', 'C1', 'ESP'].map((lvl) => (
             <button
               key={lvl}
               type="button"

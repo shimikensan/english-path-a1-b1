@@ -30,7 +30,7 @@ import type { AppRoute, LessonTab } from './types';
 
 const ROUTE_TITLES: Record<AppRoute, string> = {
   dashboard: 'Buồng lái · Trang chủ',
-  roadmap: 'Đường bay CEFR A1–B1 & Chuyên ngành',
+  roadmap: 'Đường bay CEFR A1–C1 & Chuyên ngành',
   specialized: 'Tiếng Anh Chuyên ngành (ESP)',
   vocabulary: 'Kho từ vựng',
   patterns: 'Mẫu câu giao tiếp',

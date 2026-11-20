@@ -16,8 +16,17 @@ import { LeaderboardPanel } from '../components/LeaderboardPanel';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { APP_BRAND, AUTH_HERO_IMAGE } from '../data';
+import type { LearnerCEFRLevel } from '../types';
 
 type AuthMode = 'login' | 'register' | 'reset';
+
+const SIGNUP_LEVEL_LABELS: Record<LearnerCEFRLevel, string> = {
+  A1: 'Cơ bản',
+  A2: 'Sơ cấp',
+  B1: 'Trung cấp',
+  B2: 'Trung cao',
+  C1: 'Cao cấp',
+};
 
 export function AuthPage() {
   const {
@@ -37,7 +46,7 @@ export function AuthPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [level, setLevel] = useState<'A1' | 'A2' | 'B1'>('A1');
+  const [level, setLevel] = useState<LearnerCEFRLevel>('A1');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
@@ -162,9 +171,9 @@ export function AuthPage() {
         </div>
 
         <div className="hidden md:flex items-center gap-4 text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
-          <span>3 chặng bay CEFR A1–B1</span>
+          <span>Lộ trình CEFR A1–C1 & Chuyên ngành</span>
           <span aria-hidden="true">·</span>
-          <span>30 bài học & 450 từ vựng IPA</span>
+          <span>51 bài học & 765 từ vựng IPA</span>
           <span aria-hidden="true">·</span>
           <span>Đồng bộ Firebase</span>
         </div>
@@ -220,25 +229,25 @@ export function AuthPage() {
 
           <div className="relative z-10 p-6 sm:p-8 text-white space-y-4">
             <p className="text-xs font-semibold text-[#FF8524] tracking-wide">
-              Học tiếng Anh cùng Cậu bé Pilot · Chặng bay CEFR A1 → A2 → B1
+              Học tiếng Anh cùng Cậu bé Pilot · Chặng bay CEFR A1 → C1 & Chuyên ngành
             </p>
             <h1 className="text-2xl sm:text-3xl font-extrabold leading-tight text-balance">
-              Cất cánh cùng Cậu bé Pilot — Chinh phục tiếng Anh từ A1 đến B1.
+              Cất cánh cùng Cậu bé Pilot — Chinh phục tiếng Anh từ A1 đến C1 & Chuyên ngành.
             </h1>
             <p className="text-sm text-slate-200 leading-relaxed max-w-lg">
               Mỗi chặng bay gồm 4 phần trọn vẹn: Flashcard phát âm chuẩn IPA, Mẫu câu kèm hội thoại thực tế, Ngữ pháp giải thích dễ hiểu bằng tiếng Việt và Bài kiểm tra 15 câu lưu điểm tự động.
             </p>
             <div className="pt-3 border-t border-white/15 grid grid-cols-3 gap-4 tabular-nums">
               <div>
-                <div className="text-xl font-bold text-white">30</div>
-                <div className="text-xs text-slate-300">Chặng bài A1–B1</div>
+                <div className="text-xl font-bold text-white">51</div>
+                <div className="text-xs text-slate-300">Chặng bài A1–C1 & ESP</div>
               </div>
               <div>
-                <div className="text-xl font-bold text-white">450</div>
+                <div className="text-xl font-bold text-white">765</div>
                 <div className="text-xs text-slate-300">Từ vựng & IPA</div>
               </div>
               <div>
-                <div className="text-xl font-bold text-white">450</div>
+                <div className="text-xl font-bold text-white">765</div>
                 <div className="text-xs text-slate-300">Câu trắc nghiệm</div>
               </div>
             </div>
@@ -304,7 +313,7 @@ export function AuthPage() {
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               {mode === 'login' && 'Đăng nhập để đồng bộ lộ trình, từ vựng đã lưu và điểm kiểm tra trên mọi thiết bị.'}
-              {mode === 'register' && 'Bắt đầu hành trình chinh phục tiếng Anh từ A1 đến B1 ngay hôm nay.'}
+              {mode === 'register' && 'Bắt đầu hành trình chinh phục tiếng Anh từ A1 đến C1 & Chuyên ngành ngay hôm nay.'}
               {mode === 'reset' && 'Nhập email đã đăng ký để nhận liên kết đặt lại mật khẩu từ Firebase.'}
             </p>
           </div>
@@ -430,19 +439,20 @@ export function AuthPage() {
                 <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   Trình độ xuất phát của bạn
                 </span>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['A1', 'A2', 'B1'] as const).map((lvl) => (
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {(['A1', 'A2', 'B1', 'B2', 'C1'] as const).map((lvl) => (
                     <button
                       key={lvl}
                       type="button"
                       onClick={() => setLevel(lvl)}
-                      className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-colors ${
+                      className={`py-2 px-2 rounded-xl border text-xs font-semibold transition-colors text-center ${
                         level === lvl
                           ? 'border-[#FF6B00] bg-[#FF6B00]/12 dark:bg-[#FF6B00]/15 text-[#D94E00] dark:text-[#FF8524]'
                           : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                     >
-                      {lvl} · {lvl === 'A1' ? 'Cơ bản' : lvl === 'A2' ? 'Sơ cấp' : 'Trung cấp'}
+                      <div>{lvl}</div>
+                      <div className="text-[10px] font-normal opacity-80">{SIGNUP_LEVEL_LABELS[lvl]}</div>
                     </button>
                   ))}
                 </div>
@@ -488,7 +498,7 @@ export function AuthPage() {
 
       <footer className="relative z-10 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 px-6 lg:px-10">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-          <span>{APP_BRAND.fullName} · Nền tảng học tiếng Anh chuẩn CEFR A1–B1</span>
+          <span>{APP_BRAND.fullName} · Nền tảng học tiếng Anh chuẩn CEFR A1–C1 & Chuyên ngành</span>
           <span className="font-mono font-medium text-slate-600 dark:text-slate-300">
             {APP_BRAND.copyright}
           </span>

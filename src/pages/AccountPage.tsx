@@ -3,6 +3,7 @@ import { KeyRound, LogOut, Moon, Save, ShieldCheck, Sun } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { PILOT_RANKS } from '../data';
+import type { LearnerCEFRLevel } from '../types';
 import { formatTimestampVi } from '../utils/helpers';
 
 export function AccountPage() {
@@ -17,7 +18,7 @@ export function AccountPage() {
   const { theme, toggleTheme } = useTheme();
 
   const [fullName, setFullName] = useState(profile?.fullName || '');
-  const [currentLevel, setCurrentLevel] = useState<'A1' | 'A2' | 'B1'>(
+  const [currentLevel, setCurrentLevel] = useState<LearnerCEFRLevel>(
     profile?.currentLevel || 'A1'
   );
   const [dailyGoalMinutes, setDailyGoalMinutes] = useState(profile?.dailyGoalMinutes ?? 20);
@@ -148,8 +149,8 @@ export function AccountPage() {
             <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
               Cấp độ tiếng Anh đang theo học
             </span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {(['A1', 'A2', 'B1'] as const).map((lvl) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+              {(['A1', 'A2', 'B1', 'B2', 'C1'] as const).map((lvl) => (
                 <button
                   key={lvl}
                   type="button"
@@ -161,7 +162,7 @@ export function AccountPage() {
                   }`}
                 >
                   <div>CEFR {lvl}</div>
-                  <div className="text-[11px] font-normal opacity-80 mt-0.5">
+                  <div className="text-[11px] font-normal opacity-80 mt-0.5 truncate">
                     {PILOT_RANKS[lvl]?.rankVi}
                   </div>
                 </button>

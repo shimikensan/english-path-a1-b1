@@ -49,12 +49,12 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
         : 0;
 
     // Level progress breakdown for chart
-    const levelChartData = ['A1', 'A2', 'B1', 'ESP'].map((lvl) => {
+    const levelChartData = ['A1', 'A2', 'B1', 'B2', 'C1', 'ESP'].map((lvl) => {
       const levelLessons = lessons.filter((l) => l.levelId === lvl);
       const done = levelLessons.filter((l) => progressMap[l.lessonId]?.lessonCompleted).length;
       const pct = levelLessons.length > 0 ? Math.round((done / levelLessons.length) * 100) : 0;
       return {
-        level: lvl === 'ESP' ? 'Chuyên ngành' : `Level ${lvl}`,
+        level: lvl === 'ESP' ? 'ESP' : lvl,
         completed: done,
         total: levelLessons.length,
         percent: pct,
@@ -181,7 +181,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
               onClick={() => onNavigate('roadmap')}
               className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-slate-600/80 bg-slate-800/50 text-sm font-semibold text-slate-100 hover:bg-slate-800 hover:border-slate-500 transition-colors whitespace-nowrap"
             >
-              Xem đường bay A1–B1
+              Xem đường bay A1–C1
             </button>
           </div>
         </div>
@@ -189,7 +189,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
         {/* Runway Flight Plan Bar */}
         <div className="relative z-10 mt-6 pt-5 border-t border-slate-700/70 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-300 tabular-nums">
-            <span>Hành trình chinh phục A1 → A2 → B1 → Chuyên ngành</span>
+            <span>Hành trình chinh phục A1 → A2 → B1 → B2 → C1 → Chuyên ngành</span>
             <span className="font-semibold text-[#FF8524]">
               {stats.completedCount}/{stats.totalLessons} chặng bài ({overallFlightPct}%)
             </span>
@@ -385,7 +385,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
           </div>
           <div className="space-y-1">
             <div className="text-xs font-mono font-bold text-[#D94E00] dark:text-[#FF8524]">
-              CHẶNG 4 · TIẾNG ANH CHUYÊN NGÀNH (SAU A1–B1)
+              CHẶNG 6 · TIẾNG ANH CHUYÊN NGÀNH (ESP)
             </div>
             <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
               3 Chuyên ngành thực chiến: Chế áp vô tuyến & UAV · Kiểm tra an ninh · Kiểm nghiệm thực phẩm
@@ -415,7 +415,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
                 Tiến độ theo cấp độ & Chuyên ngành
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Tỷ lệ bài học đã hoàn thành (%) trên A1, A2, B1 và Tiếng Anh chuyên ngành
+                Tỷ lệ bài học đã hoàn thành (%) trên A1, A2, B1, B2, C1 và Tiếng Anh chuyên ngành (ESP)
               </p>
             </div>
             <TrendingUp className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />

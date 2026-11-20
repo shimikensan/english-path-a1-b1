@@ -24,7 +24,7 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
     <div className="space-y-8">
       {/* Header & Filter Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl self-start">
+        <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl self-start">
           <button
             type="button"
             onClick={() => setSelectedLevel('ALL')}

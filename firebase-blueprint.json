@@ -27,7 +27,7 @@
         },
         "currentLevel": {
           "type": "string",
-          "enum": ["A1", "A2", "B1"],
+          "enum": ["A1", "A2", "B1", "B2", "C1"],
           "description": "Active CEFR study level."
         },
         "streakDays": {
@@ -167,7 +167,7 @@
     },
     "Level": {
       "title": "Level",
-      "description": "CEFR learning level definition (A1, A2, B1, or admin-added level).",
+      "description": "CEFR learning level definition (A1, A2, B1, B2, C1, ESP, or admin-added level).",
       "type": "object",
       "properties": {
         "levelId": {
@@ -514,7 +514,7 @@
         },
         "currentLevel": {
           "type": "string",
-          "enum": ["A1", "A2", "B1"]
+          "enum": ["A1", "A2", "B1", "B2", "C1"]
         },
         "completedLessons": {
           "type": "number"

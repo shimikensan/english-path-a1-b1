@@ -396,14 +396,14 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
 
   // --- Handlers ---
 
-  const handleSeed = async (target?: 'A1' | 'A2' | 'B1' | 'ESP') => {
+  const handleSeed = async (target?: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'ESP') => {
     const label = target ?? 'ALL';
     setSeedingTarget(label);
     try {
       const res = await seedCurriculumToFirestore(target);
       addToast(
         'success',
-        `Đã đồng bộ ${res.levelsCount} cấp độ và ${res.lessonsCount} bài học (${target ?? 'A1–B1 & Chuyên ngành'}) lên Firestore.`
+        `Đã đồng bộ ${res.levelsCount} cấp độ và ${res.lessonsCount} bài học (${target ?? 'A1–C1 & Chuyên ngành'}) lên Firestore.`
       );
     } catch {
       addToast('error', 'Đồng bộ giáo trình thất bại. Vui lòng kiểm tra kết nối và quyền Admin.');
@@ -711,7 +711,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
               <span>Bảng điều khiển Quản trị viên · Đã xác thực mật khẩu</span>
             </div>
             <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
-              Quản lý giáo trình CEFR A1–B1 & Học viên
+              Quản lý giáo trình CEFR A1–C1, Chuyên ngành & Học viên
             </h2>
           </div>
 
@@ -804,7 +804,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                   Khởi tạo & Đồng bộ dữ liệu giáo trình chuẩn lên Cloud Firestore
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Đẩy toàn bộ 4 cấp độ (A1, A2, B1 và Chuyên ngành ESP) gồm 39 bài học chuẩn (585 từ vựng, mẫu câu, ngữ pháp và trắc nghiệm) vào Firestore để tất cả học viên đồng bộ theo thời gian thực.
+                  Đẩy toàn bộ 6 cấp độ (A1, A2, B1, B2, C1 và Chuyên ngành ESP) gồm 51 bài học chuẩn (765 từ vựng, mẫu câu, ngữ pháp và trắc nghiệm) vào Firestore để tất cả học viên đồng bộ theo thời gian thực.
                 </p>
               </div>
               <button
@@ -826,9 +826,9 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
               >
                 <Database className="w-4 h-4" />
-                {seedingTarget === 'ALL' ? 'Đang đồng bộ 39 bài...' : 'Đồng bộ toàn bộ 39 bài (A1–B1 & ESP)'}
+                {seedingTarget === 'ALL' ? 'Đang đồng bộ 51 bài...' : 'Đồng bộ toàn bộ 51 bài (A1–C1 & ESP)'}
               </button>
-              {(['A1', 'A2', 'B1', 'ESP'] as const).map((lvl) => (
+              {(['A1', 'A2', 'B1', 'B2', 'C1', 'ESP'] as const).map((lvl) => (
                 <button
                   key={lvl}
                   type="button"
@@ -840,7 +840,9 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                     ? `Đang đồng bộ ${lvl}...`
                     : lvl === 'ESP'
                       ? 'Seed riêng Chuyên ngành (9 bài)'
-                      : `Seed riêng Level ${lvl} (10 bài)`}
+                      : lvl === 'B2' || lvl === 'C1'
+                        ? `Seed riêng Level ${lvl} (6 bài)`
+                        : `Seed riêng Level ${lvl} (10 bài)`}
                 </button>
               ))}
             </div>
@@ -1075,7 +1077,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
           {/* Toolbar */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+              <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
                 {['ALL', ...levels.map((l) => l.levelId)].map((lvlId) => (
                   <button
                     key={lvlId}

@@ -54,7 +54,7 @@ export function ProgressPage({ onOpenLesson }: ProgressPageProps) {
   return (
     <div className="space-y-8">
       {/* Level Mastery Cards */}
-      <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {levelBreakdown.map((item) => (
           <div
             key={item.levelId}
