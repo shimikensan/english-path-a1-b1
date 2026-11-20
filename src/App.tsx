@@ -24,12 +24,14 @@ import { ProgressPage } from './pages/ProgressPage';
 import { QuizzesHubPage } from './pages/QuizzesHubPage';
 import { RoadmapPage } from './pages/RoadmapPage';
 import { SavedWordsPage } from './pages/SavedWordsPage';
+import { SpecializedHubPage } from './pages/SpecializedHubPage';
 import { VocabularyHubPage } from './pages/VocabularyHubPage';
 import type { AppRoute, LessonTab } from './types';
 
 const ROUTE_TITLES: Record<AppRoute, string> = {
   dashboard: 'Buồng lái · Trang chủ',
-  roadmap: 'Đường bay CEFR A1–B1',
+  roadmap: 'Đường bay CEFR A1–B1 & Chuyên ngành',
+  specialized: 'Tiếng Anh Chuyên ngành (ESP)',
   vocabulary: 'Kho từ vựng',
   patterns: 'Mẫu câu giao tiếp',
   practice: 'Luyện tập tương tác',
@@ -100,7 +102,12 @@ function AppShell() {
 
   return (
     <>
-      <Layout currentRoute={route} onNavigate={handleNavigate} pageTitle={pageTitle}>
+      <Layout
+        currentRoute={route}
+        activeLessonLevelId={activeLesson?.levelId}
+        onNavigate={handleNavigate}
+        pageTitle={pageTitle}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={route === 'lesson' ? `lesson-${effectiveLessonId}-${initialLessonTab}` : route}
@@ -117,6 +124,9 @@ function AppShell() {
             )}
             {route === 'roadmap' && (
               <RoadmapPage onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')} />
+            )}
+            {route === 'specialized' && (
+              <SpecializedHubPage onOpenLesson={(id, tab) => handleOpenLesson(id, tab ?? 'vocabulary')} />
             )}
             {route === 'vocabulary' && (
               <VocabularyHubPage onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')} />
@@ -141,7 +151,9 @@ function AppShell() {
                 key={`${effectiveLessonId}-${initialLessonTab}`}
                 lessonId={effectiveLessonId}
                 initialTab={initialLessonTab}
-                onBack={() => handleNavigate('roadmap')}
+                onBack={() =>
+                  handleNavigate(activeLesson?.levelId === 'ESP' ? 'specialized' : 'roadmap')
+                }
                 onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')}
               />
             )}

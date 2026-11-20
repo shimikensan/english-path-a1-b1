@@ -396,14 +396,14 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
 
   // --- Handlers ---
 
-  const handleSeed = async (target?: 'A1' | 'A2' | 'B1') => {
+  const handleSeed = async (target?: 'A1' | 'A2' | 'B1' | 'ESP') => {
     const label = target ?? 'ALL';
     setSeedingTarget(label);
     try {
       const res = await seedCurriculumToFirestore(target);
       addToast(
         'success',
-        `Đã đồng bộ ${res.levelsCount} cấp độ và ${res.lessonsCount} bài học (${target ?? 'A1–B1'}) lên Firestore.`
+        `Đã đồng bộ ${res.levelsCount} cấp độ và ${res.lessonsCount} bài học (${target ?? 'A1–B1 & Chuyên ngành'}) lên Firestore.`
       );
     } catch {
       addToast('error', 'Đồng bộ giáo trình thất bại. Vui lòng kiểm tra kết nối và quyền Admin.');
@@ -804,7 +804,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                   Khởi tạo & Đồng bộ dữ liệu giáo trình chuẩn lên Cloud Firestore
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Đẩy toàn bộ 3 cấp độ (A1, A2, B1) và 30 bài học chuẩn (450 từ vựng, 180 mẫu câu, 30 bài ngữ pháp, 450 câu trắc nghiệm) vào Firestore để tất cả học viên đồng bộ theo thời gian thực.
+                  Đẩy toàn bộ 4 cấp độ (A1, A2, B1 và Chuyên ngành ESP) gồm 39 bài học chuẩn (585 từ vựng, mẫu câu, ngữ pháp và trắc nghiệm) vào Firestore để tất cả học viên đồng bộ theo thời gian thực.
                 </p>
               </div>
               <button
@@ -826,9 +826,9 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
               >
                 <Database className="w-4 h-4" />
-                {seedingTarget === 'ALL' ? 'Đang đồng bộ 30 bài...' : 'Đồng bộ toàn bộ 30 bài (A1–B1)'}
+                {seedingTarget === 'ALL' ? 'Đang đồng bộ 39 bài...' : 'Đồng bộ toàn bộ 39 bài (A1–B1 & ESP)'}
               </button>
-              {(['A1', 'A2', 'B1'] as const).map((lvl) => (
+              {(['A1', 'A2', 'B1', 'ESP'] as const).map((lvl) => (
                 <button
                   key={lvl}
                   type="button"
@@ -836,7 +836,11 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                   disabled={seedingTarget !== null}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-600 disabled:opacity-60 text-slate-800 dark:text-slate-200 text-sm font-semibold transition-colors"
                 >
-                  {seedingTarget === lvl ? `Đang đồng bộ ${lvl}...` : `Seed riêng Level ${lvl} (10 bài)`}
+                  {seedingTarget === lvl
+                    ? `Đang đồng bộ ${lvl}...`
+                    : lvl === 'ESP'
+                      ? 'Seed riêng Chuyên ngành (9 bài)'
+                      : `Seed riêng Level ${lvl} (10 bài)`}
                 </button>
               ))}
             </div>

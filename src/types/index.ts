@@ -218,6 +218,7 @@ export interface LeaderboardEntryDoc {
 export type AppRoute =
   | 'dashboard'
   | 'roadmap'
+  | 'specialized'
   | 'vocabulary'
   | 'patterns'
   | 'practice'

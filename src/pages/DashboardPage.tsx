@@ -8,6 +8,7 @@ import {
   Flame,
   Plane,
   PlayCircle,
+  Radar,
   TrendingUp,
 } from 'lucide-react';
 import {
@@ -48,12 +49,12 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
         : 0;
 
     // Level progress breakdown for chart
-    const levelChartData = ['A1', 'A2', 'B1'].map((lvl) => {
+    const levelChartData = ['A1', 'A2', 'B1', 'ESP'].map((lvl) => {
       const levelLessons = lessons.filter((l) => l.levelId === lvl);
       const done = levelLessons.filter((l) => progressMap[l.lessonId]?.lessonCompleted).length;
       const pct = levelLessons.length > 0 ? Math.round((done / levelLessons.length) * 100) : 0;
       return {
-        level: `Level ${lvl}`,
+        level: lvl === 'ESP' ? 'Chuyên ngành' : `Level ${lvl}`,
         completed: done,
         total: levelLessons.length,
         percent: pct,
@@ -188,7 +189,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
         {/* Runway Flight Plan Bar */}
         <div className="relative z-10 mt-6 pt-5 border-t border-slate-700/70 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-300 tabular-nums">
-            <span>Hành trình chinh phục A1 → A2 → B1</span>
+            <span>Hành trình chinh phục A1 → A2 → B1 → Chuyên ngành</span>
             <span className="font-semibold text-[#FF8524]">
               {stats.completedCount}/{stats.totalLessons} chặng bài ({overallFlightPct}%)
             </span>
@@ -376,6 +377,34 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
         )}
       </section>
 
+      {/* Specialized English (Stage 4 ESP) Quick Access Banner */}
+      <section className="bg-white dark:bg-slate-900 cockpit-radar-panel cockpit-radar-panel-interactive p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="flex items-start gap-4 max-w-3xl">
+          <div className="w-11 h-11 rounded-xl bg-[#FF6B00]/12 border border-[#FF6B00]/35 text-[#D94E00] dark:text-[#FF8524] flex items-center justify-center shrink-0">
+            <Radar className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs font-mono font-bold text-[#D94E00] dark:text-[#FF8524]">
+              CHẶNG 4 · TIẾNG ANH CHUYÊN NGÀNH (SAU A1–B1)
+            </div>
+            <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
+              3 Chuyên ngành thực chiến: Chế áp vô tuyến & UAV · Kiểm tra an ninh · Kiểm nghiệm thực phẩm
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              135 thuật ngữ chuyên sâu, 36 mẫu câu nghiệp vụ, 27 từ viết tắt, mô phỏng tình huống bộ đàm/chốt an ninh/phòng Lab và luyện nghe nhận diện thuật ngữ.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigate('specialized')}
+          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-bold transition-colors whitespace-nowrap shrink-0 self-start lg:self-center shadow-[0_0_18px_rgba(255,107,0,0.24)]"
+        >
+          Mở khu Chuyên ngành
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </section>
+
       {/* Charts Row */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Level Completion Chart */}
@@ -383,10 +412,10 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Tiến độ theo cấp độ CEFR
+                Tiến độ theo cấp độ & Chuyên ngành
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Tỷ lệ bài học đã hoàn thành (%) trên từng cấp độ A1, A2 và B1
+                Tỷ lệ bài học đã hoàn thành (%) trên A1, A2, B1 và Tiếng Anh chuyên ngành
               </p>
             </div>
             <TrendingUp className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />

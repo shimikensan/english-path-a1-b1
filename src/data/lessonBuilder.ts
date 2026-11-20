@@ -30,13 +30,14 @@ export type PatternSeedTuple = [
 
 export interface LessonBlueprint {
   lessonId: string;
-  levelId: 'A1' | 'A2' | 'B1';
+  levelId: 'A1' | 'A2' | 'B1' | 'ESP';
   topic: string;
   topicOrder: number;
   title: string;
   description: string;
   order: number;
   estimatedMinutes: number;
+  dialogueSpeakers?: [string, string];
   vocabulary: VocabSeedTuple[];
   sentencePatterns: PatternSeedTuple[];
   grammar: GrammarContent;
@@ -80,6 +81,8 @@ export function buildLesson(bp: LessonBlueprint): LessonDoc {
     category: bp.topic,
   }));
 
+  const [speakerA, speakerB] = bp.dialogueSpeakers ?? ['Lan', 'Minh'];
+
   const sentencePatterns: SentencePattern[] = bp.sentencePatterns.map((p, idx) => ({
     id: `${bp.lessonId}_p${String(idx + 1).padStart(2, '0')}`,
     structure: p[0],
@@ -88,8 +91,8 @@ export function buildLesson(bp: LessonBlueprint): LessonDoc {
     exampleEn: p[3],
     exampleVi: p[4],
     dialogue: [
-      { speaker: 'Lan', en: p[5], vi: p[6] },
-      { speaker: 'Minh', en: p[7], vi: p[8] },
+      { speaker: speakerA, en: p[5], vi: p[6] },
+      { speaker: speakerB, en: p[7], vi: p[8] },
     ],
   }));
 

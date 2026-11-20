@@ -12,7 +12,7 @@ import type { VocabularyItem } from '../types';
 import { shuffleArray } from '../utils/helpers';
 import { speakEnglish } from '../utils/speech';
 
-type PracticeSource = 'A1' | 'A2' | 'B1' | 'learned' | 'favorite';
+type PracticeSource = 'A1' | 'A2' | 'B1' | 'ESP' | 'learned' | 'favorite';
 type PracticeMode = 'flashcard' | 'speed_quiz';
 
 interface SpeedQuestion {
@@ -40,7 +40,7 @@ export function PracticePage() {
   const pool = useMemo<VocabularyItem[]>(() => {
     const all: VocabularyItem[] = [];
     lessons.forEach((l) => {
-      if (source === 'A1' || source === 'A2' || source === 'B1') {
+      if (source === 'A1' || source === 'A2' || source === 'B1' || source === 'ESP') {
         if (l.levelId === source) all.push(...l.vocabulary);
       } else if (source === 'learned') {
         l.vocabulary.forEach((v) => {
@@ -100,6 +100,7 @@ export function PracticePage() {
               { id: 'A1', label: 'Level A1' },
               { id: 'A2', label: 'Level A2' },
               { id: 'B1', label: 'Level B1' },
+              { id: 'ESP', label: 'Chuyên ngành' },
               { id: 'learned', label: 'Từ đã học' },
               { id: 'favorite', label: 'Từ yêu thích' },
             ] as const

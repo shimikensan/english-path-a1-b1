@@ -13,6 +13,7 @@ import {
   MessageSquareQuote,
   Moon,
   Plane,
+  Radar,
   ShieldCheck,
   Sun,
   Trophy,
@@ -27,6 +28,7 @@ import type { AppRoute } from '../types';
 
 interface LayoutProps {
   currentRoute: AppRoute;
+  activeLessonLevelId?: string;
   onNavigate: (route: AppRoute) => void;
   pageTitle: string;
   children: React.ReactNode;
@@ -41,6 +43,7 @@ interface NavItem {
 const MAIN_NAV: NavItem[] = [
   { id: 'dashboard', label: 'Trang chủ', icon: Home },
   { id: 'roadmap', label: 'Lộ trình học', icon: Compass },
+  { id: 'specialized', label: 'Chuyên ngành', icon: Radar },
   { id: 'vocabulary', label: 'Từ vựng', icon: BookOpen },
   { id: 'patterns', label: 'Mẫu câu', icon: MessageSquareQuote },
   { id: 'practice', label: 'Luyện tập', icon: Dumbbell },
@@ -51,7 +54,13 @@ const MAIN_NAV: NavItem[] = [
   { id: 'account', label: 'Tài khoản cá nhân', icon: UserCircle },
 ];
 
-export function Layout({ currentRoute, onNavigate, pageTitle, children }: LayoutProps) {
+export function Layout({
+  currentRoute,
+  activeLessonLevelId,
+  onNavigate,
+  pageTitle,
+  children,
+}: LayoutProps) {
   const { profile, isAdmin, signOutUser } = useApp();
   const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -78,7 +87,7 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
               {APP_BRAND.shortName}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-              Học tiếng Anh A1–B1
+              A1–B1 & Chuyên ngành
             </div>
           </div>
         </button>
@@ -97,7 +106,10 @@ export function Layout({ currentRoute, onNavigate, pageTitle, children }: Layout
         {MAIN_NAV.map((item) => {
           const Icon = item.icon;
           const active =
-            currentRoute === item.id || (currentRoute === 'lesson' && item.id === 'roadmap');
+            currentRoute === item.id ||
+            (currentRoute === 'lesson' &&
+              ((activeLessonLevelId === 'ESP' && item.id === 'specialized') ||
+                (activeLessonLevelId !== 'ESP' && item.id === 'roadmap')));
           return (
             <button
               key={item.id}

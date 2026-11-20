@@ -303,13 +303,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const firestoreSeeded = firestoreLessons.length > 0;
 
   const levels = useMemo<LevelDoc[]>(() => {
-    if (firestoreLevels.length > 0) return firestoreLevels;
-    return DEFAULT_LEVELS;
+    if (firestoreLevels.length === 0) return DEFAULT_LEVELS;
+    const existingIds = new Set(firestoreLevels.map((l) => l.levelId));
+    const missingDefaults = DEFAULT_LEVELS.filter(
+      (l) => l.levelId === 'ESP' && !existingIds.has(l.levelId)
+    );
+    return [...firestoreLevels, ...missingDefaults].sort((a, b) => a.order - b.order);
   }, [firestoreLevels]);
 
   const lessons = useMemo<LessonDoc[]>(() => {
-    if (firestoreLessons.length > 0) return firestoreLessons;
-    return ALL_DEFAULT_LESSONS;
+    if (firestoreLessons.length === 0) return ALL_DEFAULT_LESSONS;
+    const existingIds = new Set(firestoreLessons.map((l) => l.lessonId));
+    const missingEsp = ALL_DEFAULT_LESSONS.filter(
+      (l) => l.levelId === 'ESP' && !existingIds.has(l.lessonId)
+    );
+    return [...firestoreLessons, ...missingEsp].sort((a, b) => a.order - b.order);
   }, [firestoreLessons]);
 
   // Automatically sync verified learner's public completion stats to /leaderboard/{uid}

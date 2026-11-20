@@ -73,7 +73,7 @@ export function VocabularyHubPage({ onOpenLesson }: VocabularyHubPageProps) {
           </div>
 
           <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl self-start">
-            {['ALL', 'A1', 'A2', 'B1'].map((lvl) => (
+            {['ALL', 'A1', 'A2', 'B1', 'ESP'].map((lvl) => (
               <button
                 key={lvl}
                 type="button"
@@ -84,7 +84,7 @@ export function VocabularyHubPage({ onOpenLesson }: VocabularyHubPageProps) {
                     : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
-                {lvl === 'ALL' ? 'Tất cả' : lvl}
+                {lvl === 'ALL' ? 'Tất cả' : lvl === 'ESP' ? 'Chuyên ngành' : lvl}
               </button>
             ))}
           </div>
@@ -112,7 +112,7 @@ export function VocabularyHubPage({ onOpenLesson }: VocabularyHubPageProps) {
         </div>
 
         <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-          Hiển thị {filtered.length} / {allItems.length} từ vựng chuẩn CEFR A1–B1
+          Hiển thị {filtered.length} / {allItems.length} từ vựng chuẩn CEFR A1–B1 & Chuyên ngành
         </div>
       </div>
 

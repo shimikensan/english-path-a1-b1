@@ -74,12 +74,12 @@ export function LessonDetailPage({
             className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-[#D94E00] dark:hover:text-[#FF8524] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            Quay lại lộ trình
+            {lesson.levelId === 'ESP' ? 'Quay lại Chuyên ngành' : 'Quay lại lộ trình'}
           </button>
 
           <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
             <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
-              Level {lesson.levelId}
+              {lesson.levelId === 'ESP' ? 'Chuyên ngành' : `Level ${lesson.levelId}`}
             </span>
             <span aria-hidden="true">·</span>
             <span>{lesson.topic}</span>

@@ -21,7 +21,7 @@ export function QuizzesHubPage({ onStartLessonQuiz }: QuizzesHubPageProps) {
       <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-slate-900 dark:text-white">
-            Ngân hàng 30 bài kiểm tra trắc nghiệm chuẩn CEFR
+            Ngân hàng {lessons.length} bài kiểm tra trắc nghiệm CEFR & Chuyên ngành
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Mỗi bài gồm 15 câu hỏi trộn ngẫu nhiên đáp án, giải thích chi tiết bằng tiếng Việt và tự động lưu điểm lên Firestore.
@@ -29,7 +29,7 @@ export function QuizzesHubPage({ onStartLessonQuiz }: QuizzesHubPageProps) {
         </div>
 
         <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl self-start">
-          {['ALL', 'A1', 'A2', 'B1'].map((lvl) => (
+          {['ALL', 'A1', 'A2', 'B1', 'ESP'].map((lvl) => (
             <button
               key={lvl}
               type="button"
@@ -40,7 +40,7 @@ export function QuizzesHubPage({ onStartLessonQuiz }: QuizzesHubPageProps) {
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
-              {lvl === 'ALL' ? 'Tất cả' : lvl}
+              {lvl === 'ALL' ? 'Tất cả' : lvl === 'ESP' ? 'Chuyên ngành' : lvl}
             </button>
           ))}
         </div>

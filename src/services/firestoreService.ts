@@ -462,7 +462,9 @@ export async function submitQuizAttempt(params: {
 
 // --- Admin Curriculum & Seeding Mutations ---
 
-export async function seedCurriculumToFirestore(targetLevel?: 'A1' | 'A2' | 'B1'): Promise<{
+export async function seedCurriculumToFirestore(
+  targetLevel?: 'A1' | 'A2' | 'B1' | 'ESP'
+): Promise<{
   levelsCount: number;
   lessonsCount: number;
 }> {
