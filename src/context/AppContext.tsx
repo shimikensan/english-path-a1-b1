@@ -441,7 +441,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     quizResults,
   ]);
 
-  // Automatically sync ALL learners' leaderboard documents when Admin logs in and stale denominators exist (e.g., 39 -> 51)
+  // Automatically reconcile ALL /users accounts 1:1 with /leaderboard when Admin logs in
   useEffect(() => {
     if (
       !isAdmin ||
@@ -456,19 +456,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const publishedLessons = lessons.filter((l) => l.isPublished !== false);
     const canonicalTotal = Math.max(1, publishedLessons.length);
-    const hasOutdatedEntry = leaderboard.some((entry) => entry.totalLessons !== canonicalTotal);
 
-    if (!hasOutdatedEntry || autoSyncedAllLeaderboardRef.current === canonicalTotal) {
+    if (autoSyncedAllLeaderboardRef.current === canonicalTotal) {
       return;
     }
 
     autoSyncedAllLeaderboardRef.current = canonicalTotal;
     adminSyncAllUsersLeaderboard(publishedLessons)
       .then((res) => {
-        if (res.syncedUsers > 0) {
+        const prevCount = leaderboard.length;
+        const hadMismatch =
+          res.syncedUsers !== prevCount ||
+          res.removedOrphans > 0 ||
+          leaderboard.some((entry) => entry.totalLessons !== res.totalLessons);
+        if (hadMismatch && res.syncedUsers > 0) {
           addToast(
             'success',
-            `Đã tự động đồng bộ mốc ${res.totalLessons} bài học cho toàn bộ ${res.syncedUsers} tài khoản trên Bảng xếp hạng.`
+            `Đã tự động đồng bộ đủ ${res.syncedUsers} tài khoản (${res.totalLessons} bài học) lên Bảng xếp hạng.`
           );
         }
       })

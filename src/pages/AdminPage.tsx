@@ -209,7 +209,7 @@ interface AdminPageProps {
 }
 
 export function AdminPage({ onBackToDashboard }: AdminPageProps) {
-  const { firebaseUser, isAdmin, levels, lessons, firestoreSeeded, addToast } = useApp();
+  const { firebaseUser, isAdmin, levels, lessons, leaderboard, firestoreSeeded, addToast } = useApp();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [vaultDoc, setVaultDoc] = useState<AdminSecurityVaultDoc | null>(null);
   const [vaultUnlocked, setVaultUnlocked] = useState<boolean>(() =>
@@ -342,6 +342,16 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
   }, [loadAdminOverview]);
 
   const adminUidSet = useMemo(() => new Set(adminsList.map((a) => a.uid)), [adminsList]);
+  const leaderboardByUid = useMemo(() => {
+    const map = new Map<string, (typeof leaderboard)[number]>();
+    leaderboard.forEach((entry) => map.set(entry.uid, entry));
+    return map;
+  }, [leaderboard]);
+
+  const missingOnLeaderboardCount = useMemo(
+    () => usersList.filter((u) => !leaderboardByUid.has(u.uid)).length,
+    [usersList, leaderboardByUid]
+  );
 
   const globalAvgScore = useMemo(() => {
     if (allQuizResults.length === 0) return 0;
@@ -1241,24 +1251,44 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
       {/* TAB 4: USERS & RBAC */}
       {activeTab === 'users' && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+          <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 Danh sách tài khoản & Phân quyền Quản trị (RBAC)
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Quyền Quản trị được xác thực trực tiếp trên Firestore Security Rules thông qua collection admins.
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
+                Tổng {usersList.length} tài khoản trên Firestore · Đã đồng bộ Bảng xếp hạng:{' '}
+                <strong className="text-slate-800 dark:text-slate-200">
+                  {leaderboard.length}/{usersList.length}
+                </strong>
+                {missingOnLeaderboardCount > 0 && (
+                  <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                    {' '}
+                    (Còn {missingOnLeaderboardCount} tài khoản chưa có trên BXH)
+                  </span>
+                )}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void loadAdminOverview()}
-              disabled={loadingAdminData}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loadingAdminData ? 'animate-spin' : ''}`} />
-              Cập nhật
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSyncAllLeaderboards()}
+                disabled={syncingAllLeaderboard || loadingAdminData}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#FF6B00] hover:bg-[#FF7E1F] disabled:opacity-60 text-xs font-semibold text-white transition-colors whitespace-nowrap"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncingAllLeaderboard ? 'animate-spin' : ''}`} />
+                {syncingAllLeaderboard ? 'Đang đồng bộ BXH...' : `Đồng bộ đủ ${usersList.length} tài khoản lên BXH`}
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadAdminOverview()}
+                disabled={loadingAdminData}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingAdminData ? 'animate-spin' : ''}`} />
+                Cập nhật
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1267,6 +1297,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-xs font-semibold text-slate-500 dark:text-slate-400">
                   <th className="py-3 px-4">Học viên</th>
                   <th className="py-3 px-3">Trình độ</th>
+                  <th className="py-3 px-3">Tiến độ BXH</th>
                   <th className="py-3 px-3">Chuỗi học</th>
                   <th className="py-3 px-3">Vai trò</th>
                   <th className="py-3 px-3">Ngày tham gia</th>
@@ -1280,6 +1311,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                   const hasAdminRole = isBootstrapped || adminUidSet.has(u.uid);
                   const isSelf = firebaseUser?.uid === u.uid;
                   const canModify = !isBootstrapped && !isSelf;
+                  const lbEntry = leaderboardByUid.get(u.uid);
 
                   return (
                     <tr key={u.uid}>
@@ -1289,6 +1321,17 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                       </td>
                       <td className="py-3 px-3 text-xs font-bold text-blue-700 dark:text-blue-400">
                         CEFR {u.currentLevel}
+                      </td>
+                      <td className="py-3 px-3 text-xs tabular-nums whitespace-nowrap">
+                        {lbEntry ? (
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            {lbEntry.completionPercent}% ({lbEntry.completedLessons}/{lbEntry.totalLessons} bài)
+                          </span>
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400 font-medium">
+                            Chưa lên BXH
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300 tabular-nums">
                         {u.streakDays} ngày
@@ -1341,7 +1384,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                 })}
                 {usersList.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                    <td colSpan={7} className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                       Chưa có dữ liệu học viên nào trên Firestore.
                     </td>
                   </tr>

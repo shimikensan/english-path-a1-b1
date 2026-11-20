@@ -633,7 +633,27 @@ export async function adminListAllUsers(): Promise<UserProfile[]> {
   const path = 'users';
   try {
     const snap = await getDocs(collection(db, path));
-    return snap.docs.map((d) => d.data() as UserProfile);
+    return snap.docs.map((d) => {
+      const data = d.data() as Partial<UserProfile>;
+      return {
+        uid: d.id,
+        fullName: (typeof data.fullName === 'string' && data.fullName.trim()) || data.email?.split('@')[0] || 'Phi công tập sự',
+        email: typeof data.email === 'string' ? data.email : '',
+        currentLevel:
+          data.currentLevel === 'A2' ||
+          data.currentLevel === 'B1' ||
+          data.currentLevel === 'B2' ||
+          data.currentLevel === 'C1'
+            ? data.currentLevel
+            : 'A1',
+        streakDays: Number.isFinite(Number(data.streakDays)) ? Math.max(0, Math.round(Number(data.streakDays))) : 1,
+        lastStudyDate: typeof data.lastStudyDate === 'string' ? data.lastStudyDate : '',
+        dailyGoalMinutes: Number.isFinite(Number(data.dailyGoalMinutes)) ? Number(data.dailyGoalMinutes) : 20,
+        reminderEnabled: typeof data.reminderEnabled === 'boolean' ? data.reminderEnabled : true,
+        createdAt: data.createdAt,
+        lastLogin: data.lastLogin,
+      };
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
   }
@@ -842,15 +862,17 @@ export async function syncUserLeaderboardEntry(entry: {
   }
 }
 
+const VALID_FIRESTORE_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
+
 export async function adminSyncAllUsersLeaderboard(
   publishedLessons: LessonDoc[]
-): Promise<{ syncedUsers: number; totalLessons: number }> {
+): Promise<{ syncedUsers: number; removedOrphans: number; totalLessons: number }> {
   const effectiveLessons =
     publishedLessons.length > 0
       ? publishedLessons.filter((l) => l.isPublished !== false)
       : ALL_DEFAULT_LESSONS;
 
-  const totalLessons = Math.max(1, effectiveLessons.length);
+  const totalLessons = Math.max(1, Math.min(500, effectiveLessons.length));
   const totalVocab = Math.max(
     1,
     effectiveLessons.reduce((sum, l) => sum + l.vocabulary.length, 0)
@@ -868,9 +890,9 @@ export async function adminSyncAllUsersLeaderboard(
 
     const completedLessonsByUid = new Map<string, Set<string>>();
     progressSnap.docs.forEach((d) => {
-      const p = d.data() as UserProgressDoc;
-      if (!p.uid || !p.lessonCompleted) return;
-      if (validLessonIds.size > 0 && p.lessonId && !validLessonIds.has(p.lessonId)) return;
+      const p = d.data() as Partial<UserProgressDoc>;
+      if (!p.uid || !p.lessonCompleted || !p.lessonId) return;
+      if (validLessonIds.size > 0 && !validLessonIds.has(p.lessonId)) return;
       let set = completedLessonsByUid.get(p.uid);
       if (!set) {
         set = new Set<string>();
@@ -881,15 +903,15 @@ export async function adminSyncAllUsersLeaderboard(
 
     const learnedVocabByUid = new Map<string, number>();
     vocabSnap.docs.forEach((d) => {
-      const v = d.data() as UserVocabularyDoc;
+      const v = d.data() as Partial<UserVocabularyDoc>;
       if (!v.uid || !v.isLearned) return;
       learnedVocabByUid.set(v.uid, (learnedVocabByUid.get(v.uid) ?? 0) + 1);
     });
 
     const quizScoresByUid = new Map<string, { sum: number; count: number }>();
     quizSnap.docs.forEach((d) => {
-      const q = d.data() as QuizResultDoc;
-      if (!q.uid || typeof q.score !== 'number') return;
+      const q = d.data() as Partial<QuizResultDoc>;
+      if (!q.uid || typeof q.score !== 'number' || !Number.isFinite(q.score)) return;
       const cur = quizScoresByUid.get(q.uid) ?? { sum: 0, count: 0 };
       cur.sum += q.score;
       cur.count += 1;
@@ -901,69 +923,123 @@ export async function adminSyncAllUsersLeaderboard(
       existingLeaderboardMap.set(d.id, d.data() as LeaderboardEntryDoc);
     });
 
-    const users = usersSnap.docs.map((d) => d.data() as UserProfile).filter((u) => Boolean(u.uid));
+    const validUserDocs = usersSnap.docs
+      .filter((d) => VALID_FIRESTORE_ID_REGEX.test(d.id))
+      .map((d) => ({ id: d.id, data: d.data() as Partial<UserProfile> }));
 
-    // Commit in batches of 200 writes to stay well within Firestore batch limits
-    for (let i = 0; i < users.length; i += 200) {
-      const chunk = users.slice(i, i + 200);
+    const validUserIds = new Set(validUserDocs.map((u) => u.id));
+    let syncedUsers = 0;
+
+    const buildEntryPayload = (uid: string, user: Partial<UserProfile>) => {
+      const completedLessons = Math.min(500, completedLessonsByUid.get(uid)?.size ?? 0);
+      const learnedVocabCount = Math.min(5000, learnedVocabByUid.get(uid) ?? 0);
+      const quizAgg = quizScoresByUid.get(uid);
+      const averageQuizScore =
+        quizAgg && quizAgg.count > 0
+          ? Math.min(100, Math.max(0, Math.round(quizAgg.sum / quizAgg.count)))
+          : 0;
+
+      const lessonRatio = Math.min(1, completedLessons / totalLessons);
+      const vocabRatio = Math.min(1, learnedVocabCount / totalVocab);
+      const completionPercent = Math.min(
+        100,
+        Math.max(0, Math.round((lessonRatio * 0.6 + vocabRatio * 0.4) * 100))
+      );
+
+      const safeLevel: LearnerCEFRLevel =
+        user.currentLevel === 'A2' ||
+        user.currentLevel === 'B1' ||
+        user.currentLevel === 'B2' ||
+        user.currentLevel === 'C1'
+          ? user.currentLevel
+          : 'A1';
+
+      const rawName =
+        (typeof user.fullName === 'string' && user.fullName.trim()) ||
+        (typeof user.email === 'string' && user.email.split('@')[0]?.trim()) ||
+        'Phi công tập sự';
+      const safeName = truncate(rawName, 100) || 'Phi công tập sự';
+
+      const rawStreak = Number(user.streakDays);
+      const safeStreak = Number.isFinite(rawStreak)
+        ? Math.max(0, Math.min(10000, Math.round(rawStreak)))
+        : 1;
+
+      return {
+        displayName: safeName,
+        currentLevel: safeLevel,
+        completedLessons,
+        totalLessons,
+        completionPercent,
+        learnedVocabCount,
+        averageQuizScore,
+        streakDays: safeStreak,
+        isPublic: true,
+        updatedAt: serverTimestamp(),
+      };
+    };
+
+    // Upsert every valid user account in batches of 150, with resilient per-doc fallback
+    for (let i = 0; i < validUserDocs.length; i += 150) {
+      const chunk = validUserDocs.slice(i, i + 150);
       const batch = writeBatch(db);
 
-      for (const user of chunk) {
-        const completedLessons = Math.min(
-          500,
-          completedLessonsByUid.get(user.uid)?.size ?? 0
-        );
-        const learnedVocabCount = Math.min(5000, learnedVocabByUid.get(user.uid) ?? 0);
-        const quizAgg = quizScoresByUid.get(user.uid);
-        const averageQuizScore =
-          quizAgg && quizAgg.count > 0
-            ? Math.min(100, Math.max(0, Math.round(quizAgg.sum / quizAgg.count)))
-            : 0;
+      for (const { id: uid, data: user } of chunk) {
+        const ref = doc(db, 'leaderboard', uid);
+        const existingEntry = existingLeaderboardMap.get(uid);
+        const mutableFields = buildEntryPayload(uid, user);
 
-        const lessonRatio = Math.min(1, completedLessons / totalLessons);
-        const vocabRatio = Math.min(1, learnedVocabCount / totalVocab);
-        const completionPercent = Math.min(
-          100,
-          Math.max(0, Math.round((lessonRatio * 0.6 + vocabRatio * 0.4) * 100))
-        );
-
-        const safeLevel: LearnerCEFRLevel =
-          user.currentLevel === 'A2' ||
-          user.currentLevel === 'B1' ||
-          user.currentLevel === 'B2' ||
-          user.currentLevel === 'C1'
-            ? user.currentLevel
-            : 'A1';
-
-        const existingEntry = existingLeaderboardMap.get(user.uid);
-        const ref = doc(db, 'leaderboard', user.uid);
-        const mutableFields = {
-          displayName: truncate((user.fullName || 'Phi công tập sự').trim(), 100) || 'Phi công tập sự',
-          currentLevel: safeLevel,
-          completedLessons,
-          totalLessons: Math.max(1, Math.min(500, totalLessons)),
-          completionPercent,
-          learnedVocabCount,
-          averageQuizScore,
-          streakDays: Math.max(0, Math.min(10000, Math.round(user.streakDays ?? 1))),
-          isPublic: existingEntry?.isPublic ?? true,
-          updatedAt: serverTimestamp(),
-        };
-
-        if (existingEntry) {
+        if (existingEntry && existingEntry.uid === uid) {
           batch.update(ref, mutableFields);
         } else {
           batch.set(ref, {
-            uid: user.uid,
+            uid,
             ...mutableFields,
           });
         }
       }
 
-      await batch.commit();
+      try {
+        await batch.commit();
+        syncedUsers += chunk.length;
+      } catch {
+        // Fallback to per-document sync so one malformed legacy doc never blocks the rest
+        for (const { id: uid, data: user } of chunk) {
+          try {
+            const ref = doc(db, 'leaderboard', uid);
+            const existingEntry = existingLeaderboardMap.get(uid);
+            const mutableFields = buildEntryPayload(uid, user);
+            if (existingEntry && existingEntry.uid === uid) {
+              await updateDoc(ref, mutableFields);
+            } else {
+              await setDoc(ref, { uid, ...mutableFields });
+            }
+            syncedUsers += 1;
+          } catch (docErr) {
+            console.warn(`Skipped leaderboard sync for user ${uid}:`, docErr);
+          }
+        }
+      }
     }
 
-    return { syncedUsers: users.length, totalLessons };
+    // Remove orphan leaderboard docs whose user account no longer exists in /users
+    const orphanIds = Array.from(existingLeaderboardMap.keys()).filter(
+      (id) => !validUserIds.has(id) && VALID_FIRESTORE_ID_REGEX.test(id)
+    );
+    let removedOrphans = 0;
+    for (let i = 0; i < orphanIds.length; i += 150) {
+      const chunk = orphanIds.slice(i, i + 150);
+      const delBatch = writeBatch(db);
+      chunk.forEach((id) => delBatch.delete(doc(db, 'leaderboard', id)));
+      try {
+        await delBatch.commit();
+        removedOrphans += chunk.length;
+      } catch (delErr) {
+        console.warn('Failed to remove orphan leaderboard docs:', delErr);
+      }
+    }
+
+    return { syncedUsers, removedOrphans, totalLessons };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'leaderboard');
   }
