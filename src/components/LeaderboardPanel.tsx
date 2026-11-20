@@ -82,17 +82,58 @@ export function LeaderboardPanel({
   onViewAll,
   onRequireLogin,
 }: LeaderboardPanelProps) {
-  const { leaderboard, leaderboardLoading, leaderboardError, profile } = useApp();
+  const { leaderboard, leaderboardLoading, leaderboardError, profile, lessons } = useApp();
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Normalize all learners against the same canonical published curriculum (e.g. 51 lessons / 765 vocab)
+  const normalizedEntries = useMemo(() => {
+    const publishedLessons = lessons.filter((l) => l.isPublished !== false);
+    const canonicalTotalLessons = Math.max(1, publishedLessons.length);
+    const canonicalTotalVocab = Math.max(
+      1,
+      publishedLessons.reduce((sum, l) => sum + l.vocabulary.length, 0)
+    );
+
+    return leaderboard
+      .map((entry) => {
+        const totalLessons = Math.max(canonicalTotalLessons, entry.completedLessons);
+        const lessonRatio = Math.min(1, entry.completedLessons / totalLessons);
+        const vocabRatio = Math.min(1, entry.learnedVocabCount / canonicalTotalVocab);
+        const completionPercent = Math.min(
+          100,
+          Math.max(0, Math.round((lessonRatio * 0.6 + vocabRatio * 0.4) * 100))
+        );
+        return {
+          ...entry,
+          totalLessons,
+          completionPercent,
+        };
+      })
+      .sort((a, b) => {
+        if (b.completionPercent !== a.completionPercent) {
+          return b.completionPercent - a.completionPercent;
+        }
+        if (b.completedLessons !== a.completedLessons) {
+          return b.completedLessons - a.completedLessons;
+        }
+        if (b.learnedVocabCount !== a.learnedVocabCount) {
+          return b.learnedVocabCount - a.learnedVocabCount;
+        }
+        if (b.averageQuizScore !== a.averageQuizScore) {
+          return b.averageQuizScore - a.averageQuizScore;
+        }
+        return b.streakDays - a.streakDays;
+      });
+  }, [leaderboard, lessons]);
+
   // Assign global rank (1-based) to every entry in the full sorted leaderboard
   const rankedAll = useMemo(() => {
-    return leaderboard.map((entry, idx) => ({
+    return normalizedEntries.map((entry, idx) => ({
       ...entry,
       globalRank: idx + 1,
     }));
-  }, [leaderboard]);
+  }, [normalizedEntries]);
 
   const currentUserRanked = useMemo(() => {
     if (!profile) return null;
@@ -100,21 +141,21 @@ export function LeaderboardPanel({
   }, [rankedAll, profile]);
 
   const avgCompletion = useMemo(() => {
-    if (leaderboard.length === 0) return 0;
-    const sum = leaderboard.reduce((acc, e) => acc + e.completionPercent, 0);
-    return Math.round(sum / leaderboard.length);
-  }, [leaderboard]);
+    if (normalizedEntries.length === 0) return 0;
+    const sum = normalizedEntries.reduce((acc, e) => acc + e.completionPercent, 0);
+    return Math.round(sum / normalizedEntries.length);
+  }, [normalizedEntries]);
 
   const levelCounts = useMemo(() => {
     return {
-      ALL: leaderboard.length,
-      A1: leaderboard.filter((e) => e.currentLevel === 'A1').length,
-      A2: leaderboard.filter((e) => e.currentLevel === 'A2').length,
-      B1: leaderboard.filter((e) => e.currentLevel === 'B1').length,
-      B2: leaderboard.filter((e) => e.currentLevel === 'B2').length,
-      C1: leaderboard.filter((e) => e.currentLevel === 'C1').length,
+      ALL: normalizedEntries.length,
+      A1: normalizedEntries.filter((e) => e.currentLevel === 'A1').length,
+      A2: normalizedEntries.filter((e) => e.currentLevel === 'A2').length,
+      B1: normalizedEntries.filter((e) => e.currentLevel === 'B1').length,
+      B2: normalizedEntries.filter((e) => e.currentLevel === 'B2').length,
+      C1: normalizedEntries.filter((e) => e.currentLevel === 'C1').length,
     };
-  }, [leaderboard]);
+  }, [normalizedEntries]);
 
   const filteredList = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();

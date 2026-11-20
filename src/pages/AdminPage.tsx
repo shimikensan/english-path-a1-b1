@@ -34,6 +34,7 @@ import {
   adminRevokeAdmin,
   adminSaveLesson,
   adminSaveLevel,
+  adminSyncAllUsersLeaderboard,
   seedCurriculumToFirestore,
 } from '../services/firestoreService';
 import type {
@@ -221,8 +222,9 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
   const [allQuizResults, setAllQuizResults] = useState<QuizResultDoc[]>([]);
   const [loadingAdminData, setLoadingAdminData] = useState(false);
 
-  // Seeding state
+  // Seeding & sync state
   const [seedingTarget, setSeedingTarget] = useState<string | null>(null);
+  const [syncingAllLeaderboard, setSyncingAllLeaderboard] = useState(false);
 
   // Level form state
   const [editingLevelId, setEditingLevelId] = useState<string | null>(null);
@@ -401,14 +403,32 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     setSeedingTarget(label);
     try {
       const res = await seedCurriculumToFirestore(target);
+      const publishedLessons = lessons.filter((l) => l.isPublished !== false);
+      const syncRes = await adminSyncAllUsersLeaderboard(publishedLessons);
       addToast(
         'success',
-        `Đã đồng bộ ${res.levelsCount} cấp độ và ${res.lessonsCount} bài học (${target ?? 'A1–C1 & Chuyên ngành'}) lên Firestore.`
+        `Đã đồng bộ ${res.levelsCount} cấp độ, ${res.lessonsCount} bài học (${target ?? 'A1–C1 & Chuyên ngành'}) và cập nhật BXH cho ${syncRes.syncedUsers} tài khoản (${syncRes.totalLessons} bài).`
       );
     } catch {
       addToast('error', 'Đồng bộ giáo trình thất bại. Vui lòng kiểm tra kết nối và quyền Admin.');
     } finally {
       setSeedingTarget(null);
+    }
+  };
+
+  const handleSyncAllLeaderboards = async () => {
+    setSyncingAllLeaderboard(true);
+    try {
+      const publishedLessons = lessons.filter((l) => l.isPublished !== false);
+      const res = await adminSyncAllUsersLeaderboard(publishedLessons);
+      addToast(
+        'success',
+        `Đã đồng bộ toàn bộ ${res.syncedUsers} tài khoản học viên theo chuẩn ${res.totalLessons} bài học trên Firestore.`
+      );
+    } catch {
+      addToast('error', 'Không thể đồng bộ Bảng xếp hạng cho các tài khoản. Vui lòng thử lại.');
+    } finally {
+      setSyncingAllLeaderboard(false);
     }
   };
 
@@ -505,6 +525,12 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     setSavingLesson(true);
     try {
       await adminSaveLesson(editingLesson);
+      const updatedList = lessons.some((l) => l.lessonId === editingLesson.lessonId)
+        ? lessons.map((l) => (l.lessonId === editingLesson.lessonId ? editingLesson : l))
+        : [...lessons, editingLesson];
+      void adminSyncAllUsersLeaderboard(updatedList.filter((l) => l.isPublished !== false)).catch(
+        () => {}
+      );
       addToast('success', `Đã lưu bài học "${editingLesson.title}" lên Firestore.`);
       setEditingLesson(null);
     } catch {
@@ -522,6 +548,10 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
       danger: true,
       onConfirm: async () => {
         await adminDeleteLesson(lesson.lessonId);
+        const remaining = lessons.filter(
+          (l) => l.lessonId !== lesson.lessonId && l.isPublished !== false
+        );
+        void adminSyncAllUsersLeaderboard(remaining).catch(() => {});
         addToast('success', `Đã xóa bài học "${lesson.title}".`);
       },
     });
@@ -822,11 +852,22 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
               <button
                 type="button"
                 onClick={() => void handleSeed()}
-                disabled={seedingTarget !== null}
+                disabled={seedingTarget !== null || syncingAllLeaderboard}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
               >
                 <Database className="w-4 h-4" />
                 {seedingTarget === 'ALL' ? 'Đang đồng bộ 51 bài...' : 'Đồng bộ toàn bộ 51 bài (A1–C1 & ESP)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSyncAllLeaderboards()}
+                disabled={seedingTarget !== null || syncingAllLeaderboard}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+              >
+                <RefreshCw className={`w-4 h-4 ${syncingAllLeaderboard ? 'animate-spin' : ''}`} />
+                {syncingAllLeaderboard
+                  ? 'Đang đồng bộ tất cả tài khoản...'
+                  : `Đồng bộ BXH tất cả tài khoản (${lessons.filter((l) => l.isPublished !== false).length} bài)`}
               </button>
               {(['A1', 'A2', 'B1', 'B2', 'C1', 'ESP'] as const).map((lvl) => (
                 <button

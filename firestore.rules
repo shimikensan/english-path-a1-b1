@@ -458,18 +458,18 @@ service cloud.firestore {
       allow create: if isVerifiedUser()
         && isValidId(userId)
         && isValidLeaderboardEntry(incoming())
-        && request.auth.uid == userId
-        && incoming().uid == request.auth.uid
+        && incoming().uid == userId
+        && (request.auth.uid == userId || isAdmin())
         && incoming().updatedAt == request.time
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+        && exists(/databases/$(database)/documents/users/$(userId));
       allow update: if isVerifiedUser()
         && isValidId(userId)
         && isValidLeaderboardEntry(incoming())
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time
         && (
           (
             isOwner(userId)
-            && incoming().uid == existing().uid
-            && incoming().updatedAt == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'displayName', 'currentLevel', 'completedLessons', 'totalLessons',
               'completionPercent', 'learnedVocabCount', 'averageQuizScore',

@@ -16,6 +16,7 @@ import {
 import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS } from '../data';
 import { auth, googleProvider } from '../firebase';
 import {
+  adminSyncAllUsersLeaderboard,
   checkIsAdmin,
   ensureUserProfile,
   seedCurriculumToFirestore,
@@ -170,6 +171,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const autoSeededRef = useRef(false);
+  const autoSyncedAllLeaderboardRef = useRef<number | null>(null);
   const lastLeaderboardSigRef = useRef('');
 
   const addToast = useCallback((type: ToastMessage['type'], message: string) => {
@@ -197,6 +199,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setProgressHydrated(false);
         setQuizHydrated(false);
         setVocabHydrated(false);
+        autoSeededRef.current = false;
+        autoSyncedAllLeaderboardRef.current = null;
         lastLeaderboardSigRef.current = '';
         setFirestoreLevels([]);
         setFirestoreLessons([]);
@@ -260,8 +264,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           subscribeLessons(adminFlag, (lsns) => {
             if (!cancelled) {
               setFirestoreLessons(lsns);
-              // Automatically seed default A1-C1 & ESP curriculum on first Admin sign-in if Firestore lessons is empty
-              if (adminFlag && lsns.length === 0 && !autoSeededRef.current) {
+              // Automatically seed missing default A1-C1 & ESP curriculum on Admin sign-in
+              const firestoreIds = new Set(lsns.map((l) => l.lessonId));
+              const hasMissingDefaults =
+                lsns.length === 0 || ALL_DEFAULT_LESSONS.some((d) => !firestoreIds.has(d.lessonId));
+              if (adminFlag && hasMissingDefaults && !autoSeededRef.current) {
                 autoSeededRef.current = true;
                 seedCurriculumToFirestore()
                   .then((res) => {
@@ -366,12 +373,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const totalLessons = Math.max(1, lessons.length);
+    const publishedLessons = lessons.filter((l) => l.isPublished !== false);
+    const totalLessons = Math.max(1, publishedLessons.length);
     const totalVocab = Math.max(
       1,
-      lessons.reduce((sum, l) => sum + l.vocabulary.length, 0)
+      publishedLessons.reduce((sum, l) => sum + l.vocabulary.length, 0)
     );
-    const completedLessons = Object.values(progressMap).filter((p) => p.lessonCompleted).length;
+    const publishedIds = new Set(publishedLessons.map((l) => l.lessonId));
+    const completedLessons = Object.values(progressMap).filter(
+      (p) => p.lessonCompleted && publishedIds.has(p.lessonId)
+    ).length;
     const learnedVocabCount = Object.values(vocabMap).filter((v) => v.isLearned).length;
     const lessonRatio = Math.min(1, completedLessons / totalLessons);
     const vocabRatio = Math.min(1, learnedVocabCount / totalVocab);
@@ -429,6 +440,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     vocabMap,
     quizResults,
   ]);
+
+  // Automatically sync ALL learners' leaderboard documents when Admin logs in and stale denominators exist (e.g., 39 -> 51)
+  useEffect(() => {
+    if (
+      !isAdmin ||
+      !firebaseUser ||
+      !firebaseUser.emailVerified ||
+      dataLoading ||
+      leaderboardLoading ||
+      lessons.length === 0
+    ) {
+      return;
+    }
+
+    const publishedLessons = lessons.filter((l) => l.isPublished !== false);
+    const canonicalTotal = Math.max(1, publishedLessons.length);
+    const hasOutdatedEntry = leaderboard.some((entry) => entry.totalLessons !== canonicalTotal);
+
+    if (!hasOutdatedEntry || autoSyncedAllLeaderboardRef.current === canonicalTotal) {
+      return;
+    }
+
+    autoSyncedAllLeaderboardRef.current = canonicalTotal;
+    adminSyncAllUsersLeaderboard(publishedLessons)
+      .then((res) => {
+        if (res.syncedUsers > 0) {
+          addToast(
+            'success',
+            `Đã tự động đồng bộ mốc ${res.totalLessons} bài học cho toàn bộ ${res.syncedUsers} tài khoản trên Bảng xếp hạng.`
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to auto-sync all users leaderboard:', err);
+        autoSyncedAllLeaderboardRef.current = null;
+      });
+  }, [isAdmin, firebaseUser, dataLoading, leaderboardLoading, leaderboard, lessons, addToast]);
 
   // --- Auth Actions ---
 
