@@ -9,6 +9,12 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import type { VocabularyItem } from '../types';
+import {
+  playCardFlipBeep,
+  playCorrectBeep,
+  playMissionCompleteChime,
+  playWrongTone,
+} from '../utils/cockpitAudio';
 import { shuffleArray } from '../utils/helpers';
 import { speakEnglish } from '../utils/speech';
 
@@ -238,7 +244,10 @@ export function PracticePage() {
                     onClick={() => {
                       setSelectedOpt(idx);
                       if (idx === currentQuestion.correctIndex) {
+                        playCorrectBeep();
                         setScore((s) => s + 1);
+                      } else {
+                        playWrongTone();
                       }
                     }}
                     className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors flex items-center justify-between ${cls}`}
@@ -267,6 +276,7 @@ export function PracticePage() {
                       setQIdx((i) => i + 1);
                       setSelectedOpt(null);
                     } else {
+                      playMissionCompleteChime();
                       setFinished(true);
                     }
                   }}
@@ -296,12 +306,16 @@ export function PracticePage() {
 
           <div className="flashcard-scene">
             <div
-              onClick={() => setFlipped((f) => !f)}
+              onClick={() => {
+                playCardFlipBeep();
+                setFlipped((f) => !f);
+              }}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
+                  playCardFlipBeep();
                   setFlipped((f) => !f);
                 }
               }}

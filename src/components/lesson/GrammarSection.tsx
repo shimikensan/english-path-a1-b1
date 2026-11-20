@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertCircle, CheckCircle2, ChevronRight, Volume2, XCircle } from 'lucide-react';
 import type { LessonDoc } from '../../types';
+import { playCorrectBeep, playWrongTone } from '../../utils/cockpitAudio';
 import { speakEnglish } from '../../utils/speech';
 
 interface GrammarSectionProps {
@@ -141,9 +142,14 @@ export function GrammarSection({ lesson, onNextSection }: GrammarSectionProps) {
                       <button
                         key={optIdx}
                         type="button"
-                        onClick={() =>
-                          setSelectedAnswers((prev) => ({ ...prev, [ex.id]: optIdx }))
-                        }
+                        onClick={() => {
+                          if (optIdx === ex.correctIndex) {
+                            playCorrectBeep();
+                          } else {
+                            playWrongTone();
+                          }
+                          setSelectedAnswers((prev) => ({ ...prev, [ex.id]: optIdx }));
+                        }}
                         className={`text-left px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
                           showRight
                             ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 font-semibold'

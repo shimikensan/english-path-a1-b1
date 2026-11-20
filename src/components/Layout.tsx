@@ -18,6 +18,8 @@ import {
   Sun,
   Trophy,
   UserCircle,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import { HudOverlay } from './HudOverlay';
@@ -25,6 +27,7 @@ import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { APP_BRAND, PILOT_RANKS } from '../data';
 import type { AppRoute } from '../types';
+import { useCockpitAudio } from '../utils/cockpitAudio';
 
 interface LayoutProps {
   currentRoute: AppRoute;
@@ -63,6 +66,7 @@ export function Layout({
 }: LayoutProps) {
   const { profile, isAdmin, signOutUser } = useApp();
   const { theme, toggleTheme } = useTheme();
+  const { audioEnabled, toggleAudio } = useCockpitAudio();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleSelectRoute = (route: AppRoute) => {
@@ -211,8 +215,8 @@ export function Layout({
             </h1>
           </div>
 
-          <div className="flex items-center gap-4 shrink-0">
-            <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 tabular-nums">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="hidden md:flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 tabular-nums mr-1">
               <Flame className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
               <span>{profile?.streakDays ?? 1} ngày bay</span>
               <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
@@ -225,8 +229,37 @@ export function Layout({
 
             <button
               type="button"
+              onClick={toggleAudio}
+              title={
+                audioEnabled
+                  ? 'Đang bật tiếng bíp buồng lái (nhấn để tắt)'
+                  : 'Đang tắt tiếng bíp buồng lái (nhấn để bật)'
+              }
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg border text-xs font-semibold transition-colors whitespace-nowrap ${
+                audioEnabled
+                  ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-[#D94E00] dark:text-[#FF8524] hover:bg-[#FF6B00]/15'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              aria-label={audioEnabled ? 'Tắt âm thanh phản hồi buồng lái' : 'Bật âm thanh phản hồi buồng lái'}
+              aria-pressed={audioEnabled}
+            >
+              {audioEnabled ? (
+                <>
+                  <Volume2 className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
+                  <span className="hidden sm:inline">Bíp buồng lái</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-4 h-4" />
+                  <span className="hidden sm:inline">Tắt bíp</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={toggleTheme}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
               aria-label={theme === 'dark' ? 'Chuyển sang chế độ ban ngày' : 'Chuyển sang chế độ buồng lái đêm'}
             >
               {theme === 'dark' ? (

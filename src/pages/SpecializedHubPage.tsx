@@ -29,6 +29,12 @@ import {
   type EspTrackId,
 } from '../data';
 import type { LessonTab, VocabularyItem } from '../types';
+import {
+  playCardFlipBeep,
+  playCorrectBeep,
+  playMissionCompleteChime,
+  playWrongTone,
+} from '../utils/cockpitAudio';
 import { shuffleArray } from '../utils/helpers';
 import { speakEnglish, type SpeechAccent } from '../utils/speech';
 
@@ -597,6 +603,7 @@ export function SpecializedHubPage({ onOpenLesson }: SpecializedHubPageProps) {
                       key={item.id}
                       onClick={() => {
                         if (hiddenAcronymMode) {
+                          playCardFlipBeep();
                           setRevealedAcronyms((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
                         }
                       }}
@@ -763,10 +770,13 @@ export function SpecializedHubPage({ onOpenLesson }: SpecializedHubPageProps) {
                       onClick={() => {
                         setSelectedScenarioOpt(idx);
                         if (idx === activeScenario.correctIndex) {
+                          playCorrectBeep();
                           setScenarioCompletedMap((prev) => ({
                             ...prev,
                             [activeScenario.id]: true,
                           }));
+                        } else {
+                          playWrongTone();
                         }
                       }}
                       className={`w-full text-left px-4 py-3.5 rounded-xl border text-sm leading-relaxed transition-colors flex items-start justify-between gap-3 ${cls}`}
@@ -956,7 +966,10 @@ export function SpecializedHubPage({ onOpenLesson }: SpecializedHubPageProps) {
                         onClick={() => {
                           setDrillSelectedOpt(idx);
                           if (idx === activeDrill.correctIndex) {
+                            playCorrectBeep();
                             setDrillScore((s) => s + 1);
+                          } else {
+                            playWrongTone();
                           }
                         }}
                         className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors flex items-center justify-between gap-3 ${cls}`}
@@ -991,6 +1004,7 @@ export function SpecializedHubPage({ onOpenLesson }: SpecializedHubPageProps) {
                           setDrillIdx((i) => i + 1);
                           setDrillSelectedOpt(null);
                         } else {
+                          playMissionCompleteChime();
                           setDrillFinished(true);
                         }
                       }}

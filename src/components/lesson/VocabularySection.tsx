@@ -13,6 +13,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { ESP_VOCAB_IMAGE_MAP } from '../../data';
 import type { LessonDoc, VocabularyItem } from '../../types';
+import { playCardFlipBeep, playCorrectBeep } from '../../utils/cockpitAudio';
 import { speakEnglish, type SpeechAccent } from '../../utils/speech';
 
 interface VocabularySectionProps {
@@ -59,6 +60,9 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
     vocab: VocabularyItem,
     changes: { isFavorite?: boolean; isLearned?: boolean }
   ) => {
+    if (changes.isLearned) {
+      playCorrectBeep();
+    }
     setSavingId(vocab.id);
     try {
       await toggleVocabState(lesson, vocab, changes);
@@ -202,12 +206,16 @@ export function VocabularySection({ lesson, onNextSection }: VocabularySectionPr
               return (
                 <div className="flashcard-scene">
                   <div
-                    onClick={() => setIsFlipped((prev) => !prev)}
+                    onClick={() => {
+                      playCardFlipBeep();
+                      setIsFlipped((prev) => !prev);
+                    }}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
+                        playCardFlipBeep();
                         setIsFlipped((prev) => !prev);
                       }
                     }}

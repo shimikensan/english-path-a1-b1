@@ -19,6 +19,12 @@ import {
   type EspVisualVocabCard,
 } from '../../data';
 import type { LessonTab } from '../../types';
+import {
+  playCardFlipBeep,
+  playCorrectBeep,
+  playMissionCompleteChime,
+  playWrongTone,
+} from '../../utils/cockpitAudio';
 import { shuffleArray } from '../../utils/helpers';
 import { speakEnglish, type SpeechAccent } from '../../utils/speech';
 
@@ -111,6 +117,10 @@ export function VisualVocabDeck({
     const lesson = lessons.find((l) => l.lessonId === card.lessonId);
     const vocab = lesson?.vocabulary.find((v) => v.id === card.vocabId);
     if (!lesson || !vocab) return;
+
+    if (changes.isLearned) {
+      playCorrectBeep();
+    }
 
     setSavingId(card.vocabId);
     try {
@@ -226,14 +236,16 @@ export function VisualVocabDeck({
                   <div className="flex flex-col flex-1 justify-between">
                     <div>
                       <div
-                        onClick={() =>
-                          setFlippedMap((prev) => ({ ...prev, [card.id]: true }))
-                        }
+                        onClick={() => {
+                          playCardFlipBeep();
+                          setFlippedMap((prev) => ({ ...prev, [card.id]: true }));
+                        }}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
+                            playCardFlipBeep();
                             setFlippedMap((prev) => ({ ...prev, [card.id]: true }));
                           }
                         }}
@@ -328,9 +340,10 @@ export function VisualVocabDeck({
                     <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                       <button
                         type="button"
-                        onClick={() =>
-                          setFlippedMap((prev) => ({ ...prev, [card.id]: true }))
-                        }
+                        onClick={() => {
+                          playCardFlipBeep();
+                          setFlippedMap((prev) => ({ ...prev, [card.id]: true }));
+                        }}
                         className="inline-flex items-center gap-1.5 text-xs font-bold text-[#D94E00] dark:text-[#FF8524] hover:underline"
                       >
                         <RotateCw className="w-3.5 h-3.5" />
@@ -432,9 +445,10 @@ export function VisualVocabDeck({
                     <div className="pt-3 border-t border-amber-200/60 dark:border-slate-800 flex items-center justify-between gap-2">
                       <button
                         type="button"
-                        onClick={() =>
-                          setFlippedMap((prev) => ({ ...prev, [card.id]: false }))
-                        }
+                        onClick={() => {
+                          playCardFlipBeep();
+                          setFlippedMap((prev) => ({ ...prev, [card.id]: false }));
+                        }}
                         className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[#D94E00] dark:hover:text-[#FF8524]"
                       >
                         <RotateCw className="w-3.5 h-3.5" />
@@ -566,7 +580,10 @@ export function VisualVocabDeck({
                       onClick={() => {
                         setQuizSelectedOpt(idx);
                         if (idx === activeQuizQ.correctIndex) {
+                          playCorrectBeep();
                           setQuizScore((s) => s + 1);
+                        } else {
+                          playWrongTone();
                         }
                       }}
                       className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors flex items-center justify-between gap-2 ${cls}`}
@@ -605,6 +622,7 @@ export function VisualVocabDeck({
                     setQuizIdx((i) => i + 1);
                     setQuizSelectedOpt(null);
                   } else {
+                    playMissionCompleteChime();
                     setQuizFinished(true);
                   }
                 }}

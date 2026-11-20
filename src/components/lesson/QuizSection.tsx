@@ -12,6 +12,11 @@ import {
 import { useApp } from '../../context/AppContext';
 import type { LessonDoc, QuizRating } from '../../types';
 import {
+  playCorrectBeep,
+  playMissionCompleteChime,
+  playWrongTone,
+} from '../../utils/cockpitAudio';
+import {
   getQuestionTypeLabelVi,
   getQuizRating,
   getQuizRatingVi,
@@ -76,6 +81,14 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
     if (submitted) return;
     // Lock each question once answered so learner gets instant feedback without gaming the score
     if (answers[questionId] !== undefined) return;
+    const question = questions.find((q) => q.id === questionId);
+    if (question) {
+      if (optionIdx === question.shuffledCorrectIndex) {
+        playCorrectBeep();
+      } else {
+        playWrongTone();
+      }
+    }
     setAnswers((prev) => ({ ...prev, [questionId]: optionIdx }));
   };
 
@@ -104,6 +117,7 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
       });
       setElapsedSeconds(duration);
       setSubmitted(true);
+      playMissionCompleteChime();
     } catch (err) {
       const rawMsg = err instanceof Error ? err.message : '';
       const friendlyMsg =
