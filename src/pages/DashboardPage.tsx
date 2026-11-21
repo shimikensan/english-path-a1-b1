@@ -8,7 +8,7 @@ import {
   Clock,
   Flame,
   Maximize2,
-  Mic,
+  MessageSquare,
   Plane,
   PlayCircle,
   Radar,
@@ -516,21 +516,21 @@ export function DashboardPage({
         </div>
       </section>
 
-      {/* AI Real-Time Speaking & English Messaging Coach Quick Entry */}
+      {/* AI English Messaging Coach Quick Entry */}
       <section className="bg-white dark:bg-slate-900 cockpit-radar-panel cockpit-radar-panel-interactive p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
         <div className="flex items-start gap-4 max-w-3xl">
           <div className="w-11 h-11 rounded-xl bg-[#FF6B00]/12 border border-[#FF6B00]/35 text-[#D94E00] dark:text-[#FF8524] flex items-center justify-center shrink-0">
-            <Mic className="w-5 h-5" />
+            <MessageSquare className="w-5 h-5" />
           </div>
           <div className="space-y-1">
             <div className="text-xs font-mono font-bold text-[#D94E00] dark:text-[#FF8524]">
-              CƠ TRƯỞNG AI · PHẢN XẠ NÓI & TỪ VỰNG CHỦ ĐỘNG
+              CƠ TRƯỞNG AI · NHẮN TIN & TỪ VỰNG CHỦ ĐỘNG
             </div>
             <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
-              Luyện nói trực tiếp thời gian thực & Nhắn tin tiếng Anh cùng AI
+              Nhắn tin tiếng Anh chủ động cùng Cơ trưởng AI
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              Đàm thoại giọng nói trực tiếp theo cấp độ CEFR A1–C1/ESP, nhận góp ý sửa lỗi ngữ pháp, gợi ý diễn đạt tự nhiên và nhiệm vụ ứng dụng từ vựng chủ động ngay trong hội thoại.
+              Trò chuyện tiếng Anh theo cấp độ CEFR A1–C1 & Chuyên ngành, nhận góp ý sửa lỗi ngữ pháp, gợi ý diễn đạt tự nhiên và nhiệm vụ ứng dụng từ vựng chủ động ngay trong hội thoại.
             </p>
           </div>
         </div>
@@ -539,7 +539,7 @@ export function DashboardPage({
           onClick={() => onNavigate('ai-tutor')}
           className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-bold transition-colors whitespace-nowrap shrink-0 self-start lg:self-center shadow-[0_0_18px_rgba(255,107,0,0.24)]"
         >
-          Luyện nói & Chat AI
+          Nhắn tin với AI
           <ArrowRight className="w-4 h-4" />
         </button>
       </section>

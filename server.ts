@@ -3,19 +3,11 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { WebSocketServer, WebSocket } from 'ws';
-import {
-  GoogleGenAI,
-  Modality,
-  ThinkingLevel,
-  Type,
-} from '@google/genai';
-import type { LiveServerMessage } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ALLOWED_VOICES = new Set(['Zephyr', 'Puck', 'Kore', 'Charon', 'Fenrir']);
 const ALLOWED_LEVELS = new Set(['A1', 'A2', 'B1', 'B2', 'C1', 'ESP']);
 
 interface ScenarioMeta {
@@ -96,34 +88,6 @@ function getLevelGuidance(level: string): string {
     default:
       return 'CEFR B1 (Intermediate): Use natural, clear English appropriate for an active learner.';
   }
-}
-
-function buildVoiceSystemInstruction(params: {
-  level: string;
-  scenario: string;
-  learnerName?: string;
-  targetWords?: string[];
-}): string {
-  const scenarioMeta = SCENARIO_MAP[params.scenario] || SCENARIO_MAP.daily;
-  const targetList =
-    params.targetWords && params.targetWords.length > 0
-      ? `Active vocabulary words the learner is practicing today: ${params.targetWords.slice(0, 8).join(', ')}. Naturally weave 1-2 of these words into your questions and warmly praise the learner if they use any of them.`
-      : '';
-
-  return [
-    `You are Captain Pilot AI, a warm, encouraging real-time English speaking coach for Vietnamese learners inside the "Học tiếng Anh cùng Cậu bé Pilot" cockpit training platform.`,
-    params.learnerName ? `The learner's name is ${params.learnerName}.` : '',
-    `Target proficiency: ${getLevelGuidance(params.level)}`,
-    `Active roleplay scenario: ${scenarioMeta.titleEn}. Context: ${scenarioMeta.contextEn}`,
-    targetList,
-    `Coaching rules for real-time voice:`,
-    `1. Speak primarily in natural, clear English. Only use a brief Vietnamese hint if the learner explicitly asks in Vietnamese or seems stuck.`,
-    `2. Keep each spoken turn concise (2 to 4 sentences) and ALWAYS end with one engaging open-ended question so the learner actively speaks and produces vocabulary.`,
-    `3. If the learner makes a noticeable grammar or word-choice mistake, gently recast the correct phrase naturally ("Nice try! A smoother way to say that is...") without breaking conversational flow.`,
-    `4. Never read out markdown symbols, asterisks, or bullet points.`,
-  ]
-    .filter(Boolean)
-    .join('\n');
 }
 
 function buildTextCoachSystemInstruction(params: {
@@ -267,12 +231,6 @@ function parseJsonResponseText(rawText: string): Record<string, unknown> {
   return JSON.parse(unfenced) as Record<string, unknown>;
 }
 
-function sendWsJson(ws: WebSocket, payload: Record<string, unknown>): void {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
-  }
-}
-
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
@@ -282,7 +240,6 @@ async function startServer() {
   });
 
   // Multi-turn English Text Chat & Active Vocabulary Coach
-  // Primary: gemini-4-hydrogen (ThinkingLevel.LOW); automatic resilience fallback to gemini-3.1-flash-lite on 503/timeout
   app.post('/api/ai/chat', async (req, res) => {
     try {
       const {
@@ -394,7 +351,7 @@ async function startServer() {
     }
   });
 
-  // Always return JSON for unknown /api/* routes (never HTML/plain text)
+  // Always return JSON for unknown /api/* routes
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Không tìm thấy API yêu cầu.' });
   });
@@ -417,181 +374,6 @@ async function startServer() {
   );
 
   const server = http.createServer(app);
-  const wss = new WebSocketServer({ noServer: true });
-
-  server.on('upgrade', (request, socket, head) => {
-    try {
-      const parsedUrl = new URL(request.url || '/', 'http://localhost');
-      if (parsedUrl.pathname === '/api/ai/live') {
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          wss.emit('connection', ws, request);
-        });
-      }
-    } catch {
-      socket.destroy();
-    }
-  });
-
-  // Real-Time Voice Conversation Bridge using Gemini Live API (gemini-3.8-live)
-  wss.on('connection', (clientWs, request) => {
-    const parsedUrl = new URL(request.url || '/', 'http://localhost');
-    const rawLevel = parsedUrl.searchParams.get('level') || 'A1';
-    const rawScenario = parsedUrl.searchParams.get('scenario') || 'daily';
-    const rawVoice = parsedUrl.searchParams.get('voice') || 'Zephyr';
-    const learnerName = (parsedUrl.searchParams.get('learnerName') || '').slice(0, 60);
-    const rawTargetWords = parsedUrl.searchParams.get('targetWords') || '';
-
-    const level = ALLOWED_LEVELS.has(rawLevel) ? rawLevel : 'A1';
-    const scenario = SCENARIO_MAP[rawScenario] ? rawScenario : 'daily';
-    const voice = ALLOWED_VOICES.has(rawVoice) ? rawVoice : 'Zephyr';
-    const targetWords = rawTargetWords
-      .split(',')
-      .map((w) => w.trim())
-      .filter(Boolean)
-      .slice(0, 8);
-
-    let ai: GoogleGenAI;
-    try {
-      ai = getAIClient();
-    } catch (err) {
-      sendWsJson(clientWs, {
-        type: 'error',
-        error: err instanceof Error ? err.message : 'Thiếu cấu hình GEMINI_API_KEY.',
-      });
-      clientWs.close();
-      return;
-    }
-
-    let closedByClient = false;
-
-    const sessionPromise = ai.live
-      .connect({
-        model: 'gemini-3.8-live',
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } },
-          },
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          systemInstruction: buildVoiceSystemInstruction({
-            level,
-            scenario,
-            learnerName,
-            targetWords,
-          }),
-        },
-        callbacks: {
-          onopen: () => {
-            sendWsJson(clientWs, {
-              type: 'ready',
-              level,
-              scenario,
-              voice,
-            });
-          },
-          onmessage: (message: LiveServerMessage) => {
-            const content = message.serverContent;
-            if (!content) return;
-
-            if (content.inputTranscription?.text) {
-              sendWsJson(clientWs, {
-                type: 'inputTranscript',
-                text: content.inputTranscription.text,
-              });
-            }
-
-            if (content.outputTranscription?.text) {
-              sendWsJson(clientWs, {
-                type: 'outputTranscript',
-                text: content.outputTranscription.text,
-              });
-            }
-
-            for (const part of content.modelTurn?.parts ?? []) {
-              if (part.inlineData?.data) {
-                sendWsJson(clientWs, {
-                  type: 'audio',
-                  audio: part.inlineData.data,
-                });
-              }
-            }
-
-            if (content.interrupted) {
-              sendWsJson(clientWs, { type: 'interrupted' });
-            }
-
-            if (content.turnComplete) {
-              sendWsJson(clientWs, { type: 'turnComplete' });
-            }
-          },
-          onerror: (err: unknown) => {
-            console.error('Gemini Live session error:', err);
-            const { message } = formatFriendlyAiError(err);
-            sendWsJson(clientWs, { type: 'error', error: message });
-          },
-          onclose: () => {
-            if (!closedByClient) {
-              sendWsJson(clientWs, { type: 'closed' });
-            }
-          },
-        },
-      })
-      .catch((err) => {
-        console.error('Failed to connect to Gemini Live:', err);
-        const { message } = formatFriendlyAiError(err);
-        sendWsJson(clientWs, { type: 'error', error: message });
-        clientWs.close();
-        return null;
-      });
-
-    clientWs.on('message', (rawData) => {
-      let parsed: { audio?: string; text?: string; audioStreamEnd?: boolean };
-      try {
-        parsed = JSON.parse(rawData.toString());
-      } catch {
-        return;
-      }
-
-      void sessionPromise.then((session) => {
-        if (!session || closedByClient) return;
-        try {
-          if (typeof parsed.audio === 'string' && parsed.audio.length > 0) {
-            session.sendRealtimeInput({
-              audio: {
-                data: parsed.audio,
-                mimeType: 'audio/pcm;rate=16000',
-              },
-            });
-          } else if (typeof parsed.text === 'string' && parsed.text.trim().length > 0) {
-            session.sendRealtimeInput({
-              text: parsed.text.trim(),
-            });
-          } else if (parsed.audioStreamEnd) {
-            session.sendRealtimeInput({ audioStreamEnd: true });
-          }
-        } catch (err) {
-          console.error('Error forwarding Live input:', err);
-        }
-      });
-    });
-
-    const cleanup = () => {
-      closedByClient = true;
-      void sessionPromise.then((session) => {
-        if (session) {
-          try {
-            session.close();
-          } catch {
-            // ignore close error
-          }
-        }
-      });
-    };
-
-    clientWs.on('close', cleanup);
-    clientWs.on('error', cleanup);
-  });
 
   // Mount Vite middleware in development, static dist/ in production
   if (process.env.NODE_ENV !== 'production') {
@@ -613,7 +395,6 @@ async function startServer() {
     });
   }
 
-  // Always listen on port 3000 (nginx reverse-proxies external traffic to 127.0.0.1:3000)
   const PORT = 3000;
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Cockpit server listening on http://0.0.0.0:${PORT}`);
