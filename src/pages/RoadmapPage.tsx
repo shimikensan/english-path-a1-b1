@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ArrowRight, CheckCircle2, Clock, Search } from 'lucide-react';
+import { LessonMiniProgress } from '../components/LessonMiniProgress';
 import { useApp } from '../context/AppContext';
 import { LEVEL_BANNERS, PILOT_RANKS } from '../data';
 
@@ -8,7 +9,7 @@ interface RoadmapPageProps {
 }
 
 export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
-  const { levels, lessons, progressMap } = useApp();
+  const { levels, lessons, progressMap, vocabMap } = useApp();
   const [selectedLevel, setSelectedLevel] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [failedBanners, setFailedBanners] = useState<Record<string, boolean>>({});
@@ -166,6 +167,15 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
                           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
                             {lesson.description}
                           </p>
+
+                          <div className="pt-1">
+                            <LessonMiniProgress
+                              lesson={lesson}
+                              progress={prog}
+                              vocabMap={vocabMap}
+                              compact
+                            />
+                          </div>
                         </div>
 
                         <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">

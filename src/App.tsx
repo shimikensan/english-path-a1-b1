@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plane } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -45,10 +45,41 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
 };
 
 function AppShell() {
-  const { firebaseUser, authReady, needsEmailVerification, profile, dataLoading, lessons } = useApp();
+  const {
+    firebaseUser,
+    authReady,
+    needsEmailVerification,
+    profile,
+    dataLoading,
+    lessons,
+    progressMap,
+    addToast,
+  } = useApp();
   const [route, setRoute] = useState<AppRoute>('dashboard');
   const [selectedLessonId, setSelectedLessonId] = useState<string>('');
   const [initialLessonTab, setInitialLessonTab] = useState<LessonTab>('vocabulary');
+  const [focusMode, setFocusMode] = useState<boolean>(false);
+  const preFocusRouteRef = useRef<AppRoute>('dashboard');
+
+  // Resolve the learner's current active lesson for instant Focus Mode launch
+  const defaultActiveLessonId = useMemo(() => {
+    const inProgress = lessons
+      .filter((l) => {
+        const p = progressMap[l.lessonId];
+        return p && !p.lessonCompleted && (p.vocabularyLearned.length > 0 || p.quizAttempts > 0);
+      })
+      .sort((a, b) => a.order - b.order);
+
+    const target =
+      inProgress[0] ||
+      lessons.find(
+        (l) => l.levelId === (profile?.currentLevel || 'A1') && !progressMap[l.lessonId]?.lessonCompleted
+      ) ||
+      lessons.find((l) => !progressMap[l.lessonId]?.lessonCompleted) ||
+      lessons[0];
+
+    return target?.lessonId || '';
+  }, [lessons, progressMap, profile?.currentLevel]);
 
   const handleOpenLesson = useCallback((lessonId: string, tab: LessonTab = 'vocabulary') => {
     setSelectedLessonId(lessonId);
@@ -57,10 +88,54 @@ function AppShell() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  const handleEnterFocusMode = useCallback(
+    (lessonId?: string, tab: LessonTab = 'vocabulary') => {
+      const targetId = lessonId || selectedLessonId || defaultActiveLessonId;
+      if (!targetId) return;
+      preFocusRouteRef.current = route;
+      setSelectedLessonId(targetId);
+      setInitialLessonTab(tab);
+      setRoute('lesson');
+      setFocusMode(true);
+      addToast('info', 'Đã bật Focus Mode — nhấn Esc hoặc nút "Thoát tập trung" để trở lại.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [selectedLessonId, defaultActiveLessonId, route, addToast]
+  );
+
+  const handleExitFocusMode = useCallback(() => {
+    setFocusMode(false);
+    if (preFocusRouteRef.current === 'dashboard') {
+      setRoute('dashboard');
+    }
+  }, []);
+
+  const handleToggleFocusMode = useCallback(() => {
+    if (focusMode) {
+      handleExitFocusMode();
+    } else {
+      handleEnterFocusMode(route === 'lesson' ? selectedLessonId : defaultActiveLessonId);
+    }
+  }, [focusMode, handleExitFocusMode, handleEnterFocusMode, route, selectedLessonId, defaultActiveLessonId]);
+
   const handleNavigate = useCallback((nextRoute: AppRoute) => {
+    setFocusMode(false);
     setRoute(nextRoute);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  // Allow Esc key to exit Focus Mode swiftly
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      handleExitFocusMode();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [focusMode, handleExitFocusMode]);
 
   const activeLesson = useMemo(
     () => lessons.find((l) => l.lessonId === selectedLessonId),
@@ -107,6 +182,9 @@ function AppShell() {
         activeLessonLevelId={activeLesson?.levelId}
         onNavigate={handleNavigate}
         pageTitle={pageTitle}
+        focusMode={focusMode}
+        onToggleFocusMode={handleToggleFocusMode}
+        onExitFocusMode={handleExitFocusMode}
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -119,6 +197,7 @@ function AppShell() {
             {route === 'dashboard' && (
               <DashboardPage
                 onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')}
+                onEnterFocusMode={(id) => handleEnterFocusMode(id, 'vocabulary')}
                 onNavigate={handleNavigate}
               />
             )}
@@ -151,9 +230,15 @@ function AppShell() {
                 key={`${effectiveLessonId}-${initialLessonTab}`}
                 lessonId={effectiveLessonId}
                 initialTab={initialLessonTab}
-                onBack={() =>
-                  handleNavigate(activeLesson?.levelId === 'ESP' ? 'specialized' : 'roadmap')
-                }
+                focusMode={focusMode}
+                onToggleFocusMode={handleToggleFocusMode}
+                onBack={() => {
+                  if (focusMode) {
+                    handleExitFocusMode();
+                  } else {
+                    handleNavigate(activeLesson?.levelId === 'ESP' ? 'specialized' : 'roadmap');
+                  }
+                }}
                 onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')}
               />
             )}

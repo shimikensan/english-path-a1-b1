@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BarChart3,
   BookMarked,
   BookOpen,
   ClipboardCheck,
+  Clock,
   Compass,
   Dumbbell,
   Flame,
+  Focus,
   Home,
   LogOut,
+  Maximize2,
   Menu,
   MessageSquareQuote,
+  Minimize2,
   Moon,
   Plane,
   Radar,
@@ -34,6 +38,9 @@ interface LayoutProps {
   activeLessonLevelId?: string;
   onNavigate: (route: AppRoute) => void;
   pageTitle: string;
+  focusMode?: boolean;
+  onToggleFocusMode?: () => void;
+  onExitFocusMode?: () => void;
   children: React.ReactNode;
 }
 
@@ -62,12 +69,35 @@ export function Layout({
   activeLessonLevelId,
   onNavigate,
   pageTitle,
+  focusMode = false,
+  onToggleFocusMode,
+  onExitFocusMode,
   children,
 }: LayoutProps) {
   const { profile, isAdmin, signOutUser } = useApp();
   const { theme, toggleTheme } = useTheme();
   const { audioEnabled, toggleAudio } = useCockpitAudio();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [focusSeconds, setFocusSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!focusMode) {
+      setFocusSeconds(0);
+      return;
+    }
+    setMobileMenuOpen(false);
+    const start = Date.now();
+    const timer = window.setInterval(() => {
+      setFocusSeconds(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [focusMode]);
+
+  const formatFocusTimer = (sec: number) => {
+    const m = String(Math.floor(sec / 60)).padStart(2, '0');
+    const s = String(sec % 60).padStart(2, '0');
+    return `${m}:${s}`;
+  };
 
   const handleSelectRoute = (route: AppRoute) => {
     onNavigate(route);
@@ -179,13 +209,15 @@ export function Layout({
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-30">
-        {renderSidebarContent()}
-      </aside>
+      {/* Desktop Sidebar (hidden in Focus Mode) */}
+      {!focusMode && (
+        <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-30">
+          {renderSidebarContent()}
+        </aside>
+      )}
 
-      {/* Mobile Drawer */}
-      {mobileMenuOpen && (
+      {/* Mobile Drawer (hidden in Focus Mode) */}
+      {!focusMode && mobileMenuOpen && (
         <div className="fixed inset-0 z-40 lg:hidden flex">
           <div
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs"
@@ -198,101 +230,185 @@ export function Layout({
       )}
 
       {/* Main Content Wrapper */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
-        {/* Clean Top Bar */}
-        <header className="sticky top-0 z-20 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-2 -ml-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Mở menu điều hướng"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
-              {pageTitle}
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <div className="hidden md:flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 tabular-nums mr-1">
-              <Flame className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
-              <span>{profile?.streakDays ?? 1} ngày bay</span>
-              <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
+      <div className={`flex-1 flex flex-col min-w-0 ${focusMode ? '' : 'lg:pl-64'}`}>
+        {/* Top Bar: Minimal Focus Header vs Standard Workspace Header */}
+        {focusMode ? (
+          <header className="sticky top-0 z-20 h-14 bg-white/95 dark:bg-slate-950/95 backdrop-blur-sm border-b border-[#FF6B00]/30 px-4 sm:px-6 lg:px-10 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Focus className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524] shrink-0" />
+              <span className="text-xs font-semibold text-[#D94E00] dark:text-[#FF8524] whitespace-nowrap shrink-0">
+                Focus Mode
+              </span>
+              <span className="text-slate-300 dark:text-slate-700 hidden sm:inline" aria-hidden="true">
                 ·
               </span>
-              <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
-                {PILOT_RANKS[profile?.currentLevel || 'A1']?.rankVi || 'Học viên Phi công'} ({profile?.currentLevel || 'A1'})
-              </span>
+              <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate hidden sm:block">
+                {pageTitle}
+              </h1>
             </div>
 
-            <button
-              type="button"
-              onClick={toggleAudio}
-              title={
-                audioEnabled
-                  ? 'Đang bật tiếng bíp buồng lái (nhấn để tắt)'
-                  : 'Đang tắt tiếng bíp buồng lái (nhấn để bật)'
-              }
-              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg border text-xs font-semibold transition-colors whitespace-nowrap ${
-                audioEnabled
-                  ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-[#D94E00] dark:text-[#FF8524] hover:bg-[#FF6B00]/15'
-                  : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-              aria-label={audioEnabled ? 'Tắt âm thanh phản hồi buồng lái' : 'Bật âm thanh phản hồi buồng lái'}
-              aria-pressed={audioEnabled}
-            >
-              {audioEnabled ? (
-                <>
-                  <Volume2 className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
-                  <span className="hidden sm:inline">Bíp buồng lái</span>
-                </>
-              ) : (
-                <>
-                  <VolumeX className="w-4 h-4" />
-                  <span className="hidden sm:inline">Tắt bíp</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+              <div
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-600 dark:text-slate-300 tabular-nums"
+                title="Thời gian tập trung trong phiên hiện tại"
+              >
+                <Clock className="w-3.5 h-3.5 text-[#FF6B00] dark:text-[#FF8524]" />
+                {formatFocusTimer(focusSeconds)}
+              </div>
 
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="inline-flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
-              aria-label={theme === 'dark' ? 'Chuyển sang chế độ ban ngày' : 'Chuyển sang chế độ buồng lái đêm'}
-            >
-              {theme === 'dark' ? (
-                <>
+              <button
+                type="button"
+                onClick={toggleAudio}
+                title={audioEnabled ? 'Tắt tiếng bíp buồng lái' : 'Bật tiếng bíp buồng lái'}
+                className={`p-2 rounded-lg border text-xs font-semibold transition-colors ${
+                  audioEnabled
+                    ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-[#D94E00] dark:text-[#FF8524]'
+                    : 'border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                aria-label={audioEnabled ? 'Tắt âm thanh phản hồi buồng lái' : 'Bật âm thanh phản hồi buồng lái'}
+                aria-pressed={audioEnabled}
+              >
+                {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label={theme === 'dark' ? 'Chuyển sang chế độ ban ngày' : 'Chuyển sang chế độ buồng lái đêm'}
+              >
+                {theme === 'dark' ? (
                   <Sun className="w-4 h-4 text-[#FF8524]" />
-                  <span className="hidden sm:inline">Ban ngày</span>
-                </>
-              ) : (
-                <>
+                ) : (
                   <Moon className="w-4 h-4 text-slate-700" />
-                  <span className="hidden sm:inline">Buồng lái đêm</span>
-                </>
+                )}
+              </button>
+
+              {onExitFocusMode && (
+                <button
+                  type="button"
+                  onClick={onExitFocusMode}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-xs font-bold transition-colors whitespace-nowrap"
+                >
+                  <Minimize2 className="w-3.5 h-3.5" />
+                  Thoát tập trung
+                </button>
               )}
-            </button>
-          </div>
-        </header>
+            </div>
+          </header>
+        ) : (
+          <header className="sticky top-0 z-20 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                className="lg:hidden p-2 -ml-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Mở menu điều hướng"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
+                {pageTitle}
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <div className="hidden md:flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 tabular-nums mr-1">
+                <Flame className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
+                <span>{profile?.streakDays ?? 1} ngày bay</span>
+                <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
+                  ·
+                </span>
+                <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
+                  {PILOT_RANKS[profile?.currentLevel || 'A1']?.rankVi || 'Học viên Phi công'} ({profile?.currentLevel || 'A1'})
+                </span>
+              </div>
+
+              {onToggleFocusMode && (currentRoute === 'dashboard' || currentRoute === 'lesson') && (
+                <button
+                  type="button"
+                  onClick={onToggleFocusMode}
+                  title="Bật chế độ Focus Mode (ẩn thanh điều hướng và mở bài học hiện tại toàn màn hình)"
+                  className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg border border-[#FF6B00]/40 bg-[#FF6B00]/10 text-[#D94E00] dark:text-[#FF8524] hover:bg-[#FF6B00]/15 text-xs font-semibold transition-colors whitespace-nowrap"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Focus Mode</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={toggleAudio}
+                title={
+                  audioEnabled
+                    ? 'Đang bật tiếng bíp buồng lái (nhấn để tắt)'
+                    : 'Đang tắt tiếng bíp buồng lái (nhấn để bật)'
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg border text-xs font-semibold transition-colors whitespace-nowrap ${
+                  audioEnabled
+                    ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-[#D94E00] dark:text-[#FF8524] hover:bg-[#FF6B00]/15'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                aria-label={audioEnabled ? 'Tắt âm thanh phản hồi buồng lái' : 'Bật âm thanh phản hồi buồng lái'}
+                aria-pressed={audioEnabled}
+              >
+                {audioEnabled ? (
+                  <>
+                    <Volume2 className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
+                    <span className="hidden sm:inline">Bíp buồng lái</span>
+                  </>
+                ) : (
+                  <>
+                    <VolumeX className="w-4 h-4" />
+                    <span className="hidden sm:inline">Tắt bíp</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="inline-flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+                aria-label={theme === 'dark' ? 'Chuyển sang chế độ ban ngày' : 'Chuyển sang chế độ buồng lái đêm'}
+              >
+                {theme === 'dark' ? (
+                  <>
+                    <Sun className="w-4 h-4 text-[#FF8524]" />
+                    <span className="hidden sm:inline">Ban ngày</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-4 h-4 text-slate-700" />
+                    <span className="hidden sm:inline">Buồng lái đêm</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </header>
+        )}
 
         {/* Subtle Cockpit Heads-Up Display (HUD) Overlay */}
         <HudOverlay variant="workspace" />
 
         {/* Main Workspace Canvas */}
-        <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <main
+          className={`relative z-10 flex-1 w-full mx-auto px-4 sm:px-6 lg:px-8 ${
+            focusMode ? 'max-w-5xl py-6 sm:py-8' : 'max-w-7xl py-6 sm:py-8'
+          }`}
+        >
           {children}
         </main>
 
-        <footer className="relative z-10 border-t border-slate-200/80 dark:border-slate-800/80 py-4 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <span className="font-medium text-slate-600 dark:text-slate-300">
-              {APP_BRAND.fullName} · {APP_BRAND.tagline}
-            </span>
-            <span className="font-mono">{APP_BRAND.copyright}</span>
-          </div>
-        </footer>
+        {!focusMode && (
+          <footer className="relative z-10 border-t border-slate-200/80 dark:border-slate-800/80 py-4 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-medium text-slate-600 dark:text-slate-300">
+                {APP_BRAND.fullName} · {APP_BRAND.tagline}
+              </span>
+              <span className="font-mono">{APP_BRAND.copyright}</span>
+            </div>
+          </footer>
+        )}
       </div>
     </div>
   );

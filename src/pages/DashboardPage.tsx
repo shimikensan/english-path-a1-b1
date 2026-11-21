@@ -5,7 +5,9 @@ import {
   Bell,
   BookOpen,
   CheckCircle2,
+  Clock,
   Flame,
+  Maximize2,
   Plane,
   PlayCircle,
   Radar,
@@ -23,6 +25,7 @@ import {
   YAxis,
 } from 'recharts';
 import { LeaderboardPanel } from '../components/LeaderboardPanel';
+import { calculateLessonCompletion, LessonMiniProgress } from '../components/LessonMiniProgress';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { AUTH_HERO_IMAGE, PILOT_RANKS } from '../data';
@@ -31,13 +34,19 @@ import { formatShortDateVi, getLocalDateString } from '../utils/helpers';
 
 interface DashboardPageProps {
   onOpenLesson: (lessonId: string) => void;
+  onEnterFocusMode: (lessonId: string) => void;
   onNavigate: (route: AppRoute) => void;
 }
 
-export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) {
+export function DashboardPage({
+  onOpenLesson,
+  onEnterFocusMode,
+  onNavigate,
+}: DashboardPageProps) {
   const { profile, lessons, progressMap, quizResults, vocabMap } = useApp();
   const { theme } = useTheme();
   const [pilotAvatarFailed, setPilotAvatarFailed] = useState(false);
+  const [selectedCardLevel, setSelectedCardLevel] = useState<string | null>(null);
   const isDark = theme === 'dark';
 
   const stats = useMemo(() => {
@@ -113,12 +122,14 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
   }, [lessons, progressMap, quizResults, vocabMap, profile?.currentLevel]);
 
   const studiedToday = profile?.lastStudyDate === getLocalDateString();
-  const activeProgress = stats.activeLesson ? progressMap[stats.activeLesson.lessonId] : undefined;
-  const activeVocabLearned = activeProgress?.vocabularyLearned?.length ?? 0;
-  const activeVocabTotal = stats.activeLesson?.vocabulary?.length ?? 15;
   const currentRank = PILOT_RANKS[profile?.currentLevel || 'A1'] || PILOT_RANKS.A1;
   const overallFlightPct =
     stats.totalLessons > 0 ? Math.round((stats.completedCount / stats.totalLessons) * 100) : 0;
+
+  const activeLevelFilter = selectedCardLevel ?? (profile?.currentLevel || 'A1');
+  const dashboardLevelLessons = useMemo(() => {
+    return lessons.filter((l) => l.levelId === activeLevelFilter).slice(0, 6);
+  }, [lessons, activeLevelFilter]);
 
   return (
     <div className="space-y-8">
@@ -167,14 +178,25 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             {stats.activeLesson && (
-              <button
-                type="button"
-                onClick={() => onOpenLesson(stats.activeLesson!.lessonId)}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#FF6B00] text-white text-sm font-bold hover:bg-[#FF7E1F] transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(255,107,0,0.3)]"
-              >
-                <PlayCircle className="w-4 h-4" />
-                Tiếp tục học ngay
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => onOpenLesson(stats.activeLesson!.lessonId)}
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#FF6B00] text-white text-sm font-bold hover:bg-[#FF7E1F] transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(255,107,0,0.3)]"
+                >
+                  <PlayCircle className="w-4 h-4" />
+                  Tiếp tục học ngay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onEnterFocusMode(stats.activeLesson!.lessonId)}
+                  title="Ẩn thanh điều hướng phụ và học bài hiện tại toàn màn hình"
+                  className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-[#FF6B00]/55 bg-[#FF6B00]/15 text-sm font-bold text-[#FF9A3C] hover:bg-[#FF6B00]/25 transition-colors whitespace-nowrap"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                  Chế độ Tập trung
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -300,7 +322,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
                 <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
                   Bài học đang học · {stats.activeLesson.levelId}
                 </span>
-                <span>{stats.activeLesson.topic}</span>
+                <span className="truncate">{stats.activeLesson.topic}</span>
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 {stats.activeLesson.title}
@@ -309,33 +331,35 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
                 {stats.activeLesson.description}
               </p>
 
-              {/* Progress bar */}
-              <div className="pt-2 space-y-1.5">
-                <div className="flex items-center justify-between text-xs tabular-nums">
-                  <span className="text-slate-500 dark:text-slate-400">Tiến độ từ vựng</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    {activeVocabLearned}/{activeVocabTotal} từ
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-[#FF6B00] to-[#FF9A3C] rounded-full transition-all"
-                    style={{
-                      width: `${Math.min(100, Math.round((activeVocabLearned / Math.max(1, activeVocabTotal)) * 100))}%`,
-                    }}
-                  />
-                </div>
+              {/* Lesson completion mini progress bar */}
+              <div className="pt-2">
+                <LessonMiniProgress
+                  lesson={stats.activeLesson}
+                  progress={progressMap[stats.activeLesson.lessonId]}
+                  vocabMap={vocabMap}
+                />
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => onOpenLesson(stats.activeLesson!.lessonId)}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#FF6B00] text-white text-sm font-bold hover:bg-[#FF7E1F] transition-colors"
-            >
-              Tiếp tục bài học này
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => onOpenLesson(stats.activeLesson!.lessonId)}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#FF6B00] text-white text-sm font-bold hover:bg-[#FF7E1F] transition-colors whitespace-nowrap"
+              >
+                Tiếp tục bài học này
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onEnterFocusMode(stats.activeLesson!.lessonId)}
+                title="Mở toàn màn hình ở chế độ Tập trung (Focus Mode)"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#FF6B00]/45 bg-[#FF6B00]/10 text-[#D94E00] dark:text-[#FF8524] hover:bg-[#FF6B00]/18 text-xs sm:text-sm font-bold transition-colors whitespace-nowrap"
+              >
+                <Maximize2 className="w-4 h-4" />
+                Focus Mode
+              </button>
+            </div>
           </div>
         )}
 
@@ -346,7 +370,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
                 <span className="font-semibold text-amber-600 dark:text-amber-400">
                   Đề xuất tiếp theo · {stats.recommendedLesson.levelId}
                 </span>
-                <span>{stats.recommendedLesson.topic}</span>
+                <span className="truncate">{stats.recommendedLesson.topic}</span>
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 {stats.recommendedLesson.title}
@@ -354,7 +378,7 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                 {stats.recommendedLesson.description}
               </p>
-              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 pt-1 tabular-nums">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 pt-1 tabular-nums">
                 <span>{stats.recommendedLesson.vocabulary.length} từ vựng</span>
                 <span aria-hidden="true">·</span>
                 <span>{stats.recommendedLesson.sentencePatterns.length} mẫu câu</span>
@@ -362,6 +386,15 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
                 <span>{stats.recommendedLesson.quiz.length} câu kiểm tra</span>
                 <span aria-hidden="true">·</span>
                 <span>~{stats.recommendedLesson.estimatedMinutes} phút</span>
+              </div>
+
+              {/* Lesson completion mini progress bar */}
+              <div className="pt-1">
+                <LessonMiniProgress
+                  lesson={stats.recommendedLesson}
+                  progress={progressMap[stats.recommendedLesson.lessonId]}
+                  vocabMap={vocabMap}
+                />
               </div>
             </div>
 
@@ -375,6 +408,111 @@ export function DashboardPage({ onOpenLesson, onNavigate }: DashboardPageProps) 
             </button>
           </div>
         )}
+      </section>
+
+      {/* Current Level Lesson Cards Grid with Mini Progress Bars */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+              Tiến độ từng bài học · Chặng {activeLevelFilter === 'ESP' ? 'Chuyên ngành' : activeLevelFilter}
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Theo dõi phần trăm hoàn thành trực quan (50% từ vựng đã thuộc + 50% bài kiểm tra)
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl">
+              {(['A1', 'A2', 'B1', 'B2', 'C1', 'ESP'] as const).map((lvl) => {
+                const isSelected = activeLevelFilter === lvl;
+                return (
+                  <button
+                    key={lvl}
+                    type="button"
+                    onClick={() => setSelectedCardLevel(lvl)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+                      isSelected
+                        ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {lvl}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onNavigate('roadmap')}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[#D94E00] dark:text-[#FF8524] hover:underline whitespace-nowrap"
+            >
+              Tất cả {stats.totalLessons} bài
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {dashboardLevelLessons.map((lesson, idx) => {
+            const prog = progressMap[lesson.lessonId];
+            const completion = calculateLessonCompletion(lesson, prog, vocabMap);
+            return (
+              <button
+                key={lesson.lessonId}
+                type="button"
+                onClick={() => onOpenLesson(lesson.lessonId)}
+                className="group text-left bg-white dark:bg-slate-900 cockpit-radar-panel cockpit-radar-panel-interactive p-5 flex flex-col justify-between gap-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B00]"
+              >
+                <div className="space-y-2 w-full">
+                  <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-[#D94E00] dark:text-[#FF8524] truncate">
+                      {String(idx + 1).padStart(2, '0')}. {lesson.topic}
+                    </span>
+                    {completion.quizCompleted ? (
+                      <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400 shrink-0 tabular-nums">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {completion.bestScore}%
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 shrink-0 tabular-nums">
+                        <Clock className="w-3.5 h-3.5" />
+                        {lesson.estimatedMinutes}p
+                      </span>
+                    )}
+                  </div>
+
+                  <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#D94E00] dark:group-hover:text-[#FF8524] transition-colors">
+                    {lesson.title}
+                  </h4>
+                </div>
+
+                <div className="w-full space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                  <LessonMiniProgress
+                    lesson={lesson}
+                    progress={prog}
+                    vocabMap={vocabMap}
+                    compact
+                  />
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500 dark:text-slate-400 tabular-nums">
+                      {lesson.vocabulary.length} từ · {lesson.quiz.length} câu hỏi
+                    </span>
+                    <span className="inline-flex items-center gap-1 font-semibold text-[#D94E00] dark:text-[#FF8524]">
+                      {completion.percent === 100
+                        ? 'Ôn lại'
+                        : completion.percent > 0
+                          ? 'Học tiếp'
+                          : 'Bắt đầu'}
+                      <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
+                    </span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       {/* Specialized English (Stage 4 ESP) Quick Access Banner */}

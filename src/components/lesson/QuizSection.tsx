@@ -10,7 +10,9 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { isFirestoreQuotaError } from '../../firebase';
 import type { LessonDoc, QuizRating } from '../../types';
+import { ConfettiCelebration } from '../ConfettiCelebration';
 import {
   playCorrectBeep,
   playMissionCompleteChime,
@@ -40,6 +42,7 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [confettiKey, setConfettiKey] = useState(0);
   const startTimeRef = useRef<number>(Date.now());
 
   // Reset quiz with fresh shuffle when lesson changes
@@ -49,6 +52,7 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
     setAnswers({});
     setSubmitted(false);
     setElapsedSeconds(0);
+    setConfettiKey(0);
     startTimeRef.current = Date.now();
   }, [lesson.lessonId, lesson.quiz]);
 
@@ -117,14 +121,27 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
       });
       setElapsedSeconds(duration);
       setSubmitted(true);
+      setConfettiKey((k) => k + 1);
       playMissionCompleteChime();
     } catch (err) {
-      const rawMsg = err instanceof Error ? err.message : '';
-      const friendlyMsg =
-        rawMsg && !rawMsg.trim().startsWith('{')
-          ? rawMsg
-          : 'Không thể lưu kết quả bài kiểm tra lên máy chủ. Vui lòng thử lại sau ít giây.';
-      addToast('error', friendlyMsg);
+      if (isFirestoreQuotaError(err)) {
+        const duration = Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000));
+        setElapsedSeconds(duration);
+        setSubmitted(true);
+        setConfettiKey((k) => k + 1);
+        playMissionCompleteChime();
+        addToast(
+          'info',
+          'Chúc mừng bạn đã hoàn thành bài kiểm tra! Hạn mức lưu Firestore hôm nay đã tạm hết nên kết quả được hiển thị trực tiếp trên máy.'
+        );
+      } else {
+        const rawMsg = err instanceof Error ? err.message : '';
+        const friendlyMsg =
+          rawMsg && !rawMsg.trim().startsWith('{')
+            ? rawMsg
+            : 'Không thể lưu kết quả bài kiểm tra lên máy chủ. Vui lòng thử lại sau ít giây.';
+        addToast('error', friendlyMsg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -136,6 +153,7 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
     setAnswers({});
     setSubmitted(false);
     setElapsedSeconds(0);
+    setConfettiKey(0);
     startTimeRef.current = Date.now();
   };
 
@@ -167,6 +185,10 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
 
     return (
       <div className="space-y-6">
+        <ConfettiCelebration
+          triggerKey={confettiKey}
+          intensity={summary.score >= 70 ? 'grand' : 'standard'}
+        />
         <section className="bg-white dark:bg-slate-900 cockpit-radar-panel p-6 sm:p-8 text-center space-y-5">
           <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-[#FF6B00]/30 text-[#FF6B00] dark:text-[#FF8524] flex items-center justify-center mx-auto">
             <Award className="w-7 h-7" />
