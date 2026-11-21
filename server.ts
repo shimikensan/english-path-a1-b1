@@ -6,11 +6,11 @@ import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
   GoogleGenAI,
-  LiveServerMessage,
   Modality,
   ThinkingLevel,
   Type,
 } from '@google/genai';
+import type { LiveServerMessage } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,6 +74,7 @@ function getAIClient(): GoogleGenAI {
       headers: {
         'User-Agent': 'aistudio-build',
       },
+      timeout: 18000,
     },
   });
 }
@@ -155,6 +156,117 @@ function buildTextCoachSystemInstruction(params: {
     .join('\n');
 }
 
+const CHAT_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    replyEn: { type: Type.STRING },
+    replyVi: { type: Type.STRING },
+    correction: { type: Type.STRING },
+    naturalSuggestion: { type: Type.STRING },
+    activeVocab: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          word: { type: Type.STRING },
+          ipa: { type: Type.STRING },
+          meaningVi: { type: Type.STRING },
+          exampleEn: { type: Type.STRING },
+        },
+        required: ['word', 'ipa', 'meaningVi', 'exampleEn'],
+      },
+    },
+    followUpHints: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    usedTargetWords: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+  },
+  required: [
+    'replyEn',
+    'replyVi',
+    'correction',
+    'naturalSuggestion',
+    'activeVocab',
+    'followUpHints',
+    'usedTargetWords',
+  ],
+};
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`AI_TIMEOUT_${timeoutMs}`));
+    }, timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+function isTransientAiError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error ?? '');
+  return (
+    msg.includes('503') ||
+    msg.includes('UNAVAILABLE') ||
+    msg.includes('429') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('high demand') ||
+    msg.includes('AI_TIMEOUT') ||
+    msg.includes('timed out') ||
+    msg.includes('fetch failed')
+  );
+}
+
+function formatFriendlyAiError(error: unknown): { status: number; message: string } {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  if (raw.includes('GEMINI_API_KEY')) {
+    return {
+      status: 500,
+      message: 'Máy chủ chưa được cấu hình khóa API Gemini.',
+    };
+  }
+  if (
+    raw.includes('503') ||
+    raw.includes('UNAVAILABLE') ||
+    raw.includes('high demand') ||
+    raw.includes('AI_TIMEOUT')
+  ) {
+    return {
+      status: 503,
+      message: 'Hệ thống AI đang tạm thời quá tải do lưu lượng cao. Vui lòng thử gửi lại sau vài giây.',
+    };
+  }
+  if (raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED')) {
+    return {
+      status: 429,
+      message: 'Bạn gửi tin nhắn hơi nhanh. Hãy đợi vài giây rồi thử lại nhé.',
+    };
+  }
+  return {
+    status: 500,
+    message: 'Không thể kết nối tới trợ lý AI lúc này. Vui lòng thử lại sau giây lát.',
+  };
+}
+
+function parseJsonResponseText(rawText: string): Record<string, unknown> {
+  const trimmed = rawText.trim();
+  const unfenced = trimmed
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  return JSON.parse(unfenced) as Record<string, unknown>;
+}
+
 function sendWsJson(ws: WebSocket, payload: Record<string, unknown>): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
@@ -169,7 +281,8 @@ async function startServer() {
     res.json({ ok: true });
   });
 
-  // Multi-turn English Text Chat & Active Vocabulary Coach (gemini-4-hydrogen)
+  // Multi-turn English Text Chat & Active Vocabulary Coach
+  // Primary: gemini-4-hydrogen (ThinkingLevel.LOW); automatic resilience fallback to gemini-3.1-flash-lite on 503/timeout
   app.post('/api/ai/chat', async (req, res) => {
     try {
       const {
@@ -206,7 +319,7 @@ async function startServer() {
                 typeof item.text === 'string' &&
                 item.text.trim().length > 0
             )
-            .slice(-16)
+            .slice(-14)
         : [];
 
       const contents = [
@@ -220,78 +333,88 @@ async function startServer() {
         },
       ];
 
-      const ai = getAIClient();
-      const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents,
-        config: {
-          systemInstruction: buildTextCoachSystemInstruction({
-            level: safeLevel,
-            scenario: safeScenario,
-            learnerName: typeof learnerName === 'string' ? learnerName.slice(0, 60) : '',
-            targetWords: safeTargetWords,
-          }),
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.LOW,
-          },
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              replyEn: { type: Type.STRING },
-              replyVi: { type: Type.STRING },
-              correction: { type: Type.STRING },
-              naturalSuggestion: { type: Type.STRING },
-              activeVocab: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    word: { type: Type.STRING },
-                    ipa: { type: Type.STRING },
-                    meaningVi: { type: Type.STRING },
-                    exampleEn: { type: Type.STRING },
-                  },
-                  required: ['word', 'ipa', 'meaningVi', 'exampleEn'],
-                },
-              },
-              followUpHints: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
-              usedTargetWords: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
-            },
-            required: [
-              'replyEn',
-              'replyVi',
-              'correction',
-              'naturalSuggestion',
-              'activeVocab',
-              'followUpHints',
-              'usedTargetWords',
-            ],
-          },
-        },
+      const systemInstruction = buildTextCoachSystemInstruction({
+        level: safeLevel,
+        scenario: safeScenario,
+        learnerName: typeof learnerName === 'string' ? learnerName.slice(0, 60) : '',
+        targetWords: safeTargetWords,
       });
 
-      const rawText = response.text?.trim();
+      const ai = getAIClient();
+
+      let rawText: string | undefined;
+      try {
+        const primaryResponse = await withTimeout(
+          ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents,
+            config: {
+              systemInstruction,
+              thinkingConfig: {
+                thinkingLevel: ThinkingLevel.LOW,
+              },
+              responseMimeType: 'application/json',
+              responseSchema: CHAT_RESPONSE_SCHEMA,
+            },
+          }),
+          7000
+        );
+        rawText = primaryResponse.text?.trim();
+      } catch (primaryErr) {
+        if (!isTransientAiError(primaryErr)) {
+          throw primaryErr;
+        }
+        console.warn('gemini-4-hydrogen transient error, switching to gemini-3.1-flash-lite:', primaryErr);
+        const fallbackResponse = await withTimeout(
+          ai.models.generateContent({
+            model: 'gemini-3.1-flash-lite',
+            contents,
+            config: {
+              systemInstruction,
+              responseMimeType: 'application/json',
+              responseSchema: CHAT_RESPONSE_SCHEMA,
+            },
+          }),
+          14000
+        );
+        rawText = fallbackResponse.text?.trim();
+      }
+
       if (!rawText) {
         res.status(502).json({ error: 'AI không trả về nội dung phản hồi. Vui lòng thử lại.' });
         return;
       }
 
-      const parsed = JSON.parse(rawText);
+      const parsed = parseJsonResponseText(rawText);
       res.json(parsed);
     } catch (error) {
       console.error('AI Chat endpoint error:', error);
-      const message =
-        error instanceof Error ? error.message : 'Không thể kết nối tới trợ lý AI. Vui lòng thử lại.';
-      res.status(500).json({ error: message });
+      const { status, message } = formatFriendlyAiError(error);
+      res.status(status).json({ error: message });
     }
   });
+
+  // Always return JSON for unknown /api/* routes (never HTML/plain text)
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Không tìm thấy API yêu cầu.' });
+  });
+
+  // Global JSON error handler for Express middleware errors
+  app.use(
+    (
+      err: unknown,
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction
+    ) => {
+      if (req.path.startsWith('/api')) {
+        console.error('Express API middleware error:', err);
+        res.status(500).json({ error: 'Lỗi xử lý yêu cầu trên máy chủ. Vui lòng thử lại.' });
+        return;
+      }
+      next(err);
+    }
+  );
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ noServer: true });
@@ -404,11 +527,8 @@ async function startServer() {
           },
           onerror: (err: unknown) => {
             console.error('Gemini Live session error:', err);
-            const msg =
-              err instanceof Error
-                ? err.message
-                : 'Kết nối thoại trực tiếp với Gemini Live bị gián đoạn.';
-            sendWsJson(clientWs, { type: 'error', error: msg });
+            const { message } = formatFriendlyAiError(err);
+            sendWsJson(clientWs, { type: 'error', error: message });
           },
           onclose: () => {
             if (!closedByClient) {
@@ -419,11 +539,8 @@ async function startServer() {
       })
       .catch((err) => {
         console.error('Failed to connect to Gemini Live:', err);
-        const msg =
-          err instanceof Error
-            ? err.message
-            : 'Không thể khởi tạo phiên luyện nói trực tiếp Gemini Live.';
-        sendWsJson(clientWs, { type: 'error', error: msg });
+        const { message } = formatFriendlyAiError(err);
+        sendWsJson(clientWs, { type: 'error', error: message });
         clientWs.close();
         return null;
       });
@@ -496,7 +613,8 @@ async function startServer() {
     });
   }
 
-  const PORT = Number(process.env.PORT) || 3000;
+  // Always listen on port 3000 (nginx reverse-proxies external traffic to 127.0.0.1:3000)
+  const PORT = 3000;
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Cockpit server listening on http://0.0.0.0:${PORT}`);
   });

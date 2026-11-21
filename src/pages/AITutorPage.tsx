@@ -413,9 +413,34 @@ export function AITutorPage() {
           }),
         });
 
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data?.error || 'Không thể nhận phản hồi từ trợ lý AI.');
+        const rawBody = await res.text();
+        let data: {
+          error?: string;
+          replyEn?: string;
+          replyVi?: string;
+          correction?: string;
+          naturalSuggestion?: string;
+          activeVocab?: ActiveVocabSuggestion[];
+          followUpHints?: string[];
+          usedTargetWords?: string[];
+        } | null = null;
+
+        if (rawBody.trim()) {
+          try {
+            data = JSON.parse(rawBody);
+          } catch {
+            data = null;
+          }
+        }
+
+        if (!res.ok || !data) {
+          const fallbackErr =
+            res.status === 503 || res.status === 502 || res.status === 504
+              ? 'Máy chủ AI đang tạm thời quá tải hoặc đang khởi động lại. Vui lòng thử gửi lại sau vài giây.'
+              : res.status === 404
+                ? 'Kết nối tới máy chủ AI chưa sẵn sàng. Hãy tải lại trang và thử lại.'
+                : 'Không thể nhận phản hồi hợp lệ từ trợ lý AI. Vui lòng thử lại.';
+          throw new Error(data?.error || fallbackErr);
         }
 
         const aiUsedTargets: string[] = Array.isArray(data.usedTargetWords)
