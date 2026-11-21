@@ -9,6 +9,7 @@ import {
   KeyRound,
   Layers,
   Lock,
+  MessageSquareText,
   Plus,
   RefreshCw,
   Save,
@@ -19,16 +20,19 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { AdminFeedbackTab } from '../components/admin/AdminFeedbackTab';
 import { AdminPasswordGate } from '../components/admin/AdminPasswordGate';
 import { AdminSecurityTab } from '../components/admin/AdminSecurityTab';
 import { useApp } from '../context/AppContext';
 import { BOOTSTRAPPED_ADMIN_EMAIL, isFirestoreQuotaError } from '../firebase';
 import {
+  adminDeleteFeedback,
   adminDeleteLesson,
   adminDeleteLevel,
   adminGetSecurityVault,
   adminGrantAdmin,
   adminListAdmins,
+  adminListAllFeedback,
   adminListAllQuizResults,
   adminListAllUsers,
   adminRevokeAdmin,
@@ -40,6 +44,7 @@ import {
 import type {
   AdminRecord,
   AdminSecurityVaultDoc,
+  FeedbackStatus,
   LessonDoc,
   LevelDoc,
   PartOfSpeech,
@@ -47,12 +52,13 @@ import type {
   QuizQuestionType,
   QuizResultDoc,
   SentencePattern,
+  UserFeedbackDoc,
   UserProfile,
   VocabularyItem,
 } from '../types';
 import { formatTimestampVi, getQuizRatingVi, sanitizeId } from '../utils/helpers';
 
-type AdminTab = 'overview' | 'levels' | 'lessons' | 'users' | 'security';
+type AdminTab = 'overview' | 'levels' | 'lessons' | 'users' | 'feedback' | 'security';
 type EditorSection = 'meta' | 'vocabulary' | 'patterns' | 'grammar' | 'quiz';
 
 const ADMIN_SESSION_STORAGE_KEY = 'pilot-admin-vault-session';
@@ -230,7 +236,9 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [adminsList, setAdminsList] = useState<AdminRecord[]>([]);
   const [allQuizResults, setAllQuizResults] = useState<QuizResultDoc[]>([]);
+  const [feedbackList, setFeedbackList] = useState<UserFeedbackDoc[]>([]);
   const [loadingAdminData, setLoadingAdminData] = useState(false);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
 
   // Seeding & sync state
   const [seedingTarget, setSeedingTarget] = useState<string | null>(null);
@@ -321,13 +329,15 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     if (!isAdmin || !vaultUnlocked) return;
     setLoadingAdminData(true);
     try {
-      const [users, admins, results] = await Promise.all([
+      const [users, admins, results, feedbacks] = await Promise.all([
         adminListAllUsers(),
         adminListAdmins(),
         adminListAllQuizResults(),
+        adminListAllFeedback(),
       ]);
       setUsersList(users);
       setAdminsList(admins);
+      setFeedbackList(feedbacks);
       const sortedResults = [...results].sort((a, b) => {
         const ta =
           a.completedAt && typeof a.completedAt === 'object' && 'toMillis' in a.completedAt
@@ -352,6 +362,54 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     }
   }, [isAdmin, vaultUnlocked, addToast]);
 
+  const refreshFeedbackOnly = useCallback(async () => {
+    if (!isAdmin || !vaultUnlocked) return;
+    setLoadingFeedback(true);
+    try {
+      const feedbacks = await adminListAllFeedback();
+      setFeedbackList(feedbacks);
+    } catch (err) {
+      addToast(
+        'error',
+        isFirestoreQuotaError(err)
+          ? 'Firestore đang tạm quá hạn mức hôm nay. Vui lòng thử lại sau.'
+          : 'Không thể làm mới danh sách góp ý.'
+      );
+    } finally {
+      setLoadingFeedback(false);
+    }
+  }, [isAdmin, vaultUnlocked, addToast]);
+
+  const handleFeedbackUpdated = useCallback(
+    (feedbackId: string, status: FeedbackStatus, adminNote: string) => {
+      setFeedbackList((prev) =>
+        prev.map((item) =>
+          item.id === feedbackId ? { ...item, status, adminNote, updatedAt: new Date() } : item
+        )
+      );
+    },
+    []
+  );
+
+  const requestDeleteFeedback = useCallback(
+    (item: UserFeedbackDoc) => {
+      const id = item.id;
+      if (!id) return;
+      setConfirmDialog({
+        title: 'Xóa góp ý này?',
+        description: `Góp ý "${item.title}" của ${item.userName} sẽ bị xóa vĩnh viễn khỏi Firestore.`,
+        confirmLabel: 'Xóa góp ý',
+        danger: true,
+        onConfirm: async () => {
+          await adminDeleteFeedback(id);
+          setFeedbackList((prev) => prev.filter((f) => f.id !== id));
+          addToast('success', 'Đã xóa góp ý khỏi hệ thống.');
+        },
+      });
+    },
+    [addToast]
+  );
+
   useEffect(() => {
     void loadAdminOverview();
   }, [loadAdminOverview]);
@@ -373,6 +431,11 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     const sum = allQuizResults.reduce((acc, r) => acc + r.score, 0);
     return Math.round(sum / allQuizResults.length);
   }, [allQuizResults]);
+
+  const pendingFeedbackCount = useMemo(
+    () => feedbackList.filter((f) => f.status === 'new').length,
+    [feedbackList]
+  );
 
   const filteredLessons = useMemo(() => {
     const q = lessonSearch.trim().toLowerCase();
@@ -796,11 +859,17 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
 
         <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl self-start">
           {[
-            { id: 'overview' as const, label: 'Tổng quan & Seed', icon: Database },
-            { id: 'levels' as const, label: `Cấp độ (${levels.length})`, icon: Layers },
-            { id: 'lessons' as const, label: `Bài học (${lessons.length})`, icon: BookOpen },
-            { id: 'users' as const, label: `Người dùng (${usersList.length})`, icon: Users },
-            { id: 'security' as const, label: 'Mật khẩu & Bảo mật', icon: KeyRound },
+            { id: 'overview' as const, label: 'Tổng quan & Seed', icon: Database, badge: 0 },
+            { id: 'levels' as const, label: `Cấp độ (${levels.length})`, icon: Layers, badge: 0 },
+            { id: 'lessons' as const, label: `Bài học (${lessons.length})`, icon: BookOpen, badge: 0 },
+            { id: 'users' as const, label: `Người dùng (${usersList.length})`, icon: Users, badge: 0 },
+            {
+              id: 'feedback' as const,
+              label: `Góp ý (${feedbackList.length})`,
+              icon: MessageSquareText,
+              badge: pendingFeedbackCount,
+            },
+            { id: 'security' as const, label: 'Mật khẩu & Bảo mật', icon: KeyRound, badge: 0 },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -816,7 +885,12 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
                 }`}
               >
                 <Icon className="w-4 h-4" />
-                {tab.label}
+                <span>{tab.label}</span>
+                {tab.badge > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-[#FF6B00] text-white text-[10px] font-bold leading-none tabular-nums">
+                    {tab.badge} mới
+                  </span>
+                )}
               </button>
             );
           })}
@@ -864,6 +938,31 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
               </p>
             </div>
           </div>
+
+          {pendingFeedbackCount > 0 && (
+            <div className="bg-[#FF6B00]/10 dark:bg-[#FF6B00]/15 border border-[#FF6B00]/35 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#FF6B00] text-white flex items-center justify-center shrink-0">
+                  <MessageSquareText className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">
+                    Có {pendingFeedbackCount} góp ý mới từ học viên đang chờ Admin xem xét
+                  </p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    Xem chi tiết báo lỗi, đề xuất cải thiện bài học và gửi phản hồi lại cho học viên.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('feedback')}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-xs sm:text-sm font-bold transition-colors whitespace-nowrap self-start sm:self-center"
+              >
+                Mở hộp thư góp ý
+              </button>
+            </div>
+          )}
 
           {/* Seed Curriculum Panel */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4">
@@ -1424,7 +1523,18 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
         </div>
       )}
 
-      {/* TAB 5: ADMIN PASSWORD & SECURITY */}
+      {/* TAB 5: USER FEEDBACK & TRIAGE */}
+      {activeTab === 'feedback' && (
+        <AdminFeedbackTab
+          feedbackList={feedbackList}
+          loading={loadingFeedback || loadingAdminData}
+          onRefresh={refreshFeedbackOnly}
+          onUpdated={handleFeedbackUpdated}
+          onRequestDelete={requestDeleteFeedback}
+        />
+      )}
+
+      {/* TAB 6: ADMIN PASSWORD & SECURITY */}
       {activeTab === 'security' && (
         <AdminSecurityTab
           vault={vaultDoc}

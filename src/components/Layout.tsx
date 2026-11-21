@@ -13,6 +13,7 @@ import {
   Maximize2,
   Menu,
   MessageSquare,
+  MessageSquarePlus,
   MessageSquareQuote,
   Minimize2,
   Moon,
@@ -63,6 +64,7 @@ const MAIN_NAV: NavItem[] = [
   { id: 'saved', label: 'Từ đã lưu', icon: BookMarked },
   { id: 'progress', label: 'Tiến độ học tập', icon: BarChart3 },
   { id: 'leaderboard', label: 'Bảng xếp hạng', icon: Trophy },
+  { id: 'feedback', label: 'Góp ý cải thiện', icon: MessageSquarePlus },
   { id: 'account', label: 'Tài khoản cá nhân', icon: UserCircle },
 ];
 

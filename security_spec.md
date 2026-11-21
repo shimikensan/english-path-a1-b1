@@ -8,6 +8,7 @@
 4. **Learner Progress Ownership (`user_progress`, `user_vocabulary`)**: Every document's `uid` must strictly equal `request.auth.uid`, and composite IDs must follow `{uid}_{lessonId}` or `{uid}_{vocabularyId}`. Users can only list their own records (`resource.data.uid == request.auth.uid`).
 5. **Immutable Quiz Integrity (`quiz_results`)**: Quiz results are append-only (`allow update: if false`). Users cannot modify their own or another user's scores. `correctAnswers + wrongAnswers == totalQuestions`, and `completedAt == request.time`.
 6. **Temporal & Volumetric Integrity**: All timestamps must match `request.time`. All string fields enforce `.size()` bounds, all arrays enforce `.size() <= MAX`, and all document IDs enforce `isValidId()`.
+7. **Feedback PII Isolation & Admin Triage (`user_feedback/{feedbackId}`)**: Learner feedback contains `userEmail` (PII) and can only be read (`get`/`list`) by its author (`existing().uid == request.auth.uid`) or a verified Admin (`isAdmin()`). On creation, verified users must own `uid`, set `status == 'new'` and `adminNote == ''`, and exist in `/users/{uid}`. Only Admins can update `status`, `adminNote`, and `updatedAt` while all original learner-submitted fields remain strictly immutable. Only Admins can delete feedback records.
 
 ## 2. The "Dirty Dozen" Adversarial Payloads
 
@@ -28,5 +29,6 @@
 15. **Non-Root Admin Vault Wipe**: Secondary admin (not bootstrapped root admin) attempts `delete` on `/admin_security/vault` to bypass the management password. -> **PERMISSION_DENIED**
 16. **Leaderboard PII Injection / Spoofing**: Authenticated user `uidA` attempts to write an `email` field or write to `/leaderboard/uidB` or set `completionPercent: 500`. -> **PERMISSION_DENIED**
 17. **Unauthenticated Leaderboard Write**: Unauthenticated visitor attempts `create`, `update`, or `delete` on `/leaderboard/uidA`. -> **PERMISSION_DENIED**
-
-
+18. **Feedback Cross-User PII Read**: Non-admin user `uidA` attempts `get` on `/user_feedback/fb_other` owned by `uidB`, or executes an unscoped `list` on `/user_feedback`. -> **PERMISSION_DENIED**
+19. **Feedback Self-Resolution / Status Spoofing**: Learner `uidA` attempts to `create` a feedback document with `status: "resolved"` or pre-filled `adminNote`, or attempts to `update` their own feedback ticket. -> **PERMISSION_DENIED**
+20. **Feedback Admin Tampering of Original Submission**: Admin attempts to `update` a feedback ticket's `content`, `rating`, `uid`, or `createdAt` instead of only `status`, `adminNote`, and `updatedAt`. -> **PERMISSION_DENIED**

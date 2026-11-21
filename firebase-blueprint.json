@@ -555,6 +555,87 @@
         "isPublic",
         "updatedAt"
       ]
+    },
+    "UserFeedback": {
+      "title": "UserFeedback",
+      "description": "Learner feedback, bug reports, content suggestions, and admin resolution notes (contains userEmail PII; readable only by owner or verified admins).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "userEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "userLevel": {
+          "type": "string",
+          "enum": ["A1", "A2", "B1", "B2", "C1"]
+        },
+        "category": {
+          "type": "string",
+          "enum": ["bug", "content", "feature", "ui_ux", "other"]
+        },
+        "contextPage": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "content": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 2000
+        },
+        "rating": {
+          "type": "number",
+          "description": "Learner experience rating from 1 to 5 stars."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["new", "reviewing", "resolved", "closed"]
+        },
+        "adminNote": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "userName",
+        "userEmail",
+        "userLevel",
+        "category",
+        "contextPage",
+        "title",
+        "content",
+        "rating",
+        "status",
+        "adminNote",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -593,6 +674,10 @@
     "/leaderboard/{userId}": {
       "schema": { "$ref": "#/entities/LeaderboardEntry" },
       "description": "Public PII-free completion leaderboard readable by visitors and signed-in learners."
+    },
+    "/user_feedback/{feedbackId}": {
+      "schema": { "$ref": "#/entities/UserFeedback" },
+      "description": "Learner feedback tickets and admin responses for continuous software and curriculum improvement."
     }
   }
 }

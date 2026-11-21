@@ -236,6 +236,30 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidUserFeedback(data) {
+      return data.keys().hasAll([
+          'uid', 'userName', 'userEmail', 'userLevel', 'category', 'contextPage',
+          'title', 'content', 'rating', 'status', 'adminNote', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'userName', 'userEmail', 'userLevel', 'category', 'contextPage',
+          'title', 'content', 'rating', 'status', 'adminNote', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 100
+        && data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 200
+        && data.userLevel is string && data.userLevel in ['A1', 'A2', 'B1', 'B2', 'C1']
+        && data.category is string && data.category in ['bug', 'content', 'feature', 'ui_ux', 'other']
+        && data.contextPage is string && data.contextPage.size() <= 80
+        && data.title is string && data.title.size() >= 3 && data.title.size() <= 120
+        && data.content is string && data.content.size() >= 5 && data.content.size() <= 2000
+        && data.rating is number && data.rating >= 1 && data.rating <= 5
+        && data.status is string && data.status in ['new', 'reviewing', 'resolved', 'closed']
+        && data.adminNote is string && data.adminNote.size() <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // --- Collection: users (PII Isolated to Owner & Admin) ---
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
@@ -479,6 +503,40 @@ service cloud.firestore {
           || isAdmin()
         );
       allow delete: if isValidId(userId) && ((isVerifiedUser() && isOwner(userId)) || isAdmin());
+    }
+
+    // --- Collection: user_feedback (Learner Feedback & Admin Triage, PII Isolated) ---
+    match /user_feedback/{feedbackId} {
+      allow get: if isValidId(feedbackId) && (
+        isAdmin()
+        || (isSignedIn() && resource != null && existing().uid == request.auth.uid)
+      );
+      allow list: if (isSignedIn() && existing().uid == request.auth.uid) || isAdmin();
+      allow create: if isVerifiedUser()
+        && isValidId(feedbackId)
+        && isValidUserFeedback(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().status == 'new'
+        && incoming().adminNote == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isAdmin()
+        && isValidId(feedbackId)
+        && isValidUserFeedback(incoming())
+        && incoming().uid == existing().uid
+        && incoming().userName == existing().userName
+        && incoming().userEmail == existing().userEmail
+        && incoming().userLevel == existing().userLevel
+        && incoming().category == existing().category
+        && incoming().contextPage == existing().contextPage
+        && incoming().title == existing().title
+        && incoming().content == existing().content
+        && incoming().rating == existing().rating
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'updatedAt']);
+      allow delete: if isValidId(feedbackId) && isAdmin();
     }
   }
 }

@@ -216,6 +216,27 @@ export interface LeaderboardEntryDoc {
   updatedAt?: Timestamp | Date;
 }
 
+export type FeedbackCategory = 'bug' | 'content' | 'feature' | 'ui_ux' | 'other';
+
+export type FeedbackStatus = 'new' | 'reviewing' | 'resolved' | 'closed';
+
+export interface UserFeedbackDoc {
+  id?: string;
+  uid: string;
+  userName: string;
+  userEmail: string;
+  userLevel: LearnerCEFRLevel;
+  category: FeedbackCategory;
+  contextPage: string;
+  title: string;
+  content: string;
+  rating: number;
+  status: FeedbackStatus;
+  adminNote: string;
+  createdAt?: Timestamp | Date;
+  updatedAt?: Timestamp | Date;
+}
+
 export type AppRoute =
   | 'dashboard'
   | 'roadmap'
@@ -228,6 +249,7 @@ export type AppRoute =
   | 'saved'
   | 'progress'
   | 'leaderboard'
+  | 'feedback'
   | 'account'
   | 'lesson'
   | 'admin';

@@ -25,12 +25,15 @@ import {
 import type {
   AdminRecord,
   AdminSecurityVaultDoc,
+  FeedbackCategory,
+  FeedbackStatus,
   LeaderboardEntryDoc,
   LearnerCEFRLevel,
   LessonDoc,
   LevelDoc,
   QuizRating,
   QuizResultDoc,
+  UserFeedbackDoc,
   UserProfile,
   UserProgressDoc,
   UserVocabularyDoc,
@@ -1303,3 +1306,161 @@ export async function adminSyncAllUsersLeaderboard(
   }
 }
 
+// --- User Feedback & Admin Triage (On-Demand Reads to Conserve Quota) ---
+
+const VALID_FEEDBACK_CATEGORIES: FeedbackCategory[] = ['bug', 'content', 'feature', 'ui_ux', 'other'];
+const VALID_FEEDBACK_STATUSES: FeedbackStatus[] = ['new', 'reviewing', 'resolved', 'closed'];
+
+function getTimestampMillis(ts: unknown): number {
+  if (!ts) return 0;
+  if (ts instanceof Date) return ts.getTime();
+  if (typeof ts === 'object' && ts !== null && 'toMillis' in ts && typeof (ts as { toMillis?: unknown }).toMillis === 'function') {
+    return (ts as { toMillis: () => number }).toMillis();
+  }
+  return 0;
+}
+
+export interface SubmitUserFeedbackInput {
+  category: FeedbackCategory;
+  contextPage: string;
+  title: string;
+  content: string;
+  rating: number;
+}
+
+export async function submitUserFeedback(
+  profile: UserProfile,
+  input: SubmitUserFeedbackInput
+): Promise<UserFeedbackDoc> {
+  const safeTitle = truncate(input.title.trim(), 120);
+  const safeContent = truncate(input.content.trim(), 2000);
+  if (safeTitle.length < 3) {
+    throw new Error('Tiêu đề góp ý cần ít nhất 3 ký tự.');
+  }
+  if (safeContent.length < 5) {
+    throw new Error('Nội dung góp ý cần ít nhất 5 ký tự.');
+  }
+
+  const feedbackId = `fb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const safeCategory: FeedbackCategory = VALID_FEEDBACK_CATEGORIES.includes(input.category)
+    ? input.category
+    : 'other';
+  const safeLevel: LearnerCEFRLevel =
+    profile.currentLevel === 'A2' ||
+    profile.currentLevel === 'B1' ||
+    profile.currentLevel === 'B2' ||
+    profile.currentLevel === 'C1'
+      ? profile.currentLevel
+      : 'A1';
+  const safeRating = Math.min(5, Math.max(1, Math.round(Number(input.rating) || 5)));
+  const safeName = truncate(profile.fullName.trim() || 'Phi công tập sự', 100) || 'Phi công tập sự';
+  const safeEmail = truncate(profile.email.trim() || 'learner@example.com', 200);
+  const safeContext = truncate(input.contextPage.trim(), 80);
+
+  const payload = {
+    uid: profile.uid,
+    userName: safeName,
+    userEmail: safeEmail,
+    userLevel: safeLevel,
+    category: safeCategory,
+    contextPage: safeContext,
+    title: safeTitle,
+    content: safeContent,
+    rating: safeRating,
+    status: 'new' as FeedbackStatus,
+    adminNote: '',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    await setDoc(doc(db, 'user_feedback', feedbackId), payload);
+    const now = new Date();
+    return {
+      id: feedbackId,
+      uid: payload.uid,
+      userName: payload.userName,
+      userEmail: payload.userEmail,
+      userLevel: payload.userLevel,
+      category: payload.category,
+      contextPage: payload.contextPage,
+      title: payload.title,
+      content: payload.content,
+      rating: payload.rating,
+      status: 'new',
+      adminNote: '',
+      createdAt: now,
+      updatedAt: now,
+    };
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.CREATE, `user_feedback/${feedbackId}`);
+  }
+}
+
+export async function fetchMyFeedback(uid: string): Promise<UserFeedbackDoc[]> {
+  try {
+    const q = query(collection(db, 'user_feedback'), where('uid', '==', uid));
+    const snap = await getDocs(q);
+    return snap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as UserFeedbackDoc) }))
+      .sort((a, b) => getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt));
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.LIST, 'user_feedback');
+  }
+}
+
+export async function adminListAllFeedback(): Promise<UserFeedbackDoc[]> {
+  try {
+    const snap = await getDocs(collection(db, 'user_feedback'));
+    return snap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as UserFeedbackDoc) }))
+      .sort((a, b) => getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt));
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.LIST, 'user_feedback');
+  }
+}
+
+export async function adminUpdateFeedback(
+  feedbackId: string,
+  patch: { status: FeedbackStatus; adminNote: string }
+): Promise<void> {
+  const safeId = sanitizeId(feedbackId, 128);
+  const safeStatus: FeedbackStatus = VALID_FEEDBACK_STATUSES.includes(patch.status)
+    ? patch.status
+    : 'reviewing';
+  const safeNote = truncate(patch.adminNote.trim(), 1000);
+
+  try {
+    await updateDoc(doc(db, 'user_feedback', safeId), {
+      status: safeStatus,
+      adminNote: safeNote,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.UPDATE, `user_feedback/${safeId}`);
+  }
+}
+
+export async function adminDeleteFeedback(feedbackId: string): Promise<void> {
+  const safeId = sanitizeId(feedbackId, 128);
+  try {
+    await deleteDoc(doc(db, 'user_feedback', safeId));
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.DELETE, `user_feedback/${safeId}`);
+  }
+}

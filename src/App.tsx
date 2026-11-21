@@ -18,6 +18,7 @@ import { AdminPage } from './pages/AdminPage';
 import { AITutorPage } from './pages/AITutorPage';
 import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { FeedbackPage } from './pages/FeedbackPage';
 import { LessonDetailPage } from './pages/LessonDetailPage';
 import { PatternsHubPage } from './pages/PatternsHubPage';
 import { PracticePage } from './pages/PracticePage';
@@ -41,6 +42,7 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   saved: 'Từ vựng đã lưu',
   progress: 'Tiến độ học tập',
   leaderboard: 'Bảng xếp hạng học viên',
+  feedback: 'Góp ý & Cải thiện phần mềm',
   account: 'Tài khoản cá nhân',
   lesson: 'Chi tiết bài học',
   admin: 'Quản trị hệ thống',
@@ -227,6 +229,7 @@ function AppShell() {
               <ProgressPage onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')} />
             )}
             {route === 'leaderboard' && <LeaderboardPanel />}
+            {route === 'feedback' && <FeedbackPage />}
             {route === 'account' && <AccountPage />}
             {route === 'lesson' && (
               <LessonDetailPage
