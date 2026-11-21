@@ -15,6 +15,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { APP_BRAND } from './data';
 import { AccountPage } from './pages/AccountPage';
 import { AdminPage } from './pages/AdminPage';
+import { AITutorPage } from './pages/AITutorPage';
 import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LessonDetailPage } from './pages/LessonDetailPage';
@@ -32,6 +33,7 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   dashboard: 'Buồng lái · Trang chủ',
   roadmap: 'Đường bay CEFR A1–C1 & Chuyên ngành',
   specialized: 'Tiếng Anh Chuyên ngành (ESP)',
+  'ai-tutor': 'Luyện nói & Nhắn tin AI',
   vocabulary: 'Kho từ vựng',
   patterns: 'Mẫu câu giao tiếp',
   practice: 'Luyện tập tương tác',
@@ -207,6 +209,7 @@ function AppShell() {
             {route === 'specialized' && (
               <SpecializedHubPage onOpenLesson={(id, tab) => handleOpenLesson(id, tab ?? 'vocabulary')} />
             )}
+            {route === 'ai-tutor' && <AITutorPage />}
             {route === 'vocabulary' && (
               <VocabularyHubPage onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')} />
             )}

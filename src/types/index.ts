@@ -220,6 +220,7 @@ export type AppRoute =
   | 'dashboard'
   | 'roadmap'
   | 'specialized'
+  | 'ai-tutor'
   | 'vocabulary'
   | 'patterns'
   | 'practice'
