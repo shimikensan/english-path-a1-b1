@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/ai/chat.ts": {
+      "maxDuration": 30
+    }
+  }
+}

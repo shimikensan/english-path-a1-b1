@@ -357,13 +357,28 @@ export function AITutorPage() {
   const [chatInput, setChatInput] = useState<string>('');
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string>('');
+  const [lastFailedMessage, setLastFailedMessage] = useState<string>('');
+  const [autoSpeakChat, setAutoSpeakChat] = useState<boolean>(false);
+  const [isDictating, setIsDictating] = useState<boolean>(false);
   const [showTranslations, setShowTranslations] = useState<Record<string, boolean>>({});
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   useEffect(() => {
     setMessages(loadStoredChat(scenario));
     setChatError('');
+    setLastFailedMessage('');
   }, [scenario]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -375,11 +390,21 @@ export function AITutorPage() {
   );
 
   const handleSendChat = useCallback(
-    async (overrideText?: string) => {
+    async (overrideText?: string, isRetry = false) => {
       const content = (overrideText ?? chatInput).trim();
       if (!content || chatLoading) return;
 
       setChatError('');
+      setLastFailedMessage('');
+
+      const baseMessages =
+        isRetry &&
+        messages.length > 0 &&
+        messages[messages.length - 1].role === 'user' &&
+        messages[messages.length - 1].textEn === content
+          ? messages.slice(0, -1)
+          : messages;
+
       const userMsg: ChatMessage = {
         id: `u-${Date.now()}`,
         role: 'user',
@@ -387,7 +412,7 @@ export function AITutorPage() {
         timestamp: Date.now(),
       };
 
-      const updatedHistory = [...messages, userMsg];
+      const updatedHistory = [...baseMessages, userMsg];
       setMessages(updatedHistory);
       saveStoredChat(scenario, updatedHistory);
       if (!overrideText) {
@@ -402,7 +427,7 @@ export function AITutorPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: content,
-            history: messages.slice(-14).map((m) => ({
+            history: baseMessages.slice(-14).map((m) => ({
               role: m.role,
               text: m.textEn,
             })),
@@ -438,7 +463,7 @@ export function AITutorPage() {
             res.status === 503 || res.status === 502 || res.status === 504
               ? 'Máy chủ AI đang tạm thời quá tải hoặc đang khởi động lại. Vui lòng thử gửi lại sau vài giây.'
               : res.status === 404
-                ? 'Kết nối tới máy chủ AI chưa sẵn sàng. Hãy tải lại trang và thử lại.'
+                ? 'Không tìm thấy API /api/ai/chat trên máy chủ hiện tại. Hãy kiểm tra bản deploy mới nhất và biến môi trường GEMINI_API_KEY.'
                 : 'Không thể nhận phản hồi hợp lệ từ trợ lý AI. Vui lòng thử lại.';
           throw new Error(data?.error || fallbackErr);
         }
@@ -479,10 +504,14 @@ export function AITutorPage() {
         const nextMessages = [...updatedHistory, aiMsg];
         setMessages(nextMessages);
         saveStoredChat(scenario, nextMessages);
+        if (autoSpeakChat && aiMsg.textEn) {
+          speakEnglish(aiMsg.textEn);
+        }
       } catch (err) {
         const msg =
           err instanceof Error ? err.message : 'Lỗi kết nối đến trợ lý AI. Vui lòng thử lại.';
         setChatError(msg);
+        setLastFailedMessage(content);
         addToast('error', msg);
       } finally {
         setChatLoading(false);
@@ -497,9 +526,87 @@ export function AITutorPage() {
       profile?.fullName,
       targetWordsList,
       detectUsedTargetWords,
+      autoSpeakChat,
       addToast,
     ]
   );
+
+  const handleToggleDictation = useCallback(() => {
+    if (isDictating) {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // ignore
+      }
+      setIsDictating(false);
+      return;
+    }
+
+    const SpeechRecCtor =
+      (window as unknown as {
+        SpeechRecognition?: new () => {
+          lang: string;
+          interimResults: boolean;
+          continuous: boolean;
+          onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+          onerror: (() => void) | null;
+          onend: (() => void) | null;
+          start: () => void;
+          stop: () => void;
+        };
+        webkitSpeechRecognition?: new () => {
+          lang: string;
+          interimResults: boolean;
+          continuous: boolean;
+          onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+          onerror: (() => void) | null;
+          onend: (() => void) | null;
+          start: () => void;
+          stop: () => void;
+        };
+      }).SpeechRecognition ||
+      (window as unknown as {
+        webkitSpeechRecognition?: new () => {
+          lang: string;
+          interimResults: boolean;
+          continuous: boolean;
+          onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+          onerror: (() => void) | null;
+          onend: (() => void) | null;
+          start: () => void;
+          stop: () => void;
+        };
+      }).webkitSpeechRecognition;
+
+    if (!SpeechRecCtor) {
+      addToast('error', 'Trình duyệt này chưa hỗ trợ nhận diện giọng nói. Hãy dùng Chrome hoặc Edge.');
+      return;
+    }
+
+    const recognition = new SpeechRecCtor();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      const spoken = event.results?.[0]?.[0]?.transcript?.trim();
+      if (spoken) {
+        setAutoSpeakChat(true);
+        setChatInput((prev) => (prev ? `${prev} ${spoken}` : spoken));
+      }
+    };
+    recognition.onerror = () => {
+      setIsDictating(false);
+      addToast('error', 'Không nhận diện được giọng nói tiếng Anh. Vui lòng thử nói rõ hơn.');
+    };
+    recognition.onend = () => {
+      setIsDictating(false);
+    };
+
+    recognitionRef.current = recognition;
+    setIsDictating(true);
+    recognition.start();
+  }, [isDictating, addToast]);
 
   const handleClearChat = () => {
     setMessages([]);
@@ -808,9 +915,22 @@ export function AITutorPage() {
               </div>
 
               {liveError && (
-                <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 text-xs text-rose-700 dark:text-rose-300">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{liveError}</span>
+                <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 text-xs text-rose-700 dark:text-rose-300 space-y-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{liveError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAutoSpeakChat(true);
+                      setMode('chat');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF6B00] hover:bg-[#FF7E1F] text-white font-bold transition-colors"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Chuyển sang Nói & Nhắn tin AI
+                  </button>
                 </div>
               )}
             </div>
@@ -964,16 +1084,30 @@ export function AITutorPage() {
                 Mỗi tin nhắn đều nhận phản hồi tiếng Anh tự nhiên, góp ý sửa lỗi ngữ pháp & từ vựng gợi ý
               </p>
             </div>
-            {messages.length > 0 && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleClearChat}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                onClick={() => setAutoSpeakChat((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                  autoSpeakChat
+                    ? 'border-[#FF6B00]/50 bg-[#FF6B00]/10 text-[#D94E00] dark:text-[#FF8524]'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                Làm mới hội thoại
+                <Volume2 className="w-3.5 h-3.5" />
+                {autoSpeakChat ? 'Tự đọc phản hồi: Bật' : 'Tự đọc phản hồi: Tắt'}
               </button>
-            )}
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearChat}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Làm mới hội thoại
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Chat Feed */}
@@ -1174,9 +1308,22 @@ export function AITutorPage() {
             )}
 
             {chatError && (
-              <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 text-xs text-rose-700 dark:text-rose-300">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{chatError}</span>
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 text-xs text-rose-700 dark:text-rose-300">
+                <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{chatError}</span>
+                </div>
+                {lastFailedMessage && (
+                  <button
+                    type="button"
+                    disabled={chatLoading}
+                    onClick={() => void handleSendChat(lastFailedMessage, true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors shrink-0"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Thử gửi lại
+                  </button>
+                )}
               </div>
             )}
 
@@ -1185,13 +1332,27 @@ export function AITutorPage() {
 
           {/* Composer Bar */}
           <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40">
-            <div className="flex items-end gap-3">
+            <div className="flex items-end gap-2.5">
+              <button
+                type="button"
+                disabled={chatLoading}
+                onClick={handleToggleDictation}
+                title={isDictating ? 'Dừng thu giọng nói tiếng Anh' : 'Nói tiếng Anh bằng Micro để điền vào khung tin nhắn'}
+                className={`inline-flex items-center justify-center p-3 rounded-xl border transition-colors shrink-0 disabled:opacity-50 ${
+                  isDictating
+                    ? 'border-rose-500 bg-rose-600 text-white animate-pulse'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-[#FF6B00] hover:text-[#FF6B00]'
+                }`}
+                aria-label={isDictating ? 'Dừng thu âm' : 'Nói tiếng Anh bằng Micro'}
+              >
+                {isDictating ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
               <textarea
                 rows={2}
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={handleChatKeyDown}
-                placeholder="Nhập tin nhắn tiếng Anh của bạn... (Nhấn Enter để gửi, Shift+Enter để xuống dòng)"
+                placeholder="Nhập hoặc nhấn nút Micro để nói tiếng Anh... (Enter để gửi, Shift+Enter xuống dòng)"
                 disabled={chatLoading}
                 className="flex-1 resize-none px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF6B00] disabled:opacity-60"
               />
