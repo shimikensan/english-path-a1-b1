@@ -4,7 +4,6 @@ import {
   BookMarked,
   BookOpen,
   ClipboardCheck,
-  Clock,
   Compass,
   Dumbbell,
   Flame,
@@ -26,6 +25,7 @@ import {
   VolumeX,
   X,
 } from 'lucide-react';
+import { FocusStudyTimer } from './FocusStudyTimer';
 import { HudOverlay } from './HudOverlay';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
@@ -78,26 +78,12 @@ export function Layout({
   const { theme, toggleTheme } = useTheme();
   const { audioEnabled, toggleAudio } = useCockpitAudio();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [focusSeconds, setFocusSeconds] = useState(0);
 
   useEffect(() => {
-    if (!focusMode) {
-      setFocusSeconds(0);
-      return;
+    if (focusMode) {
+      setMobileMenuOpen(false);
     }
-    setMobileMenuOpen(false);
-    const start = Date.now();
-    const timer = window.setInterval(() => {
-      setFocusSeconds(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    return () => window.clearInterval(timer);
   }, [focusMode]);
-
-  const formatFocusTimer = (sec: number) => {
-    const m = String(Math.floor(sec / 60)).padStart(2, '0');
-    const s = String(sec % 60).padStart(2, '0');
-    return `${m}:${s}`;
-  };
 
   const handleSelectRoute = (route: AppRoute) => {
     onNavigate(route);
@@ -248,14 +234,6 @@ export function Layout({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-              <div
-                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-600 dark:text-slate-300 tabular-nums"
-                title="Thời gian tập trung trong phiên hiện tại"
-              >
-                <Clock className="w-3.5 h-3.5 text-[#FF6B00] dark:text-[#FF8524]" />
-                {formatFocusTimer(focusSeconds)}
-              </div>
-
               <button
                 type="button"
                 onClick={toggleAudio}
@@ -393,11 +371,15 @@ export function Layout({
         {/* Main Workspace Canvas */}
         <main
           className={`relative z-10 flex-1 w-full mx-auto px-4 sm:px-6 lg:px-8 ${
-            focusMode ? 'max-w-5xl py-6 sm:py-8' : 'max-w-7xl py-6 sm:py-8'
+            focusMode ? 'max-w-5xl pt-6 sm:pt-8 pb-24' : 'max-w-7xl py-6 sm:py-8'
           }`}
         >
           {children}
         </main>
+
+        {focusMode && (
+          <FocusStudyTimer dailyGoalMinutes={profile?.dailyGoalMinutes ?? 20} />
+        )}
 
         {!focusMode && (
           <footer className="relative z-10 border-t border-slate-200/80 dark:border-slate-800/80 py-4 px-4 sm:px-6 lg:px-8">
