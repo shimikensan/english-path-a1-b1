@@ -22,7 +22,7 @@ import {
 import { AdminPasswordGate } from '../components/admin/AdminPasswordGate';
 import { AdminSecurityTab } from '../components/admin/AdminSecurityTab';
 import { useApp } from '../context/AppContext';
-import { BOOTSTRAPPED_ADMIN_EMAIL } from '../firebase';
+import { BOOTSTRAPPED_ADMIN_EMAIL, isFirestoreQuotaError } from '../firebase';
 import {
   adminDeleteLesson,
   adminDeleteLevel,
@@ -209,7 +209,17 @@ interface AdminPageProps {
 }
 
 export function AdminPage({ onBackToDashboard }: AdminPageProps) {
-  const { firebaseUser, isAdmin, levels, lessons, leaderboard, firestoreSeeded, addToast } = useApp();
+  const {
+    firebaseUser,
+    isAdmin,
+    levels,
+    lessons,
+    leaderboard,
+    firestoreSeeded,
+    refreshCurriculum,
+    refreshLeaderboard,
+    addToast,
+  } = useApp();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [vaultDoc, setVaultDoc] = useState<AdminSecurityVaultDoc | null>(null);
   const [vaultUnlocked, setVaultUnlocked] = useState<boolean>(() =>
@@ -330,8 +340,13 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
         return tb - ta;
       });
       setAllQuizResults(sortedResults);
-    } catch {
-      addToast('error', 'Không thể tải danh sách thống kê quản trị từ Firestore.');
+    } catch (err) {
+      addToast(
+        'error',
+        isFirestoreQuotaError(err)
+          ? 'Firestore đã chạm giới hạn lượt đọc miễn phí hôm nay. Vui lòng thử lại sau khi hạn mức đặt lại hoặc nâng cấp gói cơ sở dữ liệu.'
+          : 'Không thể tải danh sách thống kê quản trị từ Firestore.'
+      );
     } finally {
       setLoadingAdminData(false);
     }
@@ -413,14 +428,18 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     setSeedingTarget(label);
     try {
       const res = await seedCurriculumToFirestore(target);
-      const publishedLessons = lessons.filter((l) => l.isPublished !== false);
-      const syncRes = await adminSyncAllUsersLeaderboard(publishedLessons);
+      await refreshCurriculum(true);
       addToast(
         'success',
-        `Đã đồng bộ ${res.levelsCount} cấp độ, ${res.lessonsCount} bài học (${target ?? 'A1–C1 & Chuyên ngành'}) và cập nhật BXH cho ${syncRes.syncedUsers} tài khoản (${syncRes.totalLessons} bài).`
+        `Đã đồng bộ ${res.levelsCount} cấp độ và ${res.lessonsCount} bài học (${target ?? 'A1–C1 & Chuyên ngành'}) lên Firestore.`
       );
-    } catch {
-      addToast('error', 'Đồng bộ giáo trình thất bại. Vui lòng kiểm tra kết nối và quyền Admin.');
+    } catch (err) {
+      addToast(
+        'error',
+        isFirestoreQuotaError(err)
+          ? 'Firestore đã hết hạn mức lượt đọc hôm nay. Không thể đồng bộ giáo trình lúc này.'
+          : 'Đồng bộ giáo trình thất bại. Vui lòng kiểm tra kết nối và quyền Admin.'
+      );
     } finally {
       setSeedingTarget(null);
     }
@@ -431,12 +450,18 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     try {
       const publishedLessons = lessons.filter((l) => l.isPublished !== false);
       const res = await adminSyncAllUsersLeaderboard(publishedLessons);
+      await refreshLeaderboard(true);
       addToast(
         'success',
         `Đã đồng bộ toàn bộ ${res.syncedUsers} tài khoản học viên theo chuẩn ${res.totalLessons} bài học trên Firestore.`
       );
-    } catch {
-      addToast('error', 'Không thể đồng bộ Bảng xếp hạng cho các tài khoản. Vui lòng thử lại.');
+    } catch (err) {
+      addToast(
+        'error',
+        isFirestoreQuotaError(err)
+          ? 'Firestore đã chạm giới hạn lượt đọc miễn phí trong ngày. Vui lòng thử lại vào ngày mai hoặc sau khi nâng cấp gói.'
+          : 'Không thể đồng bộ Bảng xếp hạng cho các tài khoản. Vui lòng thử lại.'
+      );
     } finally {
       setSyncingAllLeaderboard(false);
     }
@@ -483,10 +508,16 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
         order: Number(levelForm.order) || 1,
         isPublished: levelForm.isPublished,
       });
+      await refreshCurriculum(true);
       addToast('success', `Đã lưu cấp độ ${cleanId} lên Firestore.`);
       resetLevelForm();
-    } catch {
-      addToast('error', 'Không thể lưu cấp độ. Vui lòng kiểm tra lại dữ liệu.');
+    } catch (err) {
+      addToast(
+        'error',
+        isFirestoreQuotaError(err)
+          ? 'Firestore đã hết hạn mức hôm nay. Chưa thể lưu thay đổi.'
+          : 'Không thể lưu cấp độ. Vui lòng kiểm tra lại dữ liệu.'
+      );
     } finally {
       setSavingLevel(false);
     }
@@ -500,6 +531,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
       danger: true,
       onConfirm: async () => {
         await adminDeleteLevel(lvl.levelId);
+        await refreshCurriculum(true);
         addToast('success', `Đã xóa cấp độ ${lvl.levelId}.`);
       },
     });
@@ -535,16 +567,16 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     setSavingLesson(true);
     try {
       await adminSaveLesson(editingLesson);
-      const updatedList = lessons.some((l) => l.lessonId === editingLesson.lessonId)
-        ? lessons.map((l) => (l.lessonId === editingLesson.lessonId ? editingLesson : l))
-        : [...lessons, editingLesson];
-      void adminSyncAllUsersLeaderboard(updatedList.filter((l) => l.isPublished !== false)).catch(
-        () => {}
-      );
+      await refreshCurriculum(true);
       addToast('success', `Đã lưu bài học "${editingLesson.title}" lên Firestore.`);
       setEditingLesson(null);
-    } catch {
-      addToast('error', 'Không thể lưu bài học. Kiểm tra giới hạn số lượng câu/từ hoặc định dạng dữ liệu.');
+    } catch (err) {
+      addToast(
+        'error',
+        isFirestoreQuotaError(err)
+          ? 'Firestore đã hết hạn mức hôm nay. Chưa thể lưu bài học.'
+          : 'Không thể lưu bài học. Kiểm tra giới hạn số lượng câu/từ hoặc định dạng dữ liệu.'
+      );
     } finally {
       setSavingLesson(false);
     }
@@ -558,10 +590,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
       danger: true,
       onConfirm: async () => {
         await adminDeleteLesson(lesson.lessonId);
-        const remaining = lessons.filter(
-          (l) => l.lessonId !== lesson.lessonId && l.isPublished !== false
-        );
-        void adminSyncAllUsersLeaderboard(remaining).catch(() => {});
+        await refreshCurriculum(true);
         addToast('success', `Đã xóa bài học "${lesson.title}".`);
       },
     });

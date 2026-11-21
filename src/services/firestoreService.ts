@@ -15,7 +15,13 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS, getDefaultLessonsByLevel } from '../data';
-import { BOOTSTRAPPED_ADMIN_EMAIL, db, handleFirestoreError, OperationType } from '../firebase';
+import {
+  BOOTSTRAPPED_ADMIN_EMAIL,
+  db,
+  handleFirestoreError,
+  isFirestoreQuotaError,
+  OperationType,
+} from '../firebase';
 import type {
   AdminRecord,
   AdminSecurityVaultDoc,
@@ -31,6 +37,96 @@ import type {
   VocabularyItem,
 } from '../types';
 import { calculateUpdatedStreak, sanitizeId, truncate } from '../utils/helpers';
+
+// --- Lightweight Local TTL Cache (cuts repeat Firestore read units on reloads) ---
+
+const CACHE_KEY_LEVELS = 'pilot_fs_cache_levels_v1';
+const CACHE_KEY_LESSONS = 'pilot_fs_cache_lessons_v1';
+const CACHE_KEY_LEADERBOARD = 'pilot_fs_cache_leaderboard_v1';
+
+const CURRICULUM_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const LEADERBOARD_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+interface CachedPayload<T> {
+  savedAt: number;
+  data: T;
+}
+
+function readLocalCache<T>(key: string, maxAgeMs: number): T | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedPayload<T>;
+    if (!parsed || typeof parsed.savedAt !== 'number' || !Array.isArray(parsed.data)) {
+      return null;
+    }
+    if (Date.now() - parsed.savedAt > maxAgeMs) {
+      return null;
+    }
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function readStaleLocalCache<T>(key: string): T | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedPayload<T>;
+    if (!parsed || !Array.isArray(parsed.data)) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalCache<T>(key: string, data: T): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function clearCurriculumCache(): void {
+  try {
+    window.localStorage.removeItem(CACHE_KEY_LEVELS);
+    window.localStorage.removeItem(CACHE_KEY_LESSONS);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearLeaderboardCache(): void {
+  try {
+    window.localStorage.removeItem(CACHE_KEY_LEADERBOARD);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function getCachedLeaderboardSnapshot(): LeaderboardEntryDoc[] {
+  return readStaleLocalCache<LeaderboardEntryDoc[]>(CACHE_KEY_LEADERBOARD) ?? [];
+}
+
+function sortLeaderboardEntries(entries: LeaderboardEntryDoc[]): LeaderboardEntryDoc[] {
+  return [...entries].sort((a, b) => {
+    if (b.completionPercent !== a.completionPercent) {
+      return b.completionPercent - a.completionPercent;
+    }
+    if (b.completedLessons !== a.completedLessons) {
+      return b.completedLessons - a.completedLessons;
+    }
+    if (b.learnedVocabCount !== a.learnedVocabCount) {
+      return b.learnedVocabCount - a.learnedVocabCount;
+    }
+    if (b.averageQuizScore !== a.averageQuizScore) {
+      return b.averageQuizScore - a.averageQuizScore;
+    }
+    return b.streakDays - a.streakDays;
+  });
+}
 
 // --- User Profile & RBAC ---
 
@@ -149,7 +245,8 @@ export async function checkIsAdmin(firebaseUser: User): Promise<boolean> {
 
 export function subscribeUserProfile(
   uid: string,
-  onData: (profile: UserProfile | null) => void
+  onData: (profile: UserProfile | null) => void,
+  onError?: (error: unknown) => void
 ): Unsubscribe {
   const path = `users/${uid}`;
   return onSnapshot(
@@ -158,16 +255,93 @@ export function subscribeUserProfile(
       onData(snap.exists() ? (snap.data() as UserProfile) : null);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.GET, path);
+      }
     }
   );
 }
 
-// --- Levels & Lessons Subscriptions ---
+// --- Levels & Lessons Fetching & Subscriptions ---
+
+export async function fetchLevelsOnce(
+  isAdmin: boolean,
+  forceRefresh = false
+): Promise<LevelDoc[]> {
+  if (!forceRefresh && !isAdmin) {
+    const cached = readLocalCache<LevelDoc[]>(CACHE_KEY_LEVELS, CURRICULUM_CACHE_TTL_MS);
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+  }
+
+  const path = 'levels';
+  const q = isAdmin
+    ? query(collection(db, path))
+    : query(collection(db, path), where('isPublished', '==', true));
+
+  try {
+    const snapshot = await getDocs(q);
+    const items = snapshot.docs
+      .map((d) => d.data() as LevelDoc)
+      .sort((a, b) => a.order - b.order);
+    if (!isAdmin && items.length > 0) {
+      writeLocalCache(CACHE_KEY_LEVELS, items);
+    }
+    return items;
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      const stale = readStaleLocalCache<LevelDoc[]>(CACHE_KEY_LEVELS);
+      if (stale && stale.length > 0) {
+        return stale;
+      }
+    }
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+export async function fetchLessonsOnce(
+  isAdmin: boolean,
+  forceRefresh = false
+): Promise<LessonDoc[]> {
+  if (!forceRefresh && !isAdmin) {
+    const cached = readLocalCache<LessonDoc[]>(CACHE_KEY_LESSONS, CURRICULUM_CACHE_TTL_MS);
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+  }
+
+  const path = 'lessons';
+  const q = isAdmin
+    ? query(collection(db, path))
+    : query(collection(db, path), where('isPublished', '==', true));
+
+  try {
+    const snapshot = await getDocs(q);
+    const items = snapshot.docs
+      .map((d) => d.data() as LessonDoc)
+      .sort((a, b) => a.order - b.order);
+    if (!isAdmin && items.length > 0) {
+      writeLocalCache(CACHE_KEY_LESSONS, items);
+    }
+    return items;
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      const stale = readStaleLocalCache<LessonDoc[]>(CACHE_KEY_LESSONS);
+      if (stale && stale.length > 0) {
+        return stale;
+      }
+    }
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
 
 export function subscribeLevels(
   isAdmin: boolean,
-  onData: (levels: LevelDoc[]) => void
+  onData: (levels: LevelDoc[]) => void,
+  onError?: (error: unknown) => void
 ): Unsubscribe {
   const path = 'levels';
   const q = isAdmin
@@ -183,14 +357,19 @@ export function subscribeLevels(
       onData(items);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
     }
   );
 }
 
 export function subscribeLessons(
   isAdmin: boolean,
-  onData: (lessons: LessonDoc[]) => void
+  onData: (lessons: LessonDoc[]) => void,
+  onError?: (error: unknown) => void
 ): Unsubscribe {
   const path = 'lessons';
   const q = isAdmin
@@ -206,7 +385,11 @@ export function subscribeLessons(
       onData(items);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
     }
   );
 }
@@ -215,7 +398,8 @@ export function subscribeLessons(
 
 export function subscribeUserProgress(
   uid: string,
-  onData: (progressMap: Record<string, UserProgressDoc>) => void
+  onData: (progressMap: Record<string, UserProgressDoc>) => void,
+  onError?: (error: unknown) => void
 ): Unsubscribe {
   const path = 'user_progress';
   const q = query(collection(db, path), where('uid', '==', uid));
@@ -230,14 +414,19 @@ export function subscribeUserProgress(
       onData(map);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
     }
   );
 }
 
 export function subscribeQuizResults(
   uid: string,
-  onData: (results: QuizResultDoc[]) => void
+  onData: (results: QuizResultDoc[]) => void,
+  onError?: (error: unknown) => void
 ): Unsubscribe {
   const path = 'quiz_results';
   const q = query(collection(db, path), where('uid', '==', uid));
@@ -260,14 +449,19 @@ export function subscribeQuizResults(
       onData(items);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
     }
   );
 }
 
 export function subscribeUserVocabulary(
   uid: string,
-  onData: (vocabMap: Record<string, UserVocabularyDoc>) => void
+  onData: (vocabMap: Record<string, UserVocabularyDoc>) => void,
+  onError?: (error: unknown) => void
 ): Unsubscribe {
   const path = 'user_vocabulary';
   const q = query(collection(db, path), where('uid', '==', uid));
@@ -282,7 +476,11 @@ export function subscribeUserVocabulary(
       onData(map);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
     }
   );
 }
@@ -539,6 +737,7 @@ export async function seedCurriculumToFirestore(
       await batch.commit();
     }
 
+    clearCurriculumCache();
     return { levelsCount: levelsToSeed.length, lessonsCount: lessonsToSeed.length };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'lessons');
@@ -571,6 +770,7 @@ export async function adminSaveLevel(level: Omit<LevelDoc, 'updatedAt' | 'banner
         updatedAt: serverTimestamp(),
       });
     }
+    clearCurriculumCache();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -580,6 +780,7 @@ export async function adminDeleteLevel(levelId: string): Promise<void> {
   const path = `levels/${levelId}`;
   try {
     await deleteDoc(doc(db, 'levels', levelId));
+    clearCurriculumCache();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -615,6 +816,7 @@ export async function adminSaveLesson(lesson: LessonDoc): Promise<void> {
         createdAt: serverTimestamp(),
       });
     }
+    clearCurriculumCache();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -624,6 +826,7 @@ export async function adminDeleteLesson(lessonId: string): Promise<void> {
   const path = `lessons/${lessonId}`;
   try {
     await deleteDoc(doc(db, 'lessons', lessonId));
+    clearCurriculumCache();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -772,6 +975,37 @@ export async function adminResetSecurityVault(): Promise<void> {
 
 // --- Public Learner Completion Leaderboard (PII-Free Projection) ---
 
+export async function fetchPublicLeaderboardOnce(
+  forceRefresh = false
+): Promise<{ entries: LeaderboardEntryDoc[]; fromCache: boolean }> {
+  if (!forceRefresh) {
+    const cached = readLocalCache<LeaderboardEntryDoc[]>(
+      CACHE_KEY_LEADERBOARD,
+      LEADERBOARD_CACHE_TTL_MS
+    );
+    if (cached) {
+      return { entries: sortLeaderboardEntries(cached), fromCache: true };
+    }
+  }
+
+  const path = 'leaderboard';
+  const q = query(collection(db, path), where('isPublic', '==', true));
+
+  try {
+    const snapshot = await getDocs(q);
+    const items = sortLeaderboardEntries(
+      snapshot.docs.map((d) => d.data() as LeaderboardEntryDoc)
+    );
+    writeLocalCache(CACHE_KEY_LEADERBOARD, items);
+    return { entries: items, fromCache: false };
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
 export function subscribePublicLeaderboard(
   onData: (entries: LeaderboardEntryDoc[]) => void,
   onError?: (error: unknown) => void
@@ -782,23 +1016,10 @@ export function subscribePublicLeaderboard(
   return onSnapshot(
     q,
     (snapshot) => {
-      const items = snapshot.docs
-        .map((d) => d.data() as LeaderboardEntryDoc)
-        .sort((a, b) => {
-          if (b.completionPercent !== a.completionPercent) {
-            return b.completionPercent - a.completionPercent;
-          }
-          if (b.completedLessons !== a.completedLessons) {
-            return b.completedLessons - a.completedLessons;
-          }
-          if (b.learnedVocabCount !== a.learnedVocabCount) {
-            return b.learnedVocabCount - a.learnedVocabCount;
-          }
-          if (b.averageQuizScore !== a.averageQuizScore) {
-            return b.averageQuizScore - a.averageQuizScore;
-          }
-          return b.streakDays - a.streakDays;
-        });
+      const items = sortLeaderboardEntries(
+        snapshot.docs.map((d) => d.data() as LeaderboardEntryDoc)
+      );
+      writeLocalCache(CACHE_KEY_LEADERBOARD, items);
       onData(items);
     },
     (error) => {
@@ -857,7 +1078,11 @@ export async function syncUserLeaderboardEntry(entry: {
         ...mutableFields,
       });
     }
+    clearLeaderboardCache();
   } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
@@ -979,9 +1204,29 @@ export async function adminSyncAllUsersLeaderboard(
       };
     };
 
-    // Upsert every valid user account in batches of 150, with resilient per-doc fallback
-    for (let i = 0; i < validUserDocs.length; i += 150) {
-      const chunk = validUserDocs.slice(i, i + 150);
+    // Only upsert user accounts that are missing or whose fields actually changed
+    const docsToWrite = validUserDocs.filter(({ id: uid, data: user }) => {
+      const existing = existingLeaderboardMap.get(uid);
+      if (!existing || existing.uid !== uid) return true;
+      const next = buildEntryPayload(uid, user);
+      return (
+        existing.displayName !== next.displayName ||
+        existing.currentLevel !== next.currentLevel ||
+        existing.completedLessons !== next.completedLessons ||
+        existing.totalLessons !== next.totalLessons ||
+        existing.completionPercent !== next.completionPercent ||
+        existing.learnedVocabCount !== next.learnedVocabCount ||
+        existing.averageQuizScore !== next.averageQuizScore ||
+        existing.streakDays !== next.streakDays ||
+        existing.isPublic !== true
+      );
+    });
+
+    syncedUsers = validUserDocs.length - docsToWrite.length;
+
+    // Upsert changed/missing user accounts in batches of 150, with resilient per-doc fallback
+    for (let i = 0; i < docsToWrite.length; i += 150) {
+      const chunk = docsToWrite.slice(i, i + 150);
       const batch = writeBatch(db);
 
       for (const { id: uid, data: user } of chunk) {
@@ -1002,7 +1247,10 @@ export async function adminSyncAllUsersLeaderboard(
       try {
         await batch.commit();
         syncedUsers += chunk.length;
-      } catch {
+      } catch (batchErr) {
+        if (isFirestoreQuotaError(batchErr)) {
+          throw batchErr;
+        }
         // Fallback to per-document sync so one malformed legacy doc never blocks the rest
         for (const { id: uid, data: user } of chunk) {
           try {
@@ -1016,6 +1264,9 @@ export async function adminSyncAllUsersLeaderboard(
             }
             syncedUsers += 1;
           } catch (docErr) {
+            if (isFirestoreQuotaError(docErr)) {
+              throw docErr;
+            }
             console.warn(`Skipped leaderboard sync for user ${uid}:`, docErr);
           }
         }
@@ -1035,12 +1286,19 @@ export async function adminSyncAllUsersLeaderboard(
         await delBatch.commit();
         removedOrphans += chunk.length;
       } catch (delErr) {
+        if (isFirestoreQuotaError(delErr)) {
+          throw delErr;
+        }
         console.warn('Failed to remove orphan leaderboard docs:', delErr);
       }
     }
 
+    clearLeaderboardCache();
     return { syncedUsers, removedOrphans, totalLessons };
   } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
     handleFirestoreError(error, OperationType.WRITE, 'leaderboard');
   }
 }

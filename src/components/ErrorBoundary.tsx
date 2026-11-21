@@ -29,13 +29,30 @@ export class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       let friendlyMessage = this.state.message;
+      let isQuota =
+        friendlyMessage.includes('Quota limit exceeded') ||
+        friendlyMessage.includes('Quota exceeded') ||
+        friendlyMessage.includes('Free daily read units');
       try {
         const parsed = JSON.parse(this.state.message);
         if (parsed?.error) {
-          friendlyMessage = `Lỗi truy cập dữ liệu (${parsed.operationType || 'firestore'}): ${parsed.error}`;
+          if (
+            String(parsed.error).includes('Quota limit exceeded') ||
+            String(parsed.error).includes('Quota exceeded') ||
+            String(parsed.error).includes('Free daily read units')
+          ) {
+            isQuota = true;
+          } else {
+            friendlyMessage = `Lỗi truy cập dữ liệu (${parsed.operationType || 'firestore'}): ${parsed.error}`;
+          }
         }
       } catch {
         // Keep raw message if not JSON
+      }
+
+      if (isQuota) {
+        friendlyMessage =
+          'Cơ sở dữ liệu Cloud Firestore đã chạm giới hạn lượt đọc miễn phí trong ngày (Spark Free Tier). Hạn mức sẽ tự động đặt lại vào ngày mai hoặc sau khi nâng cấp gói cơ sở dữ liệu trên Firebase Console.';
       }
 
       return (

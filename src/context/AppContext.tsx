@@ -14,15 +14,15 @@ import {
   type User,
 } from 'firebase/auth';
 import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS } from '../data';
-import { auth, googleProvider } from '../firebase';
+import { auth, googleProvider, handleFirestoreError, isFirestoreQuotaError, OperationType } from '../firebase';
 import {
-  adminSyncAllUsersLeaderboard,
   checkIsAdmin,
   ensureUserProfile,
+  fetchLessonsOnce,
+  fetchLevelsOnce,
+  fetchPublicLeaderboardOnce,
+  getCachedLeaderboardSnapshot,
   seedCurriculumToFirestore,
-  subscribeLessons,
-  subscribeLevels,
-  subscribePublicLeaderboard,
   subscribeQuizResults,
   subscribeUserProfile,
   subscribeUserProgress,
@@ -89,6 +89,9 @@ interface AppContextValue {
   leaderboard: LeaderboardEntryDoc[];
   leaderboardLoading: boolean;
   leaderboardError: string | null;
+  quotaExceeded: boolean;
+  refreshLeaderboard: (force?: boolean) => Promise<void>;
+  refreshCurriculum: (force?: boolean) => Promise<void>;
   toasts: ToastMessage[];
   addToast: (type: ToastMessage['type'], message: string) => void;
   dismissToast: (id: string) => void;
@@ -165,13 +168,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [progressHydrated, setProgressHydrated] = useState(false);
   const [quizHydrated, setQuizHydrated] = useState(false);
   const [vocabHydrated, setVocabHydrated] = useState(false);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntryDoc[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntryDoc[]>(() =>
+    getCachedLeaderboardSnapshot()
+  );
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const autoSeededRef = useRef(false);
-  const autoSyncedAllLeaderboardRef = useRef<number | null>(null);
+  const quotaToastShownRef = useRef(false);
   const lastLeaderboardSigRef = useRef('');
 
   const addToast = useCallback((type: ToastMessage['type'], message: string) => {
@@ -185,6 +191,64 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const notifyQuotaExceeded = useCallback(() => {
+    setQuotaExceeded(true);
+    if (!quotaToastShownRef.current) {
+      quotaToastShownRef.current = true;
+      addToast(
+        'info',
+        'Firestore đã chạm giới hạn lượt đọc miễn phí hôm nay. Bạn vẫn có thể học toàn bộ 51 bài chuẩn; hạn mức sẽ tự đặt lại vào ngày mai.'
+      );
+    }
+  }, [addToast]);
+
+  const refreshLeaderboard = useCallback(
+    async (force = false) => {
+      setLeaderboardLoading(true);
+      setLeaderboardError(null);
+      try {
+        const { entries } = await fetchPublicLeaderboardOnce(force);
+        setLeaderboard(entries);
+        setQuotaExceeded(false);
+        setLeaderboardError(null);
+      } catch (err) {
+        if (isFirestoreQuotaError(err)) {
+          notifyQuotaExceeded();
+          const cached = getCachedLeaderboardSnapshot();
+          if (cached.length > 0) {
+            setLeaderboard(cached);
+          }
+          setLeaderboardError(
+            'Cloud Firestore đã chạm giới hạn lượt đọc miễn phí trong ngày (Spark Free Tier). Hạn mức sẽ tự động đặt lại vào ngày mai.'
+          );
+        } else {
+          setLeaderboardError('Chưa thể tải bảng xếp hạng lúc này. Vui lòng thử lại sau ít giây.');
+        }
+      } finally {
+        setLeaderboardLoading(false);
+      }
+    },
+    [notifyQuotaExceeded]
+  );
+
+  const refreshCurriculum = useCallback(
+    async (force = false) => {
+      try {
+        const [lvls, lsns] = await Promise.all([
+          fetchLevelsOnce(isAdmin, force),
+          fetchLessonsOnce(isAdmin, force),
+        ]);
+        setFirestoreLevels(lvls);
+        setFirestoreLessons(lsns);
+      } catch (err) {
+        if (isFirestoreQuotaError(err)) {
+          notifyQuotaExceeded();
+        }
+      }
+    },
+    [isAdmin, notifyQuotaExceeded]
+  );
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -200,7 +264,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setQuizHydrated(false);
         setVocabHydrated(false);
         autoSeededRef.current = false;
-        autoSyncedAllLeaderboardRef.current = null;
         lastLeaderboardSigRef.current = '';
         setFirestoreLevels([]);
         setFirestoreLessons([]);
@@ -209,24 +272,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return unsub;
   }, []);
 
-  // Public PII-free leaderboard subscription (available both before login and after login)
+  // Load public PII-free leaderboard via cached one-time query (avoids continuous snapshot read drain)
   useEffect(() => {
-    setLeaderboardLoading(true);
-    setLeaderboardError(null);
-    const unsub = subscribePublicLeaderboard(
-      (entries) => {
-        setLeaderboard(entries);
-        setLeaderboardLoading(false);
-        setLeaderboardError(null);
-      },
-      (err) => {
-        console.error('Public leaderboard subscription error:', err);
-        setLeaderboardLoading(false);
-        setLeaderboardError('Chưa thể tải bảng xếp hạng lúc này. Vui lòng thử lại sau ít giây.');
-      }
-    );
-    return unsub;
-  }, []);
+    void refreshLeaderboard(false);
+  }, [refreshLeaderboard]);
 
   const needsEmailVerification = Boolean(firebaseUser && !firebaseUser.emailVerified);
 
@@ -239,6 +288,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     const unsubscribers: Array<() => void> = [];
 
+    const handleSubError = (path: string, op: OperationType) => (err: unknown) => {
+      if (cancelled) return;
+      if (isFirestoreQuotaError(err)) {
+        notifyQuotaExceeded();
+        return;
+      }
+      handleFirestoreError(err, op, path);
+    };
+
     const bootstrap = async () => {
       setDataLoading(true);
       try {
@@ -250,72 +308,122 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setProfile(ensuredProfile);
         setIsAdmin(adminFlag);
 
-        unsubscribers.push(
-          subscribeUserProfile(firebaseUser.uid, (p) => {
-            if (!cancelled && p) setProfile(p);
-          })
-        );
-        unsubscribers.push(
-          subscribeLevels(adminFlag, (lvls) => {
-            if (!cancelled) setFirestoreLevels(lvls);
-          })
-        );
-        unsubscribers.push(
-          subscribeLessons(adminFlag, (lsns) => {
-            if (!cancelled) {
-              setFirestoreLessons(lsns);
-              // Automatically seed missing default A1-C1 & ESP curriculum on Admin sign-in
-              const firestoreIds = new Set(lsns.map((l) => l.lessonId));
-              const hasMissingDefaults =
-                lsns.length === 0 || ALL_DEFAULT_LESSONS.some((d) => !firestoreIds.has(d.lessonId));
-              if (adminFlag && hasMissingDefaults && !autoSeededRef.current) {
-                autoSeededRef.current = true;
-                seedCurriculumToFirestore()
-                  .then((res) => {
+        // Fetch curriculum once with 30-min local cache instead of permanent 57-doc onSnapshot listeners
+        try {
+          const [lvls, lsns] = await Promise.all([
+            fetchLevelsOnce(adminFlag, false),
+            fetchLessonsOnce(adminFlag, false),
+          ]);
+          if (!cancelled) {
+            setFirestoreLevels(lvls);
+            setFirestoreLessons(lsns);
+
+            const firestoreIds = new Set(lsns.map((l) => l.lessonId));
+            const hasMissingDefaults =
+              lsns.length === 0 || ALL_DEFAULT_LESSONS.some((d) => !firestoreIds.has(d.lessonId));
+            if (adminFlag && hasMissingDefaults && !autoSeededRef.current) {
+              autoSeededRef.current = true;
+              seedCurriculumToFirestore()
+                .then(async (res) => {
+                  if (!cancelled) {
+                    const [freshLvls, freshLsns] = await Promise.all([
+                      fetchLevelsOnce(true, true),
+                      fetchLessonsOnce(true, true),
+                    ]);
                     if (!cancelled) {
-                      addToast(
-                        'info',
-                        `Đã tự động đồng bộ ${res.lessonsCount} bài học chuẩn A1–C1 & Chuyên ngành lên Firestore.`
-                      );
+                      setFirestoreLevels(freshLvls);
+                      setFirestoreLessons(freshLsns);
                     }
-                  })
-                  .catch(() => {
+                    addToast(
+                      'info',
+                      `Đã tự động đồng bộ ${res.lessonsCount} bài học chuẩn A1–C1 & Chuyên ngành lên Firestore.`
+                    );
+                  }
+                })
+                .catch((seedErr) => {
+                  if (isFirestoreQuotaError(seedErr)) {
+                    notifyQuotaExceeded();
+                  } else {
                     autoSeededRef.current = false;
-                  });
+                  }
+                });
+            }
+          }
+        } catch (currErr) {
+          if (isFirestoreQuotaError(currErr)) {
+            notifyQuotaExceeded();
+          }
+        }
+
+        unsubscribers.push(
+          subscribeUserProfile(
+            firebaseUser.uid,
+            (p) => {
+              if (!cancelled && p) setProfile(p);
+            },
+            handleSubError(`users/${firebaseUser.uid}`, OperationType.GET)
+          )
+        );
+        unsubscribers.push(
+          subscribeUserProgress(
+            firebaseUser.uid,
+            (map) => {
+              if (!cancelled) {
+                setProgressMap(map);
+                setProgressHydrated(true);
               }
-            }
-          })
+            },
+            handleSubError('user_progress', OperationType.LIST)
+          )
         );
         unsubscribers.push(
-          subscribeUserProgress(firebaseUser.uid, (map) => {
-            if (!cancelled) {
-              setProgressMap(map);
-              setProgressHydrated(true);
-            }
-          })
+          subscribeQuizResults(
+            firebaseUser.uid,
+            (results) => {
+              if (!cancelled) {
+                setQuizResults(results);
+                setQuizHydrated(true);
+              }
+            },
+            handleSubError('quiz_results', OperationType.LIST)
+          )
         );
         unsubscribers.push(
-          subscribeQuizResults(firebaseUser.uid, (results) => {
-            if (!cancelled) {
-              setQuizResults(results);
-              setQuizHydrated(true);
-            }
-          })
-        );
-        unsubscribers.push(
-          subscribeUserVocabulary(firebaseUser.uid, (vMap) => {
-            if (!cancelled) {
-              setVocabMap(vMap);
-              setVocabHydrated(true);
-            }
-          })
+          subscribeUserVocabulary(
+            firebaseUser.uid,
+            (vMap) => {
+              if (!cancelled) {
+                setVocabMap(vMap);
+                setVocabHydrated(true);
+              }
+            },
+            handleSubError('user_vocabulary', OperationType.LIST)
+          )
         );
       } catch (err) {
         if (!cancelled) {
-          addToast(
-            'error',
-            err instanceof Error ? 'Không thể tải dữ liệu học tập từ Firestore.' : 'Lỗi kết nối Firestore.'
-          );
+          if (isFirestoreQuotaError(err)) {
+            notifyQuotaExceeded();
+            // Provide a usable fallback profile from Firebase Auth so learner can still study bundled lessons
+            setProfile((prev) =>
+              prev ?? {
+                uid: firebaseUser.uid,
+                fullName:
+                  firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Học viên',
+                email: firebaseUser.email || '',
+                currentLevel: 'A1',
+                streakDays: 1,
+                lastStudyDate: '',
+                dailyGoalMinutes: 20,
+                reminderEnabled: true,
+              }
+            );
+          } else {
+            addToast(
+              'error',
+              err instanceof Error ? 'Không thể tải dữ liệu học tập từ Firestore.' : 'Lỗi kết nối Firestore.'
+            );
+          }
         }
       } finally {
         if (!cancelled) setDataLoading(false);
@@ -328,7 +436,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       unsubscribers.forEach((u) => u());
     };
-  }, [authReady, firebaseUser, addToast]);
+  }, [authReady, firebaseUser, addToast, notifyQuotaExceeded]);
 
   const firestoreSeeded = firestoreLessons.length > 0;
 
@@ -361,6 +469,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Automatically sync verified learner's public completion stats to /leaderboard/{uid}
   useEffect(() => {
     if (
+      quotaExceeded ||
       !firebaseUser ||
       !firebaseUser.emailVerified ||
       !profile ||
@@ -424,11 +533,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       averageQuizScore,
       streakDays: profile.streakDays ?? 1,
       isPublic: true,
-    }).catch((err) => {
-      console.error('Failed to sync leaderboard entry:', err);
-      lastLeaderboardSigRef.current = '';
-    });
+    })
+      .then(() => {
+        // Optimistically update local leaderboard state without re-reading the entire collection
+        setLeaderboard((prev) => {
+          const nextEntry: LeaderboardEntryDoc = {
+            uid: profile.uid,
+            displayName,
+            currentLevel: profile.currentLevel,
+            completedLessons,
+            totalLessons,
+            completionPercent,
+            learnedVocabCount,
+            averageQuizScore,
+            streakDays: profile.streakDays ?? 1,
+            isPublic: true,
+          };
+          const exists = prev.some((e) => e.uid === profile.uid);
+          const merged = exists
+            ? prev.map((e) => (e.uid === profile.uid ? { ...e, ...nextEntry } : e))
+            : [...prev, nextEntry];
+          return merged.sort((a, b) => {
+            if (b.completionPercent !== a.completionPercent) return b.completionPercent - a.completionPercent;
+            if (b.completedLessons !== a.completedLessons) return b.completedLessons - a.completedLessons;
+            if (b.learnedVocabCount !== a.learnedVocabCount) return b.learnedVocabCount - a.learnedVocabCount;
+            if (b.averageQuizScore !== a.averageQuizScore) return b.averageQuizScore - a.averageQuizScore;
+            return b.streakDays - a.streakDays;
+          });
+        });
+      })
+      .catch((err) => {
+        if (isFirestoreQuotaError(err)) {
+          notifyQuotaExceeded();
+          return;
+        }
+        console.error('Failed to sync leaderboard entry:', err);
+        lastLeaderboardSigRef.current = '';
+      });
   }, [
+    quotaExceeded,
     firebaseUser,
     profile,
     dataLoading,
@@ -439,48 +582,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     progressMap,
     vocabMap,
     quizResults,
+    notifyQuotaExceeded,
   ]);
-
-  // Automatically reconcile ALL /users accounts 1:1 with /leaderboard when Admin logs in
-  useEffect(() => {
-    if (
-      !isAdmin ||
-      !firebaseUser ||
-      !firebaseUser.emailVerified ||
-      dataLoading ||
-      leaderboardLoading ||
-      lessons.length === 0
-    ) {
-      return;
-    }
-
-    const publishedLessons = lessons.filter((l) => l.isPublished !== false);
-    const canonicalTotal = Math.max(1, publishedLessons.length);
-
-    if (autoSyncedAllLeaderboardRef.current === canonicalTotal) {
-      return;
-    }
-
-    autoSyncedAllLeaderboardRef.current = canonicalTotal;
-    adminSyncAllUsersLeaderboard(publishedLessons)
-      .then((res) => {
-        const prevCount = leaderboard.length;
-        const hadMismatch =
-          res.syncedUsers !== prevCount ||
-          res.removedOrphans > 0 ||
-          leaderboard.some((entry) => entry.totalLessons !== res.totalLessons);
-        if (hadMismatch && res.syncedUsers > 0) {
-          addToast(
-            'success',
-            `Đã tự động đồng bộ đủ ${res.syncedUsers} tài khoản (${res.totalLessons} bài học) lên Bảng xếp hạng.`
-          );
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to auto-sync all users leaderboard:', err);
-        autoSyncedAllLeaderboardRef.current = null;
-      });
-  }, [isAdmin, firebaseUser, dataLoading, leaderboardLoading, leaderboard, lessons, addToast]);
 
   // --- Auth Actions ---
 
@@ -683,6 +786,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         leaderboard,
         leaderboardLoading,
         leaderboardError,
+        quotaExceeded,
+        refreshLeaderboard,
+        refreshCurriculum,
         toasts,
         addToast,
         dismissToast,
