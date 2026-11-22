@@ -13,7 +13,7 @@ import {
   updateProfile,
   type User,
 } from 'firebase/auth';
-import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS } from '../data';
+import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS, DEFAULT_READING_PASSAGES } from '../data';
 import { auth, googleProvider, handleFirestoreError, isFirestoreQuotaError, OperationType } from '../firebase';
 import {
   checkIsAdmin,
@@ -21,6 +21,7 @@ import {
   fetchLessonsOnce,
   fetchLevelsOnce,
   fetchPublicLeaderboardOnce,
+  fetchReadingPassagesOnce,
   getCachedLeaderboardSnapshot,
   seedCurriculumToFirestore,
   subscribeQuizResults,
@@ -39,11 +40,17 @@ import type {
   LevelDoc,
   QuizRating,
   QuizResultDoc,
+  ReadingPassageDoc,
   UserProfile,
   UserProgressDoc,
   UserVocabularyDoc,
   VocabularyItem,
 } from '../types';
+import {
+  clearLastReminderShownMs,
+  computeLastStudyTimestampMs,
+  writeLocalLastStudyMs,
+} from '../utils/studyReminder';
 
 const CANONICAL_LEVEL_RANK: Record<string, number> = {
   A1: 1,
@@ -67,10 +74,24 @@ function parseLearnerLevel(raw: string | null): LearnerCEFRLevel {
   return 'A1';
 }
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
+export interface ToastOptions {
+  title?: string;
+  durationMs?: number;
+  action?: ToastAction;
+}
+
 export interface ToastMessage {
   id: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'reminder';
+  title?: string;
   message: string;
+  durationMs?: number;
+  action?: ToastAction;
 }
 
 interface AppContextValue {
@@ -80,9 +101,15 @@ interface AppContextValue {
   profile: UserProfile | null;
   isAdmin: boolean;
   dataLoading: boolean;
+  studyDataHydrated: boolean;
+  lastStudyAtMs: number | null;
+  recordStudyActivity: () => void;
   firestoreSeeded: boolean;
   levels: LevelDoc[];
   lessons: LessonDoc[];
+  readingPassages: ReadingPassageDoc[];
+  readingPassagesSeeded: boolean;
+  readingPassagesLoading: boolean;
   progressMap: Record<string, UserProgressDoc>;
   quizResults: QuizResultDoc[];
   vocabMap: Record<string, UserVocabularyDoc>;
@@ -92,8 +119,9 @@ interface AppContextValue {
   quotaExceeded: boolean;
   refreshLeaderboard: (force?: boolean) => Promise<void>;
   refreshCurriculum: (force?: boolean) => Promise<void>;
+  refreshReadingPassages: (force?: boolean) => Promise<void>;
   toasts: ToastMessage[];
-  addToast: (type: ToastMessage['type'], message: string) => void;
+  addToast: (type: ToastMessage['type'], message: string, options?: ToastOptions) => void;
   dismissToast: (id: string) => void;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
@@ -162,6 +190,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [firestoreLevels, setFirestoreLevels] = useState<LevelDoc[]>([]);
   const [firestoreLessons, setFirestoreLessons] = useState<LessonDoc[]>([]);
+  const [firestoreReadings, setFirestoreReadings] = useState<ReadingPassageDoc[]>([]);
+  const [readingPassagesLoaded, setReadingPassagesLoaded] = useState(false);
+  const [readingPassagesLoading, setReadingPassagesLoading] = useState(false);
   const [progressMap, setProgressMap] = useState<Record<string, UserProgressDoc>>({});
   const [quizResults, setQuizResults] = useState<QuizResultDoc[]>([]);
   const [vocabMap, setVocabMap] = useState<Record<string, UserVocabularyDoc>>({});
@@ -175,21 +206,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [localStudyTick, setLocalStudyTick] = useState(0);
 
   const autoSeededRef = useRef(false);
   const quotaToastShownRef = useRef(false);
   const lastLeaderboardSigRef = useRef('');
-
-  const addToast = useCallback((type: ToastMessage['type'], message: string) => {
-    const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    setToasts((prev) => [...prev.slice(-3), { id, type, message }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
-  }, []);
+  const toastTimersRef = useRef<Map<string, number>>(new Map());
 
   const dismissToast = useCallback((id: string) => {
+    const existingTimer = toastTimersRef.current.get(id);
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer);
+      toastTimersRef.current.delete(id);
+    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const addToast = useCallback(
+    (type: ToastMessage['type'], message: string, options?: ToastOptions) => {
+      const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const durationMs = options?.durationMs ?? (type === 'reminder' ? 12000 : 4500);
+      setToasts((prev) => {
+        // Avoid stacking multiple reminder toasts simultaneously
+        const filtered =
+          type === 'reminder' ? prev.filter((t) => t.type !== 'reminder') : prev;
+        return [
+          ...filtered.slice(-3),
+          {
+            id,
+            type,
+            title: options?.title,
+            message,
+            durationMs,
+            action: options?.action,
+          },
+        ];
+      });
+      const timerId = window.setTimeout(() => {
+        toastTimersRef.current.delete(id);
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, durationMs);
+      toastTimersRef.current.set(id, timerId);
+    },
+    []
+  );
+
+  useEffect(() => {
+    const timers = toastTimersRef.current;
+    return () => {
+      timers.forEach((timerId) => window.clearTimeout(timerId));
+      timers.clear();
+    };
   }, []);
 
   const notifyQuotaExceeded = useCallback(() => {
@@ -250,6 +317,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [isAdmin, notifyQuotaExceeded]
   );
 
+  const refreshReadingPassages = useCallback(
+    async (force = false) => {
+      if (!firebaseUser || !firebaseUser.emailVerified) return;
+      if (!force && readingPassagesLoaded) return;
+      setReadingPassagesLoading(true);
+      try {
+        const items = await fetchReadingPassagesOnce(isAdmin, force);
+        setFirestoreReadings(items);
+        setReadingPassagesLoaded(true);
+      } catch (err) {
+        if (isFirestoreQuotaError(err)) {
+          notifyQuotaExceeded();
+        }
+      } finally {
+        setReadingPassagesLoading(false);
+      }
+    },
+    [firebaseUser, isAdmin, readingPassagesLoaded, notifyQuotaExceeded]
+  );
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setFirebaseUser(user);
@@ -267,6 +354,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         lastLeaderboardSigRef.current = '';
         setFirestoreLevels([]);
         setFirestoreLessons([]);
+        setFirestoreReadings([]);
+        setReadingPassagesLoaded(false);
       }
     });
     return unsub;
@@ -465,6 +554,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return a.order - b.order;
     });
   }, [firestoreLessons]);
+
+  const readingPassagesSeeded = firestoreReadings.length > 0;
+
+  const readingPassages = useMemo<ReadingPassageDoc[]>(() => {
+    if (firestoreReadings.length === 0) return DEFAULT_READING_PASSAGES;
+    return [...firestoreReadings].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  }, [firestoreReadings]);
 
   // Automatically sync verified learner's public completion stats to /leaderboard/{uid}
   useEffect(() => {
@@ -721,6 +817,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [profile, addToast]
   );
 
+  const studyDataHydrated = Boolean(
+    profile && !dataLoading && (quotaExceeded || (progressHydrated && quizHydrated && vocabHydrated))
+  );
+
+  const lastStudyAtMs = useMemo(() => {
+    if (!profile?.uid) return null;
+    // Reference localStudyTick so updates from recordStudyActivity recompute immediately
+    void localStudyTick;
+    return computeLastStudyTimestampMs({
+      uid: profile.uid,
+      profile,
+      progressMap,
+      quizResults,
+      vocabMap,
+    });
+  }, [profile, progressMap, quizResults, vocabMap, localStudyTick]);
+
+  const recordStudyActivity = useCallback(() => {
+    const uid = profile?.uid || firebaseUser?.uid;
+    if (!uid) return;
+    writeLocalLastStudyMs(uid, Date.now());
+    clearLastReminderShownMs(uid);
+    setLocalStudyTick((n) => n + 1);
+    setToasts((prev) => prev.filter((t) => t.type !== 'reminder'));
+  }, [profile?.uid, firebaseUser?.uid]);
+
   const toggleVocabState = useCallback(
     async (
       lesson: LessonDoc,
@@ -728,6 +850,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       changes: { isFavorite?: boolean; isLearned?: boolean }
     ) => {
       if (!profile) return;
+      recordStudyActivity();
       await toggleUserVocabularyState(
         profile,
         lesson,
@@ -737,7 +860,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         progressMap[lesson.lessonId]
       );
     },
-    [profile, vocabMap, progressMap]
+    [profile, vocabMap, progressMap, recordStudyActivity]
   );
 
   const saveQuizAttempt = useCallback(
@@ -751,6 +874,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       durationSeconds: number;
     }) => {
       if (!profile) throw new Error('Bạn cần đăng nhập để lưu kết quả kiểm tra.');
+      recordStudyActivity();
       const id = await submitQuizAttempt({
         profile,
         lesson: params.lesson,
@@ -765,7 +889,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addToast('success', `Đã lưu kết quả kiểm tra (${params.score}%) lên Firestore!`);
       return id;
     },
-    [profile, progressMap, addToast]
+    [profile, progressMap, addToast, recordStudyActivity]
   );
 
   return (
@@ -777,9 +901,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         profile,
         isAdmin,
         dataLoading,
+        studyDataHydrated,
+        lastStudyAtMs,
+        recordStudyActivity,
         firestoreSeeded,
         levels,
         lessons,
+        readingPassages,
+        readingPassagesSeeded,
+        readingPassagesLoading,
         progressMap,
         quizResults,
         vocabMap,
@@ -789,6 +919,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         quotaExceeded,
         refreshLeaderboard,
         refreshCurriculum,
+        refreshReadingPassages,
         toasts,
         addToast,
         dismissToast,

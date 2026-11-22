@@ -1,16 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { KeyRound, LogOut, Moon, Save, ShieldCheck, Sun } from 'lucide-react';
+import { BellRing, KeyRound, LogOut, Moon, Save, ShieldCheck, Sun } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { PILOT_RANKS } from '../data';
 import type { LearnerCEFRLevel } from '../types';
 import { formatTimestampVi } from '../utils/helpers';
+import { buildStudyReminderCopy, STUDY_INACTIVITY_THRESHOLD_MS } from '../utils/studyReminder';
 
-export function AccountPage() {
+interface AccountPageProps {
+  onStartPractice?: () => void;
+}
+
+export function AccountPage({ onStartPractice }: AccountPageProps) {
   const {
     firebaseUser,
     profile,
     isAdmin,
+    lastStudyAtMs,
+    addToast,
     updateProfileSettings,
     changeUserPassword,
     signOutUser,
@@ -170,22 +177,58 @@ export function AccountPage() {
             </div>
           </div>
 
-          <label className="flex items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 cursor-pointer">
-            <div>
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                Nhắc nhở duy trì việc học hằng ngày
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+            <label className="flex items-center justify-between gap-4 cursor-pointer">
+              <div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                  <BellRing className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
+                  <span>Nhắc nhở định kỳ quay lại luyện tập (sau 24 giờ)</span>
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                  Tự động hiển thị thông báo Toast định kỳ nhắc bạn quay lại luyện tập nếu đã quá 24 giờ kể từ phiên học cuối cùng, đồng thời hiện nhắc nhẹ trên Trang chủ.
+                </div>
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                Hiển thị thông báo nhẹ trên Trang chủ khi bạn chưa học bài trong ngày.
-              </div>
+              <input
+                type="checkbox"
+                checked={reminderEnabled}
+                onChange={(e) => setReminderEnabled(e.target.checked)}
+                className="w-4 h-4 accent-[#FF6B00] shrink-0"
+              />
+            </label>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 text-xs">
+              <span className="text-slate-500 dark:text-slate-400">
+                Phiên học cuối cùng:{' '}
+                <strong className="text-slate-700 dark:text-slate-200 font-semibold">
+                  {lastStudyAtMs ? formatTimestampVi(new Date(lastStudyAtMs)) : 'Chưa ghi nhận'}
+                </strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const elapsedMs = lastStudyAtMs
+                    ? Math.max(STUDY_INACTIVITY_THRESHOLD_MS, Date.now() - lastStudyAtMs)
+                    : STUDY_INACTIVITY_THRESHOLD_MS;
+                  const { title, message } = buildStudyReminderCopy({
+                    elapsedMs,
+                    streakDays: profile?.streakDays ?? 1,
+                    dailyGoalMinutes: dailyGoalMinutes || 20,
+                  });
+                  addToast('reminder', message, {
+                    title,
+                    durationMs: 12000,
+                    action: onStartPractice
+                      ? { label: 'Luyện tập ngay', onClick: onStartPractice }
+                      : undefined,
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FF6B00]/40 bg-[#FF6B00]/10 text-[#D94E00] dark:text-[#FF8524] hover:bg-[#FF6B00]/15 font-semibold transition-colors"
+              >
+                <BellRing className="w-3.5 h-3.5" />
+                Xem thử thông báo nhắc học
+              </button>
             </div>
-            <input
-              type="checkbox"
-              checked={reminderEnabled}
-              onChange={(e) => setReminderEnabled(e.target.checked)}
-              className="w-4 h-4 accent-[#FF6B00]"
-            />
-          </label>
+          </div>
 
           <div className="flex justify-end">
             <button

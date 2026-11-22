@@ -636,6 +636,84 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "ReadingPassage": {
+      "title": "ReadingPassage",
+      "description": "Bilingual English-Vietnamese life reading comprehension flashcard article managed by administrators.",
+      "type": "object",
+      "properties": {
+        "passageId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "titleEn": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "titleVi": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "levelId": {
+          "type": "string",
+          "enum": ["A1", "A2", "B1", "B2", "C1"]
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "contentEn": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 3000
+        },
+        "contentVi": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 3500
+        },
+        "keyPhrases": {
+          "type": "array",
+          "description": "Bounded list of up to 12 key vocabulary phrases extracted from the passage."
+        },
+        "estimatedMinutes": {
+          "type": "number"
+        },
+        "order": {
+          "type": "number"
+        },
+        "isPublished": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "passageId",
+        "titleEn",
+        "titleVi",
+        "levelId",
+        "category",
+        "contentEn",
+        "contentVi",
+        "keyPhrases",
+        "estimatedMinutes",
+        "order",
+        "isPublished",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -678,6 +756,10 @@
     "/user_feedback/{feedbackId}": {
       "schema": { "$ref": "#/entities/UserFeedback" },
       "description": "Learner feedback tickets and admin responses for continuous software and curriculum improvement."
+    },
+    "/reading_passages/{passageId}": {
+      "schema": { "$ref": "#/entities/ReadingPassage" },
+      "description": "Bilingual English-Vietnamese reading comprehension flashcard articles managed by administrators."
     }
   }
 }

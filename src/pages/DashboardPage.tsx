@@ -27,6 +27,7 @@ import {
 } from 'recharts';
 import { LeaderboardPanel } from '../components/LeaderboardPanel';
 import { calculateLessonCompletion, LessonMiniProgress } from '../components/LessonMiniProgress';
+import { WordOfTheDayCard } from '../components/WordOfTheDayCard';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { AUTH_HERO_IMAGE, PILOT_RANKS } from '../data';
@@ -313,6 +314,9 @@ export function DashboardPage({
           </p>
         </div>
       </section>
+
+      {/* Word of the Day (Level-Matched Passive Vocabulary Booster) */}
+      <WordOfTheDayCard onOpenLesson={onOpenLesson} />
 
       {/* Active Lesson & Recommended Next Lesson */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">

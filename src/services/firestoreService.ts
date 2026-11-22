@@ -14,7 +14,12 @@ import {
   writeBatch,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS, getDefaultLessonsByLevel } from '../data';
+import {
+  ALL_DEFAULT_LESSONS,
+  DEFAULT_LEVELS,
+  DEFAULT_READING_PASSAGES,
+  getDefaultLessonsByLevel,
+} from '../data';
 import {
   BOOTSTRAPPED_ADMIN_EMAIL,
   db,
@@ -33,6 +38,7 @@ import type {
   LevelDoc,
   QuizRating,
   QuizResultDoc,
+  ReadingPassageDoc,
   UserFeedbackDoc,
   UserProfile,
   UserProgressDoc,
@@ -46,6 +52,7 @@ import { calculateUpdatedStreak, sanitizeId, truncate } from '../utils/helpers';
 const CACHE_KEY_LEVELS = 'pilot_fs_cache_levels_v1';
 const CACHE_KEY_LESSONS = 'pilot_fs_cache_lessons_v1';
 const CACHE_KEY_LEADERBOARD = 'pilot_fs_cache_leaderboard_v1';
+const CACHE_KEY_READINGS = 'pilot_fs_cache_readings_v1';
 
 const CURRICULUM_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const LEADERBOARD_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
@@ -1464,3 +1471,182 @@ export async function adminDeleteFeedback(feedbackId: string): Promise<void> {
     handleFirestoreError(error, OperationType.DELETE, `user_feedback/${safeId}`);
   }
 }
+
+// --- Bilingual Reading Comprehension Passages (Cached On-Demand Reads + Admin CRUD) ---
+
+export function clearReadingPassagesCache(): void {
+  try {
+    window.localStorage.removeItem(CACHE_KEY_READINGS);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function normalizeReadingLevel(raw: string): LearnerCEFRLevel {
+  if (raw === 'A2' || raw === 'B1' || raw === 'B2' || raw === 'C1') return raw;
+  return 'A1';
+}
+
+export async function fetchReadingPassagesOnce(
+  isAdmin: boolean,
+  forceRefresh = false
+): Promise<ReadingPassageDoc[]> {
+  if (!forceRefresh && !isAdmin) {
+    const cached = readLocalCache<ReadingPassageDoc[]>(CACHE_KEY_READINGS, CURRICULUM_CACHE_TTL_MS);
+    if (cached) {
+      return cached;
+    }
+  }
+  try {
+    const q = isAdmin
+      ? collection(db, 'reading_passages')
+      : query(collection(db, 'reading_passages'), where('isPublished', '==', true));
+    const snap = await getDocs(q);
+    const items = snap.docs
+      .map((d) => d.data() as ReadingPassageDoc)
+      .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+    if (!isAdmin && items.length > 0) {
+      writeLocalCache(CACHE_KEY_READINGS, items);
+    }
+    return items;
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      const stale = readStaleLocalCache<ReadingPassageDoc[]>(CACHE_KEY_READINGS);
+      if (stale) return stale;
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.LIST, 'reading_passages');
+  }
+}
+
+export async function adminSaveReadingPassage(
+  passage: ReadingPassageDoc,
+  isNew: boolean
+): Promise<void> {
+  const safeId = sanitizeId(passage.passageId || `read_${Date.now().toString(36)}`, 80);
+  const safeTitleEn = truncate(passage.titleEn, 160);
+  const safeTitleVi = truncate(passage.titleVi, 160);
+  const safeCategory = truncate(passage.category || 'Động lực & Cuộc sống', 60) || 'Động lực & Cuộc sống';
+  const safeContentEn = truncate(passage.contentEn, 3000);
+  const safeContentVi = truncate(passage.contentVi, 3500);
+
+  if (safeTitleEn.length < 1 || safeTitleVi.length < 1) {
+    throw new Error('Tiêu đề tiếng Anh và tiếng Việt không được để trống.');
+  }
+  if (safeContentEn.length < 10 || safeContentVi.length < 10) {
+    throw new Error('Nội dung bài đọc tiếng Anh và bản dịch tiếng Việt cần tối thiểu 10 ký tự.');
+  }
+
+  const safeKeyPhrases = (passage.keyPhrases || [])
+    .slice(0, 12)
+    .map((kp) => ({
+      phrase: truncate(kp.phrase || '', 120),
+      meaningVi: truncate(kp.meaningVi || '', 200),
+    }))
+    .filter((kp) => kp.phrase.length > 0 && kp.meaningVi.length > 0);
+
+  const mutableFields = {
+    titleEn: safeTitleEn,
+    titleVi: safeTitleVi,
+    levelId: normalizeReadingLevel(passage.levelId),
+    category: safeCategory,
+    contentEn: safeContentEn,
+    contentVi: safeContentVi,
+    keyPhrases: safeKeyPhrases,
+    estimatedMinutes: Math.max(1, Math.min(30, Math.round(Number(passage.estimatedMinutes) || 3))),
+    order: Math.max(1, Math.min(500, Math.round(Number(passage.order) || 1))),
+    isPublished: Boolean(passage.isPublished),
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    const ref = doc(db, 'reading_passages', safeId);
+    if (isNew) {
+      await setDoc(ref, {
+        passageId: safeId,
+        ...mutableFields,
+        createdAt: serverTimestamp(),
+      });
+    } else {
+      const existingSnap = await getDoc(ref);
+      if (existingSnap.exists()) {
+        await updateDoc(ref, mutableFields);
+      } else {
+        await setDoc(ref, {
+          passageId: safeId,
+          ...mutableFields,
+          createdAt: serverTimestamp(),
+        });
+      }
+    }
+    clearReadingPassagesCache();
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(
+      error,
+      isNew ? OperationType.CREATE : OperationType.UPDATE,
+      `reading_passages/${safeId}`
+    );
+  }
+}
+
+export async function adminDeleteReadingPassage(passageId: string): Promise<void> {
+  const safeId = sanitizeId(passageId, 80);
+  try {
+    await deleteDoc(doc(db, 'reading_passages', safeId));
+    clearReadingPassagesCache();
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.DELETE, `reading_passages/${safeId}`);
+  }
+}
+
+export async function seedReadingPassagesToFirestore(): Promise<{ createdCount: number; totalCount: number }> {
+  try {
+    const existingSnap = await getDocs(collection(db, 'reading_passages'));
+    const existingIds = new Set(existingSnap.docs.map((d) => d.id));
+    const missing = DEFAULT_READING_PASSAGES.filter((p) => !existingIds.has(p.passageId));
+
+    if (missing.length > 0) {
+      const batch = writeBatch(db);
+      for (const passage of missing) {
+        const ref = doc(db, 'reading_passages', passage.passageId);
+        batch.set(ref, {
+          passageId: passage.passageId,
+          titleEn: truncate(passage.titleEn, 160),
+          titleVi: truncate(passage.titleVi, 160),
+          levelId: normalizeReadingLevel(passage.levelId),
+          category: truncate(passage.category, 60),
+          contentEn: truncate(passage.contentEn, 3000),
+          contentVi: truncate(passage.contentVi, 3500),
+          keyPhrases: passage.keyPhrases.slice(0, 12).map((kp) => ({
+            phrase: truncate(kp.phrase, 120),
+            meaningVi: truncate(kp.meaningVi, 200),
+          })),
+          estimatedMinutes: Math.max(1, Math.min(30, Math.round(passage.estimatedMinutes))),
+          order: Math.max(1, Math.min(500, Math.round(passage.order))),
+          isPublished: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
+
+    clearReadingPassagesCache();
+    return {
+      createdCount: missing.length,
+      totalCount: existingIds.size + missing.length,
+    };
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.WRITE, 'reading_passages');
+  }
+}
+

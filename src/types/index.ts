@@ -237,6 +237,27 @@ export interface UserFeedbackDoc {
   updatedAt?: Timestamp | Date;
 }
 
+export interface ReadingKeyPhrase {
+  phrase: string;
+  meaningVi: string;
+}
+
+export interface ReadingPassageDoc {
+  passageId: string;
+  titleEn: string;
+  titleVi: string;
+  levelId: LearnerCEFRLevel;
+  category: string;
+  contentEn: string;
+  contentVi: string;
+  keyPhrases: ReadingKeyPhrase[];
+  estimatedMinutes: number;
+  order: number;
+  isPublished: boolean;
+  createdAt?: Timestamp | Date | string;
+  updatedAt?: Timestamp | Date | string;
+}
+
 export type AppRoute =
   | 'dashboard'
   | 'roadmap'
@@ -244,6 +265,7 @@ export type AppRoute =
   | 'ai-tutor'
   | 'vocabulary'
   | 'patterns'
+  | 'reading'
   | 'practice'
   | 'quizzes'
   | 'saved'

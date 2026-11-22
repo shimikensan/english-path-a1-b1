@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BookOpen,
+  BookOpenText,
   CheckCircle2,
   ClipboardCheck,
   Database,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import { AdminFeedbackTab } from '../components/admin/AdminFeedbackTab';
 import { AdminPasswordGate } from '../components/admin/AdminPasswordGate';
+import { AdminReadingTab } from '../components/admin/AdminReadingTab';
 import { AdminSecurityTab } from '../components/admin/AdminSecurityTab';
 import { useApp } from '../context/AppContext';
 import { BOOTSTRAPPED_ADMIN_EMAIL, isFirestoreQuotaError } from '../firebase';
@@ -29,6 +31,7 @@ import {
   adminDeleteFeedback,
   adminDeleteLesson,
   adminDeleteLevel,
+  adminDeleteReadingPassage,
   adminGetSecurityVault,
   adminGrantAdmin,
   adminListAdmins,
@@ -51,6 +54,7 @@ import type {
   QuizQuestion,
   QuizQuestionType,
   QuizResultDoc,
+  ReadingPassageDoc,
   SentencePattern,
   UserFeedbackDoc,
   UserProfile,
@@ -58,7 +62,7 @@ import type {
 } from '../types';
 import { formatTimestampVi, getQuizRatingVi, sanitizeId } from '../utils/helpers';
 
-type AdminTab = 'overview' | 'levels' | 'lessons' | 'users' | 'feedback' | 'security';
+type AdminTab = 'overview' | 'levels' | 'lessons' | 'reading' | 'users' | 'feedback' | 'security';
 type EditorSection = 'meta' | 'vocabulary' | 'patterns' | 'grammar' | 'quiz';
 
 const ADMIN_SESSION_STORAGE_KEY = 'pilot-admin-vault-session';
@@ -220,9 +224,13 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     isAdmin,
     levels,
     lessons,
+    readingPassages,
+    readingPassagesSeeded,
+    readingPassagesLoading,
     leaderboard,
     firestoreSeeded,
     refreshCurriculum,
+    refreshReadingPassages,
     refreshLeaderboard,
     addToast,
   } = useApp();
@@ -410,9 +418,32 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     [addToast]
   );
 
+  const requestDeleteReadingPassage = useCallback(
+    (passage: ReadingPassageDoc) => {
+      setConfirmDialog({
+        title: `Xóa bài đọc "${passage.titleEn}"?`,
+        description: `Bài đọc "${passage.titleEn}" (${passage.titleVi}) sẽ bị xóa vĩnh viễn khỏi Cloud Firestore.`,
+        confirmLabel: 'Xóa bài đọc',
+        danger: true,
+        onConfirm: async () => {
+          await adminDeleteReadingPassage(passage.passageId);
+          await refreshReadingPassages(true);
+          addToast('success', `Đã xóa bài đọc "${passage.titleEn}".`);
+        },
+      });
+    },
+    [refreshReadingPassages, addToast]
+  );
+
   useEffect(() => {
     void loadAdminOverview();
   }, [loadAdminOverview]);
+
+  useEffect(() => {
+    if (isAdmin && vaultUnlocked) {
+      void refreshReadingPassages(false);
+    }
+  }, [isAdmin, vaultUnlocked, refreshReadingPassages]);
 
   const adminUidSet = useMemo(() => new Set(adminsList.map((a) => a.uid)), [adminsList]);
   const leaderboardByUid = useMemo(() => {
@@ -862,6 +893,12 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
             { id: 'overview' as const, label: 'Tổng quan & Seed', icon: Database, badge: 0 },
             { id: 'levels' as const, label: `Cấp độ (${levels.length})`, icon: Layers, badge: 0 },
             { id: 'lessons' as const, label: `Bài học (${lessons.length})`, icon: BookOpen, badge: 0 },
+            {
+              id: 'reading' as const,
+              label: `Đọc hiểu (${readingPassages.length})`,
+              icon: BookOpenText,
+              badge: 0,
+            },
             { id: 'users' as const, label: `Người dùng (${usersList.length})`, icon: Users, badge: 0 },
             {
               id: 'feedback' as const,
@@ -1521,6 +1558,17 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
             </table>
           </div>
         </div>
+      )}
+
+      {/* TAB 4: READING COMPREHENSION FLASHCARDS */}
+      {activeTab === 'reading' && (
+        <AdminReadingTab
+          passages={readingPassages}
+          isSeeded={readingPassagesSeeded}
+          loading={readingPassagesLoading}
+          onRefresh={() => refreshReadingPassages(true)}
+          onRequestDelete={requestDeleteReadingPassage}
+        />
       )}
 
       {/* TAB 5: USER FEEDBACK & TRIAGE */}

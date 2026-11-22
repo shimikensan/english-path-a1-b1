@@ -21,6 +21,7 @@ export {
 export type { EspAcronymItem, EspScenarioItem, EspTrackId, EspTrackMeta } from './lessonsESP';
 export { ESP_VISUAL_CARDS, ESP_VOCAB_IMAGE_MAP } from './espVisualCards';
 export type { EspVisualVocabCard } from './espVisualCards';
+export { DEFAULT_READING_PASSAGES, READING_CATEGORIES } from './readingPassages';
 
 export const ALL_DEFAULT_LESSONS: LessonDoc[] = [
   ...LESSONS_A1,

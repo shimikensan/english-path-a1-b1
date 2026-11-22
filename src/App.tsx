@@ -24,11 +24,20 @@ import { PatternsHubPage } from './pages/PatternsHubPage';
 import { PracticePage } from './pages/PracticePage';
 import { ProgressPage } from './pages/ProgressPage';
 import { QuizzesHubPage } from './pages/QuizzesHubPage';
+import { ReadingHubPage } from './pages/ReadingHubPage';
 import { RoadmapPage } from './pages/RoadmapPage';
 import { SavedWordsPage } from './pages/SavedWordsPage';
 import { SpecializedHubPage } from './pages/SpecializedHubPage';
 import { VocabularyHubPage } from './pages/VocabularyHubPage';
 import type { AppRoute, LessonTab } from './types';
+import {
+  buildStudyReminderCopy,
+  readLastReminderShownMs,
+  REMINDER_CHECK_INTERVAL_MS,
+  REMINDER_REPEAT_COOLDOWN_MS,
+  STUDY_INACTIVITY_THRESHOLD_MS,
+  writeLastReminderShownMs,
+} from './utils/studyReminder';
 
 const ROUTE_TITLES: Record<AppRoute, string> = {
   dashboard: 'Buồng lái · Trang chủ',
@@ -37,6 +46,7 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   'ai-tutor': 'Nhắn tin tiếng Anh với AI',
   vocabulary: 'Kho từ vựng',
   patterns: 'Mẫu câu giao tiếp',
+  reading: 'Đọc hiểu · Thẻ lật song ngữ',
   practice: 'Luyện tập tương tác',
   quizzes: 'Kiểm tra trắc nghiệm',
   saved: 'Từ vựng đã lưu',
@@ -55,11 +65,16 @@ function AppShell() {
     needsEmailVerification,
     profile,
     dataLoading,
+    studyDataHydrated,
+    lastStudyAtMs,
+    recordStudyActivity,
     lessons,
     progressMap,
     addToast,
   } = useApp();
   const [route, setRoute] = useState<AppRoute>('dashboard');
+  const routeRef = useRef<AppRoute>(route);
+  routeRef.current = route;
   const [selectedLessonId, setSelectedLessonId] = useState<string>('');
   const [initialLessonTab, setInitialLessonTab] = useState<LessonTab>('vocabulary');
   const [focusMode, setFocusMode] = useState<boolean>(false);
@@ -85,17 +100,22 @@ function AppShell() {
     return target?.lessonId || '';
   }, [lessons, progressMap, profile?.currentLevel]);
 
-  const handleOpenLesson = useCallback((lessonId: string, tab: LessonTab = 'vocabulary') => {
-    setSelectedLessonId(lessonId);
-    setInitialLessonTab(tab);
-    setRoute('lesson');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  const handleOpenLesson = useCallback(
+    (lessonId: string, tab: LessonTab = 'vocabulary') => {
+      recordStudyActivity();
+      setSelectedLessonId(lessonId);
+      setInitialLessonTab(tab);
+      setRoute('lesson');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [recordStudyActivity]
+  );
 
   const handleEnterFocusMode = useCallback(
     (lessonId?: string, tab: LessonTab = 'vocabulary') => {
       const targetId = lessonId || selectedLessonId || defaultActiveLessonId;
       if (!targetId) return;
+      recordStudyActivity();
       preFocusRouteRef.current = route;
       setSelectedLessonId(targetId);
       setInitialLessonTab(tab);
@@ -104,7 +124,7 @@ function AppShell() {
       addToast('info', 'Đã bật Focus Mode — nhấn Esc hoặc nút "Thoát tập trung" để trở lại.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
-    [selectedLessonId, defaultActiveLessonId, route, addToast]
+    [selectedLessonId, defaultActiveLessonId, route, addToast, recordStudyActivity]
   );
 
   const handleExitFocusMode = useCallback(() => {
@@ -122,11 +142,103 @@ function AppShell() {
     }
   }, [focusMode, handleExitFocusMode, handleEnterFocusMode, route, selectedLessonId, defaultActiveLessonId]);
 
-  const handleNavigate = useCallback((nextRoute: AppRoute) => {
-    setFocusMode(false);
-    setRoute(nextRoute);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  const handleNavigate = useCallback(
+    (nextRoute: AppRoute) => {
+      if (nextRoute === 'practice' || nextRoute === 'ai-tutor' || nextRoute === 'reading') {
+        recordStudyActivity();
+      }
+      setFocusMode(false);
+      setRoute(nextRoute);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [recordStudyActivity]
+  );
+
+  const handleJumpToPractice = useCallback(() => {
+    if (defaultActiveLessonId) {
+      handleOpenLesson(defaultActiveLessonId, 'vocabulary');
+    } else {
+      handleNavigate('practice');
+    }
+  }, [defaultActiveLessonId, handleOpenLesson, handleNavigate]);
+
+  // Periodic Toast reminder when > 24 hours have passed since the learner's last study session
+  useEffect(() => {
+    if (
+      !firebaseUser ||
+      !firebaseUser.emailVerified ||
+      !studyDataHydrated ||
+      !profile ||
+      !profile.reminderEnabled ||
+      lastStudyAtMs === null
+    ) {
+      return;
+    }
+
+    const activeStudyRoutes: ReadonlySet<AppRoute> = new Set([
+      'lesson',
+      'practice',
+      'ai-tutor',
+      'reading',
+    ]);
+
+    const checkAndNotifyInactivity = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (activeStudyRoutes.has(routeRef.current)) return;
+
+      const now = Date.now();
+      const elapsedMs = now - lastStudyAtMs;
+      if (elapsedMs < STUDY_INACTIVITY_THRESHOLD_MS) return;
+
+      const lastShownMs = readLastReminderShownMs(profile.uid);
+      if (lastShownMs > 0 && now - lastShownMs < REMINDER_REPEAT_COOLDOWN_MS) {
+        return;
+      }
+
+      const { title, message } = buildStudyReminderCopy({
+        elapsedMs,
+        streakDays: profile.streakDays ?? 1,
+        dailyGoalMinutes: profile.dailyGoalMinutes ?? 20,
+      });
+
+      writeLastReminderShownMs(profile.uid, now);
+      addToast('reminder', message, {
+        title,
+        durationMs: 12000,
+        action: {
+          label: 'Luyện tập ngay',
+          onClick: handleJumpToPractice,
+        },
+      });
+    };
+
+    // Slight delay on initial mount so the workspace renders before showing the reminder toast
+    const initialTimer = window.setTimeout(checkAndNotifyInactivity, 1200);
+    const intervalId = window.setInterval(checkAndNotifyInactivity, REMINDER_CHECK_INTERVAL_MS);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        checkAndNotifyInactivity();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [
+    firebaseUser,
+    studyDataHydrated,
+    profile,
+    lastStudyAtMs,
+    addToast,
+    handleJumpToPractice,
+  ]);
 
   // Allow Esc key to exit Focus Mode swiftly
   useEffect(() => {
@@ -218,6 +330,7 @@ function AppShell() {
             {route === 'patterns' && (
               <PatternsHubPage onOpenLesson={(id) => handleOpenLesson(id, 'patterns')} />
             )}
+            {route === 'reading' && <ReadingHubPage />}
             {route === 'practice' && <PracticePage />}
             {route === 'quizzes' && (
               <QuizzesHubPage onStartLessonQuiz={(id) => handleOpenLesson(id, 'quiz')} />
@@ -230,7 +343,7 @@ function AppShell() {
             )}
             {route === 'leaderboard' && <LeaderboardPanel />}
             {route === 'feedback' && <FeedbackPage />}
-            {route === 'account' && <AccountPage />}
+            {route === 'account' && <AccountPage onStartPractice={handleJumpToPractice} />}
             {route === 'lesson' && (
               <LessonDetailPage
                 key={`${effectiveLessonId}-${initialLessonTab}`}

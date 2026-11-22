@@ -260,6 +260,33 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidReadingPassage(data) {
+      return data.keys().hasAll([
+          'passageId', 'titleEn', 'titleVi', 'levelId', 'category',
+          'contentEn', 'contentVi', 'keyPhrases', 'estimatedMinutes',
+          'order', 'isPublished', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'passageId', 'titleEn', 'titleVi', 'levelId', 'category',
+          'contentEn', 'contentVi', 'keyPhrases', 'estimatedMinutes',
+          'order', 'isPublished', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.passageId) && data.passageId.size() <= 80
+        && data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 160
+        && data.titleVi is string && data.titleVi.size() >= 1 && data.titleVi.size() <= 160
+        && data.levelId is string && data.levelId in ['A1', 'A2', 'B1', 'B2', 'C1']
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 60
+        && data.contentEn is string && data.contentEn.size() >= 10 && data.contentEn.size() <= 3000
+        && data.contentVi is string && data.contentVi.size() >= 10 && data.contentVi.size() <= 3500
+        && data.keyPhrases is list && data.keyPhrases.size() <= 12
+        && (data.keyPhrases.size() == 0 || data.keyPhrases[0] is map)
+        && data.estimatedMinutes is number && data.estimatedMinutes >= 1 && data.estimatedMinutes <= 30
+        && data.order is number && data.order >= 1 && data.order <= 500
+        && data.isPublished is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // --- Collection: users (PII Isolated to Owner & Admin) ---
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
@@ -537,6 +564,32 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'updatedAt']);
       allow delete: if isValidId(feedbackId) && isAdmin();
+    }
+
+    // --- Collection: reading_passages (Bilingual Reading Comprehension Flashcards) ---
+    match /reading_passages/{passageId} {
+      allow get: if isValidId(passageId) && (
+        isAdmin()
+        || (isSignedIn() && resource != null && existing().isPublished == true)
+      );
+      allow list: if (isSignedIn() && existing().isPublished == true) || isAdmin();
+      allow create: if isAdmin()
+        && isValidId(passageId)
+        && isValidReadingPassage(incoming())
+        && incoming().passageId == passageId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(passageId)
+        && isValidReadingPassage(incoming())
+        && incoming().passageId == existing().passageId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'titleEn', 'titleVi', 'levelId', 'category', 'contentEn', 'contentVi',
+          'keyPhrases', 'estimatedMinutes', 'order', 'isPublished', 'updatedAt'
+        ]);
+      allow delete: if isValidId(passageId) && isAdmin();
     }
   }
 }
