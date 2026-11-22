@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ArrowLeft,
+  ArrowRight,
+  Award,
   BookOpenText,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
+  Layers,
+  LayoutGrid,
   RefreshCw,
   RotateCw,
   Search,
@@ -14,12 +19,20 @@ import {
   Type,
   Volume2,
 } from 'lucide-react';
+import {
+  TopicPracticeBoard,
+  type TopicPracticeLevel,
+} from '../components/reading/TopicPracticeBoard';
 import { useApp } from '../context/AppContext';
 import type { LearnerCEFRLevel, ReadingPassageDoc } from '../types';
 import { playCorrectBeep } from '../utils/cockpitAudio';
 import { speakEnglish, stopSpeaking } from '../utils/speech';
 
 const LEVEL_FILTERS: Array<'ALL' | LearnerCEFRLevel> = ['ALL', 'A1', 'A2', 'B1', 'B2', 'C1'];
+const PRACTICE_LEVEL_ORDER: TopicPracticeLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'ALL'];
+const CEFR_PROGRESSION: LearnerCEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1'];
+
+type ReadingViewMode = 'explore' | 'topic_practice';
 
 type FontSizeScale = 'sm' | 'md' | 'lg';
 
@@ -63,11 +76,22 @@ export function ReadingHubPage() {
     addToast,
   } = useApp();
 
+  const [viewMode, setViewMode] = useState<ReadingViewMode>('explore');
+
+  // Explore mode filters
   const [levelFilter, setLevelFilter] = useState<'ALL' | LearnerCEFRLevel>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNREAD' | 'READ'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [catalogPage, setCatalogPage] = useState(1);
+
+  // Topic Practice mode state (defaults to learner's CEFR level so A1/A2/B1 learners see right-sized articles immediately)
+  const [practiceLevel, setPracticeLevel] = useState<TopicPracticeLevel>(
+    () => profile?.currentLevel ?? 'A1'
+  );
+  const [practiceTopic, setPracticeTopic] = useState<string | null>(null);
+  const [practiceUnreadOnly, setPracticeUnreadOnly] = useState(false);
+
   const [activePassageId, setActivePassageId] = useState<string>('');
   const [isFlipped, setIsFlipped] = useState(false);
   const [fontScale, setFontScale] = useState<FontSizeScale>('md');
@@ -138,14 +162,50 @@ export function ReadingHubPage() {
     setCatalogPage(1);
   }, [levelFilter, categoryFilter, statusFilter, searchQuery]);
 
+  // Passages in the selected Topic + CEFR Level (used for progress & level switcher inside Topic Practice)
+  const topicAllPassages = useMemo(() => {
+    if (!practiceTopic) return [];
+    return publishedPassages.filter((p) => {
+      if (p.category !== practiceTopic) return false;
+      if (practiceLevel !== 'ALL' && p.levelId !== practiceLevel) return false;
+      return true;
+    });
+  }, [publishedPassages, practiceTopic, practiceLevel]);
+
+  const practiceDeckPassages = useMemo(() => {
+    if (!practiceUnreadOnly) return topicAllPassages;
+    return topicAllPassages.filter((p) => !readSet.has(p.passageId));
+  }, [topicAllPassages, practiceUnreadOnly, readSet]);
+
+  const topicCompletedCount = useMemo(
+    () => topicAllPassages.filter((p) => readSet.has(p.passageId)).length,
+    [topicAllPassages, readSet]
+  );
+
+  const isTopicLevelComplete =
+    Boolean(practiceTopic) &&
+    topicAllPassages.length > 0 &&
+    topicCompletedCount === topicAllPassages.length;
+
+  const nextPracticeLevel: LearnerCEFRLevel | null = useMemo(() => {
+    if (practiceLevel === 'ALL') return null;
+    const idx = CEFR_PROGRESSION.indexOf(practiceLevel);
+    if (idx < 0 || idx >= CEFR_PROGRESSION.length - 1) return null;
+    return CEFR_PROGRESSION[idx + 1];
+  }, [practiceLevel]);
+
+  const isShowingTopicBoard = viewMode === 'topic_practice' && !practiceTopic;
+  const deckPassages =
+    viewMode === 'topic_practice' && practiceTopic ? practiceDeckPassages : filteredPassages;
+
   const activeIndex = useMemo(() => {
-    if (filteredPassages.length === 0) return -1;
-    const found = filteredPassages.findIndex((p) => p.passageId === activePassageId);
+    if (deckPassages.length === 0) return -1;
+    const found = deckPassages.findIndex((p) => p.passageId === activePassageId);
     return found >= 0 ? found : 0;
-  }, [filteredPassages, activePassageId]);
+  }, [deckPassages, activePassageId]);
 
   const activePassage: ReadingPassageDoc | null =
-    activeIndex >= 0 ? filteredPassages[activeIndex] : null;
+    !isShowingTopicBoard && activeIndex >= 0 ? deckPassages[activeIndex] : null;
 
   const completedCount = useMemo(
     () => publishedPassages.filter((p) => readSet.has(p.passageId)).length,
@@ -159,6 +219,37 @@ export function ReadingHubPage() {
     setIsFlipped(false);
   }, []);
 
+  const handleStartTopicPractice = useCallback(
+    (category: string) => {
+      stopSpeaking();
+      setIsSpeaking(false);
+      setPracticeTopic(category);
+      setPracticeUnreadOnly(false);
+      setIsFlipped(false);
+
+      const candidates = publishedPassages.filter(
+        (p) => p.category === category && (practiceLevel === 'ALL' || p.levelId === practiceLevel)
+      );
+      const firstUnread = candidates.find((p) => !readSet.has(p.passageId));
+      const initial = firstUnread ?? candidates[0];
+      if (initial) {
+        setActivePassageId(initial.passageId);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [publishedPassages, practiceLevel, readSet]
+  );
+
+  const handleSwitchMode = useCallback((mode: ReadingViewMode) => {
+    stopSpeaking();
+    setIsSpeaking(false);
+    setIsFlipped(false);
+    setViewMode(mode);
+    if (mode === 'topic_practice') {
+      setPracticeTopic(null);
+    }
+  }, []);
+
   const handleToggleFlip = useCallback(() => {
     setIsFlipped((prev) => !prev);
     recordStudyActivity();
@@ -166,24 +257,24 @@ export function ReadingHubPage() {
 
   const handleStep = useCallback(
     (delta: number) => {
-      if (filteredPassages.length <= 1 || activeIndex < 0) return;
-      const nextIdx = (activeIndex + delta + filteredPassages.length) % filteredPassages.length;
-      selectPassage(filteredPassages[nextIdx]);
+      if (deckPassages.length <= 1 || activeIndex < 0) return;
+      const nextIdx = (activeIndex + delta + deckPassages.length) % deckPassages.length;
+      selectPassage(deckPassages[nextIdx]);
     },
-    [filteredPassages, activeIndex, selectPassage]
+    [deckPassages, activeIndex, selectPassage]
   );
 
   const handleShuffle = useCallback(() => {
-    if (filteredPassages.length <= 1) return;
+    if (deckPassages.length <= 1) return;
     let nextIdx = activeIndex;
     for (let i = 0; i < 8 && nextIdx === activeIndex; i++) {
-      nextIdx = Math.floor(Math.random() * filteredPassages.length);
+      nextIdx = Math.floor(Math.random() * deckPassages.length);
     }
     if (nextIdx === activeIndex) {
-      nextIdx = (activeIndex + 1) % filteredPassages.length;
+      nextIdx = (activeIndex + 1) % deckPassages.length;
     }
-    selectPassage(filteredPassages[nextIdx]);
-  }, [filteredPassages, activeIndex, selectPassage]);
+    selectPassage(deckPassages[nextIdx]);
+  }, [deckPassages, activeIndex, selectPassage]);
 
   const handleToggleRead = useCallback(
     (passage: ReadingPassageDoc) => {
@@ -203,6 +294,30 @@ export function ReadingHubPage() {
       });
     },
     [profile?.uid, recordStudyActivity, addToast]
+  );
+
+  const handleCompleteAndNext = useCallback(
+    (passage: ReadingPassageDoc) => {
+      if (profile?.uid && !readSet.has(passage.passageId)) {
+        recordStudyActivity();
+        setReadIds((prev) => {
+          if (prev.includes(passage.passageId)) return prev;
+          const next = [...prev, passage.passageId];
+          saveReadIds(profile.uid, next);
+          return next;
+        });
+        playCorrectBeep();
+        addToast('success', `Tuyệt vời! Đã hoàn thành "${passage.titleEn}".`);
+      }
+
+      if (deckPassages.length > 1 && activeIndex >= 0) {
+        const nextIdx = (activeIndex + 1) % deckPassages.length;
+        selectPassage(deckPassages[nextIdx]);
+      } else {
+        setIsFlipped(false);
+      }
+    },
+    [profile?.uid, readSet, recordStudyActivity, addToast, deckPassages, activeIndex, selectPassage]
   );
 
   const handleSpeakPassage = useCallback(
@@ -228,7 +343,7 @@ export function ReadingHubPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (!activePassage) return;
+      if (!activePassage || isShowingTopicBoard) return;
 
       if (e.code === 'Space') {
         e.preventDefault();
@@ -243,14 +358,14 @@ export function ReadingHubPage() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activePassage, handleToggleFlip, handleStep]);
+  }, [activePassage, isShowingTopicBoard, handleToggleFlip, handleStep]);
 
   const isCurrentRead = activePassage ? readSet.has(activePassage.passageId) : false;
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <section className="cockpit-radar-panel bg-white dark:bg-slate-900 p-5 sm:p-6">
+      {/* Header Banner + Mode Switcher */}
+      <section className="cockpit-radar-panel bg-white dark:bg-slate-900 p-5 sm:p-6 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#D94E00] dark:text-[#FF8524]">
@@ -277,89 +392,285 @@ export function ReadingHubPage() {
             </div>
           </div>
         </div>
+
+        {/* Mode Switcher Bar */}
+        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => handleSwitchMode('explore')}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+                viewMode === 'explore'
+                  ? 'bg-white dark:bg-slate-800 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              Thẻ đọc tự do ({publishedPassages.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchMode('topic_practice')}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+                viewMode === 'topic_practice'
+                  ? 'bg-[#FF6B00] text-white shadow-[0_4px_14px_-4px_rgba(255,107,0,0.5)]'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              Luyện tập theo chủ đề
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {viewMode === 'topic_practice'
+              ? 'Chọn cấp độ A1, A2, B1... phù hợp khả năng rồi luyện tập trọn bộ từng chủ đề.'
+              : 'Khám phá tự do toàn bộ thư viện 200 bài đọc song ngữ.'}
+          </p>
+        </div>
       </section>
 
-      {/* Filter & Search Toolbar */}
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-            {LEVEL_FILTERS.map((lvl) => (
+      {/* TOPIC PRACTICE MODE: Board Overview */}
+      {isShowingTopicBoard && (
+        <TopicPracticeBoard
+          passages={publishedPassages}
+          readSet={readSet}
+          selectedLevel={practiceLevel}
+          userLevel={profile?.currentLevel}
+          onSelectLevel={(lvl) => setPracticeLevel(lvl)}
+          onStartTopic={handleStartTopicPractice}
+        />
+      )}
+
+      {/* TOPIC PRACTICE MODE: Active Focused Session Header */}
+      {viewMode === 'topic_practice' && practiceTopic && (
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
-                key={lvl}
                 type="button"
                 onClick={() => {
-                  setLevelFilter(lvl);
-                  setIsFlipped(false);
+                  stopSpeaking();
+                  setIsSpeaking(false);
+                  setPracticeTopic(null);
                 }}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                  levelFilter === lvl
-                    ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
-                {lvl === 'ALL' ? 'Tất cả' : lvl}
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Chọn chủ đề khác
               </button>
-            ))}
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#D94E00] dark:text-[#FF8524]">
+                  Chế độ Luyện tập theo chủ đề
+                </p>
+                <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
+                  {practiceTopic}
+                </h3>
+              </div>
+            </div>
+
+            {/* Inline CEFR Level Switcher inside active Topic Session */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                {PRACTICE_LEVEL_ORDER.map((lvl) => {
+                  const lvlCount = publishedPassages.filter(
+                    (p) => p.category === practiceTopic && (lvl === 'ALL' || p.levelId === lvl)
+                  ).length;
+                  return (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => {
+                        stopSpeaking();
+                        setIsSpeaking(false);
+                        setPracticeLevel(lvl);
+                        setIsFlipped(false);
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors tabular-nums ${
+                        practiceLevel === lvl
+                          ? 'bg-[#FF6B00] text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {lvl === 'ALL' ? `Tất cả (${lvlCount})` : `${lvl} (${lvlCount})`}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={practiceUnreadOnly}
+                  onChange={(e) => {
+                    setPracticeUnreadOnly(e.target.checked);
+                    setIsFlipped(false);
+                  }}
+                  className="rounded accent-[#FF6B00]"
+                />
+                Chỉ bài chưa đọc
+              </label>
+            </div>
           </div>
 
-          <select
-            value={categoryFilter}
-            onChange={(e) => {
-              setCategoryFilter(e.target.value);
-              setIsFlipped(false);
-            }}
-            aria-label="Lọc theo chủ đề bài đọc"
-            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white"
-          >
-            <option value="ALL">Tất cả chủ đề ({publishedPassages.length})</option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat} ({categoryCounts.get(cat) ?? 0})
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value as 'ALL' | 'UNREAD' | 'READ');
-              setIsFlipped(false);
-            }}
-            aria-label="Lọc theo trạng thái đã đọc"
-            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white"
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="UNREAD">Chưa đọc</option>
-            <option value="READ">Đã đọc</option>
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2 flex-1 lg:max-w-sm">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm tiêu đề hoặc nội dung bài đọc..."
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white"
-            />
+          {/* Topic-Level Progress Bar */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-slate-600 dark:text-slate-300 tabular-nums">
+                Tiến độ chủ đề ({practiceLevel === 'ALL' ? 'A1–C1' : `CEFR ${practiceLevel}`}):{' '}
+                <strong className="text-slate-900 dark:text-white">
+                  {topicCompletedCount} / {topicAllPassages.length} bài
+                </strong>
+              </span>
+              <span className="font-bold text-[#D94E00] dark:text-[#FF8524] tabular-nums">
+                {topicAllPassages.length > 0
+                  ? Math.round((topicCompletedCount / topicAllPassages.length) * 100)
+                  : 0}
+                %
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  isTopicLevelComplete ? 'bg-emerald-500' : 'bg-[#FF6B00]'
+                }`}
+                style={{
+                  width: `${
+                    topicAllPassages.length > 0
+                      ? Math.round((topicCompletedCount / topicAllPassages.length) * 100)
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void refreshReadingPassages(true)}
-            disabled={readingPassagesLoading}
-            title="Tải lại danh sách bài đọc mới nhất"
-            className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-60"
-            aria-label="Làm mới bài đọc"
-          >
-            <RefreshCw className={`w-4 h-4 ${readingPassagesLoading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </section>
 
-      {/* Main 3D Reading Flashcard Deck */}
-      {activePassage ? (
+          {/* Topic-Level Completion Celebration Banner */}
+          {isTopicLevelComplete && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/35 border border-emerald-200 dark:border-emerald-800/70">
+              <div className="flex items-start gap-3">
+                <Award className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm">
+                  <p className="font-bold text-emerald-900 dark:text-emerald-200">
+                    Chúc mừng! Bạn đã hoàn thành trọn bộ &ldquo;{practiceTopic}&rdquo; ở cấp độ{' '}
+                    {practiceLevel === 'ALL' ? 'A1–C1' : practiceLevel}!
+                  </p>
+                  <p className="text-emerald-700 dark:text-emerald-300/80 text-xs mt-0.5">
+                    Bạn có thể ôn lại các thẻ bên dưới hoặc thử thách bản thân ở cấp độ cao hơn.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {nextPracticeLevel && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPracticeLevel(nextPracticeLevel);
+                      setPracticeUnreadOnly(false);
+                      setIsFlipped(false);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors"
+                  >
+                    Nâng lên cấp độ {nextPracticeLevel}
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPracticeTopic(null)}
+                  className="px-3 py-2 rounded-xl border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-xs font-bold hover:bg-emerald-100/70 dark:hover:bg-emerald-900/40"
+                >
+                  Đổi chủ đề
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* EXPLORE MODE: Filter & Search Toolbar */}
+      {viewMode === 'explore' && (
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+              {LEVEL_FILTERS.map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => {
+                    setLevelFilter(lvl);
+                    setIsFlipped(false);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    levelFilter === lvl
+                      ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {lvl === 'ALL' ? 'Tất cả' : lvl}
+                </button>
+              ))}
+            </div>
+
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setIsFlipped(false);
+              }}
+              aria-label="Lọc theo chủ đề bài đọc"
+              className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white"
+            >
+              <option value="ALL">Tất cả chủ đề ({publishedPassages.length})</option>
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat} ({categoryCounts.get(cat) ?? 0})
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as 'ALL' | 'UNREAD' | 'READ');
+                setIsFlipped(false);
+              }}
+              aria-label="Lọc theo trạng thái đã đọc"
+              className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white"
+            >
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value="UNREAD">Chưa đọc</option>
+              <option value="READ">Đã đọc</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 flex-1 lg:max-w-sm">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm tiêu đề hoặc nội dung bài đọc..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshReadingPassages(true)}
+              disabled={readingPassagesLoading}
+              title="Tải lại danh sách bài đọc mới nhất"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-60"
+              aria-label="Làm mới bài đọc"
+            >
+              <RefreshCw className={`w-4 h-4 ${readingPassagesLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Main 3D Reading Flashcard Deck (shown in Explore mode OR active Topic Practice Session) */}
+      {!isShowingTopicBoard && (activePassage ? (
         <section className="space-y-4">
           {/* Card Controls Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -462,7 +773,7 @@ export function ReadingHubPage() {
                       Mặt trước · English Reading
                     </span>
                     <span className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                      #{activeIndex + 1} / {filteredPassages.length}
+                      #{activeIndex + 1} / {deckPassages.length}
                     </span>
                   </div>
 
@@ -602,7 +913,7 @@ export function ReadingHubPage() {
               <button
                 type="button"
                 onClick={() => handleStep(-1)}
-                disabled={filteredPassages.length <= 1}
+                disabled={deckPassages.length <= 1}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -611,7 +922,7 @@ export function ReadingHubPage() {
               <button
                 type="button"
                 onClick={() => handleStep(1)}
-                disabled={filteredPassages.length <= 1}
+                disabled={deckPassages.length <= 1}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
               >
                 Bài tiếp theo
@@ -620,7 +931,7 @@ export function ReadingHubPage() {
               <button
                 type="button"
                 onClick={handleShuffle}
-                disabled={filteredPassages.length <= 1}
+                disabled={deckPassages.length <= 1}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:border-[#FF6B00]/40 disabled:opacity-50"
                 title="Chọn ngẫu nhiên một bài đọc khác"
               >
@@ -629,34 +940,134 @@ export function ReadingHubPage() {
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => handleToggleRead(activePassage)}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs sm:text-sm font-bold transition-colors ${
-                isCurrentRead
-                  ? 'border-emerald-500/45 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-emerald-400'
-              }`}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              {isCurrentRead ? 'Đã đọc hiểu bài này' : 'Đánh dấu đã đọc xong'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {viewMode === 'topic_practice' && practiceTopic ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleRead(activePassage)}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold transition-colors ${
+                      isCurrentRead
+                        ? 'border-emerald-500/45 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-emerald-400'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {isCurrentRead ? 'Đã đọc' : 'Đánh dấu đã đọc'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCompleteAndNext(activePassage)}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold transition-colors shadow-xs"
+                  >
+                    Hoàn thành &amp; bài tiếp theo
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleToggleRead(activePassage)}
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs sm:text-sm font-bold transition-colors ${
+                    isCurrentRead
+                      ? 'border-emerald-500/45 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-emerald-400'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  {isCurrentRead ? 'Đã đọc hiểu bài này' : 'Đánh dấu đã đọc xong'}
+                </button>
+              )}
+            </div>
           </div>
         </section>
       ) : (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 text-center space-y-2">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 text-center space-y-3">
           <BookOpenText className="w-8 h-8 text-slate-400 mx-auto" />
           <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
-            Không tìm thấy bài đọc phù hợp với bộ lọc hiện tại
+            {viewMode === 'topic_practice' && practiceUnreadOnly
+              ? 'Bạn đã hoàn thành toàn bộ bài đọc trong cấp độ này!'
+              : 'Không tìm thấy bài đọc phù hợp với bộ lọc hiện tại'}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Hãy thử chọn lại cấp độ &ldquo;Tất cả&rdquo; hoặc xóa từ khóa tìm kiếm.
+            {viewMode === 'topic_practice' && practiceUnreadOnly
+              ? 'Tắt mục "Chỉ bài chưa đọc" để ôn lại hoặc chuyển sang cấp độ CEFR tiếp theo.'
+              : 'Hãy thử chọn lại cấp độ "Tất cả" hoặc xóa từ khóa tìm kiếm.'}
           </p>
+          {viewMode === 'topic_practice' && practiceUnreadOnly && (
+            <button
+              type="button"
+              onClick={() => setPracticeUnreadOnly(false)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-xs font-bold"
+            >
+              Xem lại toàn bộ bài trong chủ đề
+            </button>
+          )}
         </div>
+      ))}
+
+      {/* TOPIC PRACTICE MODE: Compact Topic Playlist */}
+      {viewMode === 'topic_practice' && practiceTopic && topicAllPassages.length > 0 && (
+        <section className="space-y-3 pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              Danh sách bài luyện tập · {practiceTopic} ({practiceLevel === 'ALL' ? 'A1–C1' : practiceLevel})
+            </h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+              {topicAllPassages.length} bài · Chọn nhanh bất kỳ bài nào
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {topicAllPassages.map((passage, idx) => {
+              const isSelected = activePassage?.passageId === passage.passageId;
+              const isDone = readSet.has(passage.passageId);
+              return (
+                <button
+                  key={passage.passageId}
+                  type="button"
+                  onClick={() => {
+                    if (practiceUnreadOnly && isDone) {
+                      setPracticeUnreadOnly(false);
+                    }
+                    selectPassage(passage);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className={`text-left p-3.5 rounded-xl border transition-all flex items-start justify-between gap-3 ${
+                    isSelected
+                      ? 'bg-[#FF6B00]/8 dark:bg-[#FF6B00]/12 border-[#FF6B00] ring-1 ring-[#FF6B00]/40'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-[#FF6B00]/50'
+                  }`}
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2 text-[11px] font-bold">
+                      <span className="font-mono text-slate-400 tabular-nums">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+                      <span className="text-[#D94E00] dark:text-[#FF8524]">{passage.levelId}</span>
+                      <span className="text-slate-400 font-normal tabular-nums">
+                        ~{passage.estimatedMinutes} phút
+                      </span>
+                    </div>
+                    <h4 className="font-serif text-sm font-bold text-slate-900 dark:text-white leading-snug line-clamp-1">
+                      {passage.titleEn}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">
+                      {passage.titleVi}
+                    </p>
+                  </div>
+                  {isDone && (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
       )}
 
-      {/* Reading Library Catalog Grid */}
-      {filteredPassages.length > 0 && (
+      {/* EXPLORE MODE: Reading Library Catalog Grid */}
+      {viewMode === 'explore' && filteredPassages.length > 0 && (
         <section className="space-y-4 pt-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
