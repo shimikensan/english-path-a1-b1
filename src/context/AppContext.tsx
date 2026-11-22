@@ -555,12 +555,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [firestoreLessons]);
 
-  const readingPassagesSeeded = firestoreReadings.length > 0;
+  const extendedReadingIds = useMemo(
+    () => new Set(DEFAULT_READING_PASSAGES.slice(8).map((p) => p.passageId)),
+    []
+  );
+
+  const hasExtendedReadingsInFirestore = useMemo(
+    () => firestoreReadings.some((p) => extendedReadingIds.has(p.passageId)),
+    [firestoreReadings, extendedReadingIds]
+  );
+
+  const readingPassagesSeeded =
+    firestoreReadings.length > 0 && hasExtendedReadingsInFirestore;
 
   const readingPassages = useMemo<ReadingPassageDoc[]>(() => {
     if (firestoreReadings.length === 0) return DEFAULT_READING_PASSAGES;
-    return [...firestoreReadings].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-  }, [firestoreReadings]);
+    if (hasExtendedReadingsInFirestore) {
+      return [...firestoreReadings].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+    }
+    const existingIds = new Set(firestoreReadings.map((p) => p.passageId));
+    const missingExtended = DEFAULT_READING_PASSAGES.filter(
+      (p) => extendedReadingIds.has(p.passageId) && !existingIds.has(p.passageId)
+    );
+    return [...firestoreReadings, ...missingExtended].sort(
+      (a, b) => (a.order ?? 999) - (b.order ?? 999)
+    );
+  }, [firestoreReadings, hasExtendedReadingsInFirestore, extendedReadingIds]);
 
   // Automatically sync verified learner's public completion stats to /leaderboard/{uid}
   useEffect(() => {

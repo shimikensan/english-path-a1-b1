@@ -65,13 +65,17 @@ export function ReadingHubPage() {
 
   const [levelFilter, setLevelFilter] = useState<'ALL' | LearnerCEFRLevel>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNREAD' | 'READ'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [catalogPage, setCatalogPage] = useState(1);
   const [activePassageId, setActivePassageId] = useState<string>('');
   const [isFlipped, setIsFlipped] = useState(false);
   const [fontScale, setFontScale] = useState<FontSizeScale>('md');
   const [speechRate, setSpeechRate] = useState<0.82 | 0.96>(0.96);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [readIds, setReadIds] = useState<string[]>(() => loadReadIds(profile?.uid));
+
+  const CATALOG_PAGE_SIZE = 24;
 
   useEffect(() => {
     void refreshReadingPassages(false);
@@ -92,19 +96,26 @@ export function ReadingHubPage() {
     [readingPassages]
   );
 
-  const categories = useMemo(() => {
-    const set = new Set<string>();
+  const readSet = useMemo(() => new Set(readIds), [readIds]);
+
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>();
     publishedPassages.forEach((p) => {
-      if (p.category?.trim()) set.add(p.category.trim());
+      const cat = p.category?.trim();
+      if (cat) map.set(cat, (map.get(cat) ?? 0) + 1);
     });
-    return Array.from(set);
+    return map;
   }, [publishedPassages]);
+
+  const categories = useMemo(() => Array.from(categoryCounts.keys()), [categoryCounts]);
 
   const filteredPassages = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return publishedPassages.filter((p) => {
       if (levelFilter !== 'ALL' && p.levelId !== levelFilter) return false;
       if (categoryFilter !== 'ALL' && p.category !== categoryFilter) return false;
+      if (statusFilter === 'READ' && !readSet.has(p.passageId)) return false;
+      if (statusFilter === 'UNREAD' && readSet.has(p.passageId)) return false;
       if (!q) return true;
       return (
         p.titleEn.toLowerCase().includes(q) ||
@@ -114,7 +125,18 @@ export function ReadingHubPage() {
         p.category.toLowerCase().includes(q)
       );
     });
-  }, [publishedPassages, levelFilter, categoryFilter, searchQuery]);
+  }, [publishedPassages, levelFilter, categoryFilter, statusFilter, searchQuery, readSet]);
+
+  const totalCatalogPages = Math.max(1, Math.ceil(filteredPassages.length / CATALOG_PAGE_SIZE));
+  const safeCatalogPage = Math.min(catalogPage, totalCatalogPages);
+  const pagedCatalogPassages = useMemo(() => {
+    const start = (safeCatalogPage - 1) * CATALOG_PAGE_SIZE;
+    return filteredPassages.slice(start, start + CATALOG_PAGE_SIZE);
+  }, [filteredPassages, safeCatalogPage]);
+
+  useEffect(() => {
+    setCatalogPage(1);
+  }, [levelFilter, categoryFilter, statusFilter, searchQuery]);
 
   const activeIndex = useMemo(() => {
     if (filteredPassages.length === 0) return -1;
@@ -125,7 +147,6 @@ export function ReadingHubPage() {
   const activePassage: ReadingPassageDoc | null =
     activeIndex >= 0 ? filteredPassages[activeIndex] : null;
 
-  const readSet = useMemo(() => new Set(readIds), [readIds]);
   const completedCount = useMemo(
     () => publishedPassages.filter((p) => readSet.has(p.passageId)).length,
     [publishedPassages, readSet]
@@ -290,12 +311,26 @@ export function ReadingHubPage() {
             aria-label="Lọc theo chủ đề bài đọc"
             className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white"
           >
-            <option value="ALL">Tất cả chủ đề</option>
+            <option value="ALL">Tất cả chủ đề ({publishedPassages.length})</option>
             {categories.map((cat) => (
               <option key={cat} value={cat}>
-                {cat}
+                {cat} ({categoryCounts.get(cat) ?? 0})
               </option>
             ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as 'ALL' | 'UNREAD' | 'READ');
+              setIsFlipped(false);
+            }}
+            aria-label="Lọc theo trạng thái đã đọc"
+            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white"
+          >
+            <option value="ALL">Tất cả trạng thái</option>
+            <option value="UNREAD">Chưa đọc</option>
+            <option value="READ">Đã đọc</option>
           </select>
         </div>
 
@@ -622,18 +657,18 @@ export function ReadingHubPage() {
 
       {/* Reading Library Catalog Grid */}
       {filteredPassages.length > 0 && (
-        <section className="space-y-3 pt-2">
-          <div className="flex items-center justify-between gap-2">
+        <section className="space-y-4 pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
               Thư viện bài đọc ({filteredPassages.length} bài)
             </h3>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              Chọn bất kỳ bài nào để mở trên thẻ lật phía trên
+            <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+              Trang {safeCatalogPage} / {totalCatalogPages} · Chọn bất kỳ bài nào để mở trên thẻ lật phía trên
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-            {filteredPassages.map((passage) => {
+            {pagedCatalogPassages.map((passage) => {
               const isSelected = activePassage?.passageId === passage.passageId;
               const isDone = readSet.has(passage.passageId);
               return (
@@ -671,7 +706,9 @@ export function ReadingHubPage() {
                   </div>
 
                   <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                    <span className="tabular-nums">~{passage.estimatedMinutes} phút đọc</span>
+                    <span className="tabular-nums">
+                      #{passage.order} · ~{passage.estimatedMinutes} phút
+                    </span>
                     <span className="font-semibold text-[#D94E00] dark:text-[#FF8524]">
                       {isSelected ? 'Đang mở' : 'Đọc ngay →'}
                     </span>
@@ -680,6 +717,47 @@ export function ReadingHubPage() {
               );
             })}
           </div>
+
+          {totalCatalogPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setCatalogPage((p) => Math.max(1, p - 1))}
+                disabled={safeCatalogPage <= 1}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-45"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Trang trước
+              </button>
+
+              <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                {Array.from({ length: totalCatalogPages }, (_, idx) => idx + 1).map((pageNum) => (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    onClick={() => setCatalogPage(pageNum)}
+                    className={`min-w-[34px] h-8 px-2 rounded-lg text-xs font-bold tabular-nums transition-colors ${
+                      pageNum === safeCatalogPage
+                        ? 'bg-[#FF6B00] text-white shadow-xs'
+                        : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-[#FF6B00]/50'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCatalogPage((p) => Math.min(totalCatalogPages, p + 1))}
+                disabled={safeCatalogPage >= totalCatalogPages}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-45"
+              >
+                Trang sau
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </section>
       )}
     </div>

@@ -1605,36 +1605,45 @@ export async function adminDeleteReadingPassage(passageId: string): Promise<void
   }
 }
 
-export async function seedReadingPassagesToFirestore(): Promise<{ createdCount: number; totalCount: number }> {
+export async function seedReadingPassagesToFirestore(
+  onProgress?: (written: number, total: number) => void
+): Promise<{ createdCount: number; totalCount: number }> {
   try {
     const existingSnap = await getDocs(collection(db, 'reading_passages'));
     const existingIds = new Set(existingSnap.docs.map((d) => d.id));
     const missing = DEFAULT_READING_PASSAGES.filter((p) => !existingIds.has(p.passageId));
 
     if (missing.length > 0) {
-      const batch = writeBatch(db);
-      for (const passage of missing) {
-        const ref = doc(db, 'reading_passages', passage.passageId);
-        batch.set(ref, {
-          passageId: passage.passageId,
-          titleEn: truncate(passage.titleEn, 160),
-          titleVi: truncate(passage.titleVi, 160),
-          levelId: normalizeReadingLevel(passage.levelId),
-          category: truncate(passage.category, 60),
-          contentEn: truncate(passage.contentEn, 3000),
-          contentVi: truncate(passage.contentVi, 3500),
-          keyPhrases: passage.keyPhrases.slice(0, 12).map((kp) => ({
-            phrase: truncate(kp.phrase, 120),
-            meaningVi: truncate(kp.meaningVi, 200),
-          })),
-          estimatedMinutes: Math.max(1, Math.min(30, Math.round(passage.estimatedMinutes))),
-          order: Math.max(1, Math.min(500, Math.round(passage.order))),
-          isPublished: true,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+      const CHUNK_SIZE = 50;
+      let written = 0;
+      for (let i = 0; i < missing.length; i += CHUNK_SIZE) {
+        const chunk = missing.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        for (const passage of chunk) {
+          const ref = doc(db, 'reading_passages', passage.passageId);
+          batch.set(ref, {
+            passageId: passage.passageId,
+            titleEn: truncate(passage.titleEn, 160),
+            titleVi: truncate(passage.titleVi, 160),
+            levelId: normalizeReadingLevel(passage.levelId),
+            category: truncate(passage.category, 60),
+            contentEn: truncate(passage.contentEn, 3000),
+            contentVi: truncate(passage.contentVi, 3500),
+            keyPhrases: passage.keyPhrases.slice(0, 12).map((kp) => ({
+              phrase: truncate(kp.phrase, 120),
+              meaningVi: truncate(kp.meaningVi, 200),
+            })),
+            estimatedMinutes: Math.max(1, Math.min(30, Math.round(passage.estimatedMinutes))),
+            order: Math.max(1, Math.min(500, Math.round(passage.order))),
+            isPublished: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await batch.commit();
+        written += chunk.length;
+        onProgress?.(written, missing.length);
       }
-      await batch.commit();
     }
 
     clearReadingPassagesCache();

@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BookOpenText,
+  ChevronLeft,
+  ChevronRight,
   Database,
   Edit3,
   Eye,
@@ -13,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { READING_CATEGORIES } from '../../data';
+import { DEFAULT_READING_PASSAGES, READING_CATEGORIES } from '../../data';
 import { isFirestoreQuotaError } from '../../firebase';
 import {
   adminSaveReadingPassage,
@@ -58,8 +60,13 @@ export function AdminReadingTab({
   const { addToast } = useApp();
 
   const [levelFilter, setLevelFilter] = useState<'ALL' | LearnerCEFRLevel>('ALL');
+  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [seeding, setSeeding] = useState(false);
+  const [seedProgress, setSeedProgress] = useState<{ written: number; total: number } | null>(null);
+
+  const ADMIN_PAGE_SIZE = 20;
 
   // Modal Editor state
   const [editingPassage, setEditingPassage] = useState<ReadingPassageDoc | null>(null);
@@ -67,10 +74,19 @@ export function AdminReadingTab({
   const [saving, setSaving] = useState(false);
   const [previewSide, setPreviewSide] = useState<'edit' | 'front' | 'back'>('edit');
 
+  const categories = useMemo(() => {
+    const set = new Set<string>(READING_CATEGORIES);
+    passages.forEach((p) => {
+      if (p.category?.trim()) set.add(p.category.trim());
+    });
+    return Array.from(set);
+  }, [passages]);
+
   const filteredPassages = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return passages.filter((p) => {
       if (levelFilter !== 'ALL' && p.levelId !== levelFilter) return false;
+      if (categoryFilter !== 'ALL' && p.category !== categoryFilter) return false;
       if (!q) return true;
       return (
         p.titleEn.toLowerCase().includes(q) ||
@@ -79,12 +95,26 @@ export function AdminReadingTab({
         p.passageId.toLowerCase().includes(q)
       );
     });
-  }, [passages, levelFilter, searchQuery]);
+  }, [passages, levelFilter, categoryFilter, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPassages.length / ADMIN_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedPassages = useMemo(() => {
+    const start = (safePage - 1) * ADMIN_PAGE_SIZE;
+    return filteredPassages.slice(start, start + ADMIN_PAGE_SIZE);
+  }, [filteredPassages, safePage]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [levelFilter, categoryFilter, searchQuery]);
 
   const handleSeedDefaults = async () => {
     setSeeding(true);
+    setSeedProgress(null);
     try {
-      const res = await seedReadingPassagesToFirestore();
+      const res = await seedReadingPassagesToFirestore((written, total) => {
+        setSeedProgress({ written, total });
+      });
       await onRefresh();
       addToast(
         'success',
@@ -101,6 +131,7 @@ export function AdminReadingTab({
       );
     } finally {
       setSeeding(false);
+      setSeedProgress(null);
     }
   };
 
@@ -212,8 +243,8 @@ export function AdminReadingTab({
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {isSeeded
-                ? 'Đang đồng bộ trực tiếp với Cloud Firestore. Mọi thay đổi sẽ hiển thị cho học viên.'
-                : 'Đang hiển thị 8 bài đọc mẫu mặc định. Nhấn "Đồng bộ bài đọc mẫu" hoặc "Thêm bài đọc mới" để lưu lên Cloud Firestore.'}
+                ? `Đang đồng bộ trực tiếp với Cloud Firestore (${passages.length} bài đọc). Mọi thay đổi sẽ hiển thị cho học viên.`
+                : `Đang hiển thị bộ ${DEFAULT_READING_PASSAGES.length} bài đọc mẫu theo 6 chủ đề cuộc sống. Nhấn "Đồng bộ ${DEFAULT_READING_PASSAGES.length} bài đọc mẫu" để lưu toàn bộ lên Cloud Firestore.`}
             </p>
           </div>
 
@@ -225,7 +256,11 @@ export function AdminReadingTab({
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-60 whitespace-nowrap"
             >
               <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              {seeding ? 'Đang đồng bộ...' : 'Đồng bộ 8 bài đọc mẫu'}
+              {seeding
+                ? seedProgress
+                  ? `Đang đồng bộ ${seedProgress.written}/${seedProgress.total}...`
+                  : 'Đang đồng bộ...'
+                : `Đồng bộ ${DEFAULT_READING_PASSAGES.length} bài đọc mẫu`}
             </button>
             <button
               type="button"
@@ -238,7 +273,7 @@ export function AdminReadingTab({
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -249,10 +284,24 @@ export function AdminReadingTab({
               className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-white"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              aria-label="Lọc theo chủ đề"
+              className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white"
+            >
+              <option value="ALL">Tất cả chủ đề</option>
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
             <select
               value={levelFilter}
               onChange={(e) => setLevelFilter(e.target.value as 'ALL' | LearnerCEFRLevel)}
+              aria-label="Lọc theo cấp độ CEFR"
               className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs sm:text-sm text-slate-900 dark:text-white"
             >
               <option value="ALL">Tất cả cấp độ</option>
@@ -281,8 +330,17 @@ export function AdminReadingTab({
           Không tìm thấy bài đọc nào khớp bộ lọc.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredPassages.map((passage) => (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1 tabular-nums">
+            <span>
+              Hiển thị {pagedPassages.length} / {filteredPassages.length} bài đọc phù hợp
+            </span>
+            <span>
+              Trang {safePage} / {totalPages}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {pagedPassages.map((passage) => (
             <div
               key={passage.passageId}
               className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col justify-between gap-4"
@@ -361,6 +419,35 @@ export function AdminReadingTab({
               </div>
             </div>
           ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-45"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Trang trước
+              </button>
+
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
+                Trang {safePage} / {totalPages}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-45"
+              >
+                Trang sau
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
