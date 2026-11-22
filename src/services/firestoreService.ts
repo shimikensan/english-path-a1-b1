@@ -1,4 +1,4 @@
-import type { User } from 'firebase/auth';
+import { sendPasswordResetEmail, type User } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -12,6 +12,7 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type DocumentReference,
   type Unsubscribe,
 } from 'firebase/firestore';
 import {
@@ -21,6 +22,7 @@ import {
   getDefaultLessonsByLevel,
 } from '../data';
 import {
+  auth,
   BOOTSTRAPPED_ADMIN_EMAIL,
   db,
   handleFirestoreError,
@@ -39,6 +41,7 @@ import type {
   QuizRating,
   QuizResultDoc,
   ReadingPassageDoc,
+  RevokedUserDoc,
   UserFeedbackDoc,
   UserProfile,
   UserProgressDoc,
@@ -1658,4 +1661,185 @@ export async function seedReadingPassagesToFirestore(
     handleFirestoreError(error, OperationType.WRITE, 'reading_passages');
   }
 }
+
+// --- Admin User Password Reset, Account Deletion & Revocation ---
+
+export async function checkUserRevoked(uid: string): Promise<RevokedUserDoc | null> {
+  if (!uid) return null;
+  try {
+    const snap = await getDoc(doc(db, 'revoked_users', uid));
+    if (!snap.exists()) return null;
+    return snap.data() as RevokedUserDoc;
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      return null;
+    }
+    return null;
+  }
+}
+
+export async function adminListRevokedUsers(): Promise<RevokedUserDoc[]> {
+  const path = 'revoked_users';
+  try {
+    const snap = await getDocs(collection(db, path));
+    const list = snap.docs.map((d) => d.data() as RevokedUserDoc);
+    return list.sort((a, b) => {
+      const ta =
+        a.revokedAt && typeof a.revokedAt === 'object' && 'toMillis' in a.revokedAt
+          ? (a.revokedAt as { toMillis: () => number }).toMillis()
+          : 0;
+      const tb =
+        b.revokedAt && typeof b.revokedAt === 'object' && 'toMillis' in b.revokedAt
+          ? (b.revokedAt as { toMillis: () => number }).toMillis()
+          : 0;
+      return tb - ta;
+    });
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+export async function adminRestoreRevokedUser(targetUid: string): Promise<void> {
+  const safeUid = sanitizeId(targetUid, 128);
+  const path = `revoked_users/${safeUid}`;
+  try {
+    await deleteDoc(doc(db, 'revoked_users', safeUid));
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function adminSendUserPasswordResetEmail(targetEmail: string): Promise<void> {
+  const cleanEmail = targetEmail.trim();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('Địa chỉ email của tài khoản không hợp lệ.');
+  }
+  try {
+    await sendPasswordResetEmail(auth, cleanEmail);
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code || '';
+    switch (code) {
+      case 'auth/invalid-email':
+        throw new Error('Địa chỉ email không đúng định dạng.');
+      case 'auth/user-not-found':
+        throw new Error('Không tìm thấy tài khoản tương ứng trên Firebase Authentication.');
+      case 'auth/too-many-requests':
+        throw new Error('Đã gửi quá nhiều yêu cầu đặt lại mật khẩu. Vui lòng thử lại sau ít phút.');
+      case 'auth/operation-not-allowed':
+        throw new Error(
+          'Phương thức đăng nhập Email/Mật khẩu chưa được bật trên Firebase Console.'
+        );
+      default:
+        throw new Error(
+          error instanceof Error
+            ? `Không thể gửi email đặt lại mật khẩu: ${error.message}`
+            : 'Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại.'
+        );
+    }
+  }
+}
+
+export async function adminDeleteUserAccount(params: {
+  targetUser: UserProfile;
+  adminUid: string;
+  adminEmail: string;
+  reason?: string;
+}): Promise<{ deletedDocsCount: number; revokedRecord: RevokedUserDoc }> {
+  const { targetUser, adminUid, adminEmail, reason } = params;
+  const targetUid = targetUser.uid;
+  const normalizedTargetEmail = targetUser.email.trim().toLowerCase();
+
+  if (!targetUid) {
+    throw new Error('Không xác định được mã tài khoản cần xóa.');
+  }
+  if (targetUid === adminUid) {
+    throw new Error('Bạn không thể tự xóa tài khoản quản trị đang đăng nhập.');
+  }
+  if (normalizedTargetEmail === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()) {
+    throw new Error('Không thể xóa tài khoản Quản trị gốc của hệ thống.');
+  }
+
+  try {
+    const [progressSnap, quizSnap, vocabSnap, feedbackSnap, adminSnap, leaderboardSnap, userSnap] =
+      await Promise.all([
+        getDocs(query(collection(db, 'user_progress'), where('uid', '==', targetUid))),
+        getDocs(query(collection(db, 'quiz_results'), where('uid', '==', targetUid))),
+        getDocs(query(collection(db, 'user_vocabulary'), where('uid', '==', targetUid))),
+        getDocs(query(collection(db, 'user_feedback'), where('uid', '==', targetUid))),
+        getDoc(doc(db, 'admins', targetUid)),
+        getDoc(doc(db, 'leaderboard', targetUid)),
+        getDoc(doc(db, 'users', targetUid)),
+      ]);
+
+    const refsToDelete: DocumentReference[] = [];
+    progressSnap.docs.forEach((d) => refsToDelete.push(d.ref));
+    quizSnap.docs.forEach((d) => refsToDelete.push(d.ref));
+    vocabSnap.docs.forEach((d) => refsToDelete.push(d.ref));
+    feedbackSnap.docs.forEach((d) => refsToDelete.push(d.ref));
+    if (adminSnap.exists()) refsToDelete.push(adminSnap.ref);
+    if (leaderboardSnap.exists()) refsToDelete.push(leaderboardSnap.ref);
+    if (userSnap.exists()) refsToDelete.push(userSnap.ref);
+
+    // Record revocation BEFORE or atomically with deletion so a concurrent login cannot recreate the profile
+    const revokedRef = doc(db, 'revoked_users', targetUid);
+    const existingRevoked = await getDoc(revokedRef);
+    if (existingRevoked.exists()) {
+      await deleteDoc(revokedRef);
+    }
+
+    const cleanReason = truncate(
+      (reason ?? '').trim() || 'Tài khoản đã bị quản trị viên xóa khỏi hệ thống.',
+      300
+    );
+    const cleanFullName = truncate(targetUser.fullName.trim() || 'Học viên', 100);
+    const cleanEmail = truncate(targetUser.email.trim() || 'unknown@user.local', 200);
+    const cleanAdminEmail = truncate(adminEmail.trim() || BOOTSTRAPPED_ADMIN_EMAIL, 200);
+
+    await setDoc(revokedRef, {
+      uid: targetUid,
+      email: cleanEmail,
+      fullName: cleanFullName,
+      reason: cleanReason,
+      revokedBy: adminUid,
+      revokedByEmail: cleanAdminEmail,
+      revokedAt: serverTimestamp(),
+    });
+
+    // Execute cascade deletes in safe chunks of 400 (well under Firestore's 500-op batch limit)
+    const BATCH_LIMIT = 400;
+    for (let i = 0; i < refsToDelete.length; i += BATCH_LIMIT) {
+      const chunk = refsToDelete.slice(i, i + BATCH_LIMIT);
+      const batch = writeBatch(db);
+      chunk.forEach((ref) => batch.delete(ref));
+      await batch.commit();
+    }
+
+    clearLeaderboardCache();
+
+    return {
+      deletedDocsCount: refsToDelete.length,
+      revokedRecord: {
+        uid: targetUid,
+        email: cleanEmail,
+        fullName: cleanFullName,
+        reason: cleanReason,
+        revokedBy: adminUid,
+        revokedByEmail: cleanAdminEmail,
+        revokedAt: new Date(),
+      },
+    };
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.DELETE, `users/${targetUid}`);
+  }
+}
+
 

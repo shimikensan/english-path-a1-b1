@@ -145,6 +145,16 @@ export interface AdminRecord {
   createdAt?: Timestamp | Date;
 }
 
+export interface RevokedUserDoc {
+  uid: string;
+  email: string;
+  fullName: string;
+  reason: string;
+  revokedBy: string;
+  revokedByEmail: string;
+  revokedAt?: Timestamp | Date;
+}
+
 export interface AdminSecurityVaultDoc {
   configId: 'vault';
   algorithm: 'PBKDF2-SHA256';

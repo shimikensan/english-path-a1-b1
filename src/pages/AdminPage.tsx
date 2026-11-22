@@ -16,7 +16,6 @@ import {
   Save,
   Search,
   ShieldCheck,
-  ShieldOff,
   Trash2,
   Users,
   X,
@@ -25,8 +24,9 @@ import { AdminFeedbackTab } from '../components/admin/AdminFeedbackTab';
 import { AdminPasswordGate } from '../components/admin/AdminPasswordGate';
 import { AdminReadingTab } from '../components/admin/AdminReadingTab';
 import { AdminSecurityTab } from '../components/admin/AdminSecurityTab';
+import { AdminUsersTab } from '../components/admin/AdminUsersTab';
 import { useApp } from '../context/AppContext';
-import { BOOTSTRAPPED_ADMIN_EMAIL, isFirestoreQuotaError } from '../firebase';
+import { isFirestoreQuotaError } from '../firebase';
 import {
   adminDeleteFeedback,
   adminDeleteLesson,
@@ -38,6 +38,7 @@ import {
   adminListAllFeedback,
   adminListAllQuizResults,
   adminListAllUsers,
+  adminListRevokedUsers,
   adminRevokeAdmin,
   adminSaveLesson,
   adminSaveLevel,
@@ -55,6 +56,7 @@ import type {
   QuizQuestionType,
   QuizResultDoc,
   ReadingPassageDoc,
+  RevokedUserDoc,
   SentencePattern,
   UserFeedbackDoc,
   UserProfile,
@@ -243,6 +245,7 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
   // Admin stats & records
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [adminsList, setAdminsList] = useState<AdminRecord[]>([]);
+  const [revokedUsersList, setRevokedUsersList] = useState<RevokedUserDoc[]>([]);
   const [allQuizResults, setAllQuizResults] = useState<QuizResultDoc[]>([]);
   const [feedbackList, setFeedbackList] = useState<UserFeedbackDoc[]>([]);
   const [loadingAdminData, setLoadingAdminData] = useState(false);
@@ -337,14 +340,16 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     if (!isAdmin || !vaultUnlocked) return;
     setLoadingAdminData(true);
     try {
-      const [users, admins, results, feedbacks] = await Promise.all([
+      const [users, admins, revokedUsers, results, feedbacks] = await Promise.all([
         adminListAllUsers(),
         adminListAdmins(),
+        adminListRevokedUsers(),
         adminListAllQuizResults(),
         adminListAllFeedback(),
       ]);
       setUsersList(users);
       setAdminsList(admins);
+      setRevokedUsersList(revokedUsers);
       setFeedbackList(feedbacks);
       const sortedResults = [...results].sort((a, b) => {
         const ta =
@@ -445,17 +450,25 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
     }
   }, [isAdmin, vaultUnlocked, refreshReadingPassages]);
 
-  const adminUidSet = useMemo(() => new Set(adminsList.map((a) => a.uid)), [adminsList]);
-  const leaderboardByUid = useMemo(() => {
-    const map = new Map<string, (typeof leaderboard)[number]>();
-    leaderboard.forEach((entry) => map.set(entry.uid, entry));
-    return map;
-  }, [leaderboard]);
-
-  const missingOnLeaderboardCount = useMemo(
-    () => usersList.filter((u) => !leaderboardByUid.has(u.uid)).length,
-    [usersList, leaderboardByUid]
+  const handleUserDeleted = useCallback(
+    (deletedUid: string, revokedRecord: RevokedUserDoc, deletedDocsCount: number) => {
+      setUsersList((prev) => prev.filter((u) => u.uid !== deletedUid));
+      setAdminsList((prev) => prev.filter((a) => a.uid !== deletedUid));
+      setAllQuizResults((prev) => prev.filter((r) => r.uid !== deletedUid));
+      setFeedbackList((prev) => prev.filter((f) => f.uid !== deletedUid));
+      setRevokedUsersList((prev) => [revokedRecord, ...prev.filter((r) => r.uid !== deletedUid)]);
+      void refreshLeaderboard(true);
+      addToast(
+        'success',
+        `Đã xóa tài khoản ${revokedRecord.email} cùng ${deletedDocsCount} bản ghi dữ liệu và thu hồi quyền truy cập.`
+      );
+    },
+    [refreshLeaderboard, addToast]
   );
+
+  const handleRevokedUserRestored = useCallback((restoredUid: string) => {
+    setRevokedUsersList((prev) => prev.filter((r) => r.uid !== restoredUid));
+  }, []);
 
   const globalAvgScore = useMemo(() => {
     if (allQuizResults.length === 0) return 0;
@@ -1413,151 +1426,25 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
         </div>
       )}
 
-      {/* TAB 4: USERS & RBAC */}
+      {/* TAB 4: USERS, PASSWORD RESET, DELETION & RBAC */}
       {activeTab === 'users' && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Danh sách tài khoản & Phân quyền Quản trị (RBAC)
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
-                Tổng {usersList.length} tài khoản trên Firestore · Đã đồng bộ Bảng xếp hạng:{' '}
-                <strong className="text-slate-800 dark:text-slate-200">
-                  {leaderboard.length}/{usersList.length}
-                </strong>
-                {missingOnLeaderboardCount > 0 && (
-                  <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                    {' '}
-                    (Còn {missingOnLeaderboardCount} tài khoản chưa có trên BXH)
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void handleSyncAllLeaderboards()}
-                disabled={syncingAllLeaderboard || loadingAdminData}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#FF6B00] hover:bg-[#FF7E1F] disabled:opacity-60 text-xs font-semibold text-white transition-colors whitespace-nowrap"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${syncingAllLeaderboard ? 'animate-spin' : ''}`} />
-                {syncingAllLeaderboard ? 'Đang đồng bộ BXH...' : `Đồng bộ đủ ${usersList.length} tài khoản lên BXH`}
-              </button>
-              <button
-                type="button"
-                onClick={() => void loadAdminOverview()}
-                disabled={loadingAdminData}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingAdminData ? 'animate-spin' : ''}`} />
-                Cập nhật
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  <th className="py-3 px-4">Học viên</th>
-                  <th className="py-3 px-3">Trình độ</th>
-                  <th className="py-3 px-3">Tiến độ BXH</th>
-                  <th className="py-3 px-3">Chuỗi học</th>
-                  <th className="py-3 px-3">Vai trò</th>
-                  <th className="py-3 px-3">Ngày tham gia</th>
-                  <th className="py-3 px-4 text-right">Phân quyền</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {usersList.map((u) => {
-                  const isBootstrapped =
-                    u.email.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
-                  const hasAdminRole = isBootstrapped || adminUidSet.has(u.uid);
-                  const isSelf = firebaseUser?.uid === u.uid;
-                  const canModify = !isBootstrapped && !isSelf;
-                  const lbEntry = leaderboardByUid.get(u.uid);
-
-                  return (
-                    <tr key={u.uid}>
-                      <td className="py-3 px-4">
-                        <p className="font-semibold text-slate-900 dark:text-white">{u.fullName}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{u.email}</p>
-                      </td>
-                      <td className="py-3 px-3 text-xs font-bold text-blue-700 dark:text-blue-400">
-                        CEFR {u.currentLevel}
-                      </td>
-                      <td className="py-3 px-3 text-xs tabular-nums whitespace-nowrap">
-                        {lbEntry ? (
-                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                            {lbEntry.completionPercent}% ({lbEntry.completedLessons}/{lbEntry.totalLessons} bài)
-                          </span>
-                        ) : (
-                          <span className="text-amber-600 dark:text-amber-400 font-medium">
-                            Chưa lên BXH
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300 tabular-nums">
-                        {u.streakDays} ngày
-                      </td>
-                      <td className="py-3 px-3 text-xs font-semibold">
-                        {hasAdminRole ? (
-                          <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            {isBootstrapped ? 'Quản trị gốc' : 'Admin'}
-                          </span>
-                        ) : (
-                          <span className="text-slate-500 dark:text-slate-400">Học viên</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                        {formatTimestampVi(u.createdAt)}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {canModify ? (
-                          <button
-                            type="button"
-                            disabled={busyUserUid === u.uid}
-                            onClick={() => handleToggleAdminRole(u, hasAdminRole)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50 ${
-                              hasAdminRole
-                                ? 'border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-                                : 'border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40'
-                            }`}
-                          >
-                            {hasAdminRole ? (
-                              <>
-                                <ShieldOff className="w-3.5 h-3.5" />
-                                Thu hồi Admin
-                              </>
-                            ) : (
-                              <>
-                                <ShieldCheck className="w-3.5 h-3.5" />
-                                Cấp Admin
-                              </>
-                            )}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-slate-400">
-                            {isSelf ? 'Tài khoản hiện tại' : 'Được bảo vệ'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {usersList.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                      Chưa có dữ liệu học viên nào trên Firestore.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <AdminUsersTab
+          usersList={usersList}
+          adminsList={adminsList}
+          revokedUsersList={revokedUsersList}
+          leaderboard={leaderboard}
+          currentUserUid={firebaseUser?.uid}
+          currentUserEmail={firebaseUser?.email ?? undefined}
+          busyUserUid={busyUserUid}
+          syncingAllLeaderboard={syncingAllLeaderboard}
+          loadingAdminData={loadingAdminData}
+          onSyncAllLeaderboards={handleSyncAllLeaderboards}
+          onRefresh={loadAdminOverview}
+          onToggleAdminRole={handleToggleAdminRole}
+          onUserDeleted={handleUserDeleted}
+          onRevokedUserRestored={handleRevokedUserRestored}
+          addToast={addToast}
+        />
       )}
 
       {/* TAB 4: READING COMPREHENSION FLASHCARDS */}

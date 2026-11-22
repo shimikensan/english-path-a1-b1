@@ -32,6 +32,8 @@ export function AuthPage() {
   const {
     firebaseUser,
     needsEmailVerification,
+    revokedNotice,
+    clearRevokedNotice,
     signInWithGoogle,
     signInWithEmail,
     signUpWithEmail,
@@ -56,6 +58,7 @@ export function AuthPage() {
     e.preventDefault();
     setErrorMsg(null);
     setInfoMsg(null);
+    clearRevokedNotice();
     setSubmitting(true);
     try {
       if (mode === 'login') {
@@ -83,6 +86,7 @@ export function AuthPage() {
 
   const handleGoogleLogin = async () => {
     setErrorMsg(null);
+    clearRevokedNotice();
     setSubmitting(true);
     try {
       await signInWithGoogle();
@@ -358,12 +362,12 @@ export function AuthPage() {
             </div>
           )}
 
-          {errorMsg && (
+          {(errorMsg || revokedNotice) && (
             <div
               role="alert"
               className="mb-4 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-xs sm:text-sm text-rose-700 dark:text-rose-300 leading-relaxed"
             >
-              {errorMsg}
+              {errorMsg || revokedNotice}
             </div>
           )}
 

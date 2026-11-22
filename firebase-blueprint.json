@@ -714,6 +714,59 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "RevokedUser": {
+      "title": "RevokedUser",
+      "description": "Audit and access-revocation record for learner accounts deleted by an administrator (contains PII; readable only by owner for self-check or verified admins).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "revokedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "revokedByEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "revokedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "fullName",
+        "reason",
+        "revokedBy",
+        "revokedByEmail",
+        "revokedAt"
+      ]
     }
   },
   "firestore": {
@@ -760,6 +813,10 @@
     "/reading_passages/{passageId}": {
       "schema": { "$ref": "#/entities/ReadingPassage" },
       "description": "Bilingual English-Vietnamese reading comprehension flashcard articles managed by administrators."
+    },
+    "/revoked_users/{userId}": {
+      "schema": { "$ref": "#/entities/RevokedUser" },
+      "description": "Revoked/deleted learner account registry enforced by Security Rules to block profile recreation."
     }
   }
 }

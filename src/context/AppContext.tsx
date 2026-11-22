@@ -14,9 +14,17 @@ import {
   type User,
 } from 'firebase/auth';
 import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS, DEFAULT_READING_PASSAGES } from '../data';
-import { auth, googleProvider, handleFirestoreError, isFirestoreQuotaError, OperationType } from '../firebase';
+import {
+  auth,
+  BOOTSTRAPPED_ADMIN_EMAIL,
+  googleProvider,
+  handleFirestoreError,
+  isFirestoreQuotaError,
+  OperationType,
+} from '../firebase';
 import {
   checkIsAdmin,
+  checkUserRevoked,
   ensureUserProfile,
   fetchLessonsOnce,
   fetchLevelsOnce,
@@ -98,6 +106,8 @@ interface AppContextValue {
   firebaseUser: User | null;
   authReady: boolean;
   needsEmailVerification: boolean;
+  revokedNotice: string | null;
+  clearRevokedNotice: () => void;
   profile: UserProfile | null;
   isAdmin: boolean;
   dataLoading: boolean;
@@ -184,9 +194,12 @@ function mapFirebaseAuthError(error: unknown): string {
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [revokedNotice, setRevokedNotice] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
+
+  const clearRevokedNotice = useCallback(() => setRevokedNotice(null), []);
 
   const [firestoreLevels, setFirestoreLevels] = useState<LevelDoc[]>([]);
   const [firestoreLessons, setFirestoreLessons] = useState<LessonDoc[]>([]);
@@ -389,6 +402,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const bootstrap = async () => {
       setDataLoading(true);
       try {
+        const isRootAdmin =
+          firebaseUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
+
+        if (!isRootAdmin) {
+          const revoked = await checkUserRevoked(firebaseUser.uid);
+          if (cancelled) return;
+          if (revoked) {
+            const msg = revoked.reason
+              ? `Tài khoản này đã bị quản trị viên xóa khỏi hệ thống. Lý do: ${revoked.reason}`
+              : 'Tài khoản này đã bị quản trị viên xóa khỏi hệ thống.';
+            setRevokedNotice(msg);
+            addToast('error', msg);
+            try {
+              window.sessionStorage.removeItem('pilot-admin-vault-session');
+            } catch {
+              // Ignore storage errors
+            }
+            await signOut(auth);
+            return;
+          }
+        }
+
         const [ensuredProfile, adminFlag] = await Promise.all([
           ensureUserProfile(firebaseUser),
           checkIsAdmin(firebaseUser),
@@ -448,7 +483,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           subscribeUserProfile(
             firebaseUser.uid,
             (p) => {
-              if (!cancelled && p) setProfile(p);
+              if (cancelled) return;
+              if (p) {
+                setProfile(p);
+              } else if (!isRootAdmin) {
+                void checkUserRevoked(firebaseUser.uid).then((revoked) => {
+                  if (cancelled || !revoked) return;
+                  const msg = revoked.reason
+                    ? `Tài khoản của bạn đã bị quản trị viên xóa khỏi hệ thống. Lý do: ${revoked.reason}`
+                    : 'Tài khoản của bạn đã bị quản trị viên xóa khỏi hệ thống.';
+                  setRevokedNotice(msg);
+                  addToast('error', msg);
+                  void signOut(auth);
+                });
+              }
             },
             handleSubError(`users/${firebaseUser.uid}`, OperationType.GET)
           )
@@ -704,6 +752,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // --- Auth Actions ---
 
   const signInWithGoogle = useCallback(async () => {
+    setRevokedNotice(null);
     try {
       await signInWithPopup(auth, googleProvider);
       addToast('success', 'Đăng nhập bằng Google thành công!');
@@ -716,6 +765,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithEmail = useCallback(
     async (email: string, password: string) => {
+      setRevokedNotice(null);
       try {
         await signInWithEmailAndPassword(auth, email.trim(), password);
         addToast('success', 'Đăng nhập thành công!');
@@ -918,6 +968,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         firebaseUser,
         authReady,
         needsEmailVerification,
+        revokedNotice,
+        clearRevokedNotice,
         profile,
         isAdmin,
         dataLoading,
