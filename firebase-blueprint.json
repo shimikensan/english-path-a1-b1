@@ -767,6 +767,126 @@
         "revokedByEmail",
         "revokedAt"
       ]
+    },
+    "ClubMember": {
+      "title": "ClubMember",
+      "description": "PII-free 3D English Club lounge presence and chosen chibi avatar state for an active learner.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "currentLevel": {
+          "type": "string",
+          "enum": ["A1", "A2", "B1", "B2", "C1"]
+        },
+        "avatarGender": {
+          "type": "string",
+          "enum": ["male", "female"]
+        },
+        "statusText": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "posX": {
+          "type": "number"
+        },
+        "posZ": {
+          "type": "number"
+        },
+        "rotationY": {
+          "type": "number"
+        },
+        "isOnline": {
+          "type": "boolean"
+        },
+        "joinedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastActiveAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "currentLevel",
+        "avatarGender",
+        "statusText",
+        "posX",
+        "posZ",
+        "rotationY",
+        "isOnline",
+        "joinedAt",
+        "lastActiveAt"
+      ]
+    },
+    "ClubMessage": {
+      "title": "ClubMessage",
+      "description": "Private 1-on-1 English practice message between two learners in the 3D English Club.",
+      "type": "object",
+      "properties": {
+        "pairId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 260,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "participants": {
+          "type": "array",
+          "description": "Exactly 2 UIDs [senderUid, receiverUid] authorized to read this direct message."
+        },
+        "senderUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "senderName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "senderAvatar": {
+          "type": "string",
+          "enum": ["male", "female"]
+        },
+        "receiverUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "pairId",
+        "participants",
+        "senderUid",
+        "senderName",
+        "senderAvatar",
+        "receiverUid",
+        "text",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
@@ -817,6 +937,14 @@
     "/revoked_users/{userId}": {
       "schema": { "$ref": "#/entities/RevokedUser" },
       "description": "Revoked/deleted learner account registry enforced by Security Rules to block profile recreation."
+    },
+    "/club_members/{userId}": {
+      "schema": { "$ref": "#/entities/ClubMember" },
+      "description": "PII-free 3D English Club avatars and presence state."
+    },
+    "/club_messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ClubMessage" },
+      "description": "Private 1-on-1 English practice messages between two 3D English Club members."
     }
   }
 }

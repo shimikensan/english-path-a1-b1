@@ -268,11 +268,41 @@ export interface ReadingPassageDoc {
   updatedAt?: Timestamp | Date | string;
 }
 
+export type ClubAvatarGender = 'male' | 'female';
+
+export interface ClubMemberDoc {
+  uid: string;
+  displayName: string;
+  currentLevel: LearnerCEFRLevel;
+  avatarGender: ClubAvatarGender;
+  statusText: string;
+  posX: number;
+  posZ: number;
+  rotationY: number;
+  isOnline: boolean;
+  joinedAt?: Timestamp | Date;
+  lastActiveAt?: Timestamp | Date;
+}
+
+export interface ClubMessageDoc {
+  id: string;
+  pairId: string;
+  participants: [string, string];
+  senderUid: string;
+  senderName: string;
+  senderAvatar: ClubAvatarGender;
+  receiverUid: string;
+  text: string;
+  createdAt?: Timestamp | Date;
+  createdAtMs?: number;
+}
+
 export type AppRoute =
   | 'dashboard'
   | 'roadmap'
   | 'specialized'
   | 'ai-tutor'
+  | 'english-club'
   | 'vocabulary'
   | 'patterns'
   | 'reading'

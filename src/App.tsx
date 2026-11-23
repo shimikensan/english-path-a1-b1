@@ -18,6 +18,7 @@ import { AdminPage } from './pages/AdminPage';
 import { AITutorPage } from './pages/AITutorPage';
 import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { EnglishClubPage } from './pages/EnglishClubPage';
 import { FeedbackPage } from './pages/FeedbackPage';
 import { LessonDetailPage } from './pages/LessonDetailPage';
 import { PatternsHubPage } from './pages/PatternsHubPage';
@@ -44,6 +45,7 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   roadmap: 'Đường bay CEFR A1–C1 & Chuyên ngành',
   specialized: 'Tiếng Anh Chuyên ngành (ESP)',
   'ai-tutor': 'Nhắn tin tiếng Anh với AI',
+  'english-club': 'Câu lạc bộ Tiếng Anh 3D',
   vocabulary: 'Kho từ vựng',
   patterns: 'Mẫu câu giao tiếp',
   reading: 'Đọc hiểu · Thẻ lật song ngữ',
@@ -144,7 +146,12 @@ function AppShell() {
 
   const handleNavigate = useCallback(
     (nextRoute: AppRoute) => {
-      if (nextRoute === 'practice' || nextRoute === 'ai-tutor' || nextRoute === 'reading') {
+      if (
+        nextRoute === 'practice' ||
+        nextRoute === 'ai-tutor' ||
+        nextRoute === 'english-club' ||
+        nextRoute === 'reading'
+      ) {
         recordStudyActivity();
       }
       setFocusMode(false);
@@ -179,6 +186,7 @@ function AppShell() {
       'lesson',
       'practice',
       'ai-tutor',
+      'english-club',
       'reading',
     ]);
 
@@ -324,6 +332,7 @@ function AppShell() {
               <SpecializedHubPage onOpenLesson={(id, tab) => handleOpenLesson(id, tab ?? 'vocabulary')} />
             )}
             {route === 'ai-tutor' && <AITutorPage />}
+            {route === 'english-club' && <EnglishClubPage onNavigate={handleNavigate} />}
             {route === 'vocabulary' && (
               <VocabularyHubPage onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')} />
             )}

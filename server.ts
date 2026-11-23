@@ -3,6 +3,7 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { WebSocketServer, WebSocket } from 'ws';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -374,6 +375,256 @@ async function startServer() {
   );
 
   const server = http.createServer(app);
+
+  // --- Real-Time 3D English Club WebSocket Hub (/ws/club) ---
+  interface ClubClientState {
+    ws: WebSocket;
+    uid: string;
+    displayName: string;
+    currentLevel: string;
+    avatarGender: 'male' | 'female';
+    statusText: string;
+    posX: number;
+    posZ: number;
+    rotationY: number;
+  }
+
+  const CLUB_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
+  const CLUB_LEVELS = new Set(['A1', 'A2', 'B1', 'B2', 'C1']);
+  const clubSockets = new Map<WebSocket, ClubClientState>();
+
+  const clampClubCoord = (v: unknown, fallback = 0): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(-6.5, Math.min(6.5, Math.round(n * 100) / 100));
+  };
+
+  const clampClubRot = (v: unknown, fallback = 0): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(-6.5, Math.min(6.5, Math.round(n * 100) / 100));
+  };
+
+  const safeSend = (socket: WebSocket, payload: Record<string, unknown>) => {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(payload));
+    }
+  };
+
+  const broadcastClub = (payload: Record<string, unknown>, exclude?: WebSocket) => {
+    const raw = JSON.stringify(payload);
+    clubSockets.forEach((_state, sock) => {
+      if (sock !== exclude && sock.readyState === WebSocket.OPEN) {
+        sock.send(raw);
+      }
+    });
+  };
+
+  const getUniqueClubRoster = () => {
+    const byUid = new Map<string, Omit<ClubClientState, 'ws'>>();
+    clubSockets.forEach((state) => {
+      byUid.set(state.uid, {
+        uid: state.uid,
+        displayName: state.displayName,
+        currentLevel: state.currentLevel,
+        avatarGender: state.avatarGender,
+        statusText: state.statusText,
+        posX: state.posX,
+        posZ: state.posZ,
+        rotationY: state.rotationY,
+      });
+    });
+    return Array.from(byUid.values());
+  };
+
+  const wss = new WebSocketServer({ server, path: '/ws/club', maxPayload: 16 * 1024 });
+
+  wss.on('connection', (ws) => {
+    ws.on('message', (rawData) => {
+      let msg: Record<string, unknown>;
+      try {
+        msg = JSON.parse(String(rawData)) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      if (!msg || typeof msg.type !== 'string') return;
+
+      if (msg.type === 'club:join') {
+        const uid = typeof msg.uid === 'string' && CLUB_ID_REGEX.test(msg.uid) ? msg.uid : '';
+        if (!uid) return;
+        const displayName =
+          typeof msg.displayName === 'string' && msg.displayName.trim()
+            ? msg.displayName.trim().slice(0, 100)
+            : 'Pilot Learner';
+        const currentLevel =
+          typeof msg.currentLevel === 'string' && CLUB_LEVELS.has(msg.currentLevel)
+            ? msg.currentLevel
+            : 'A1';
+        const avatarGender: 'male' | 'female' = msg.avatarGender === 'female' ? 'female' : 'male';
+        const statusText =
+          typeof msg.statusText === 'string' ? msg.statusText.trim().slice(0, 120) : '';
+        const posX = clampClubCoord(msg.posX, 0);
+        const posZ = clampClubCoord(msg.posZ, 1.8);
+        const rotationY = clampClubRot(msg.rotationY, 0);
+
+        const state: ClubClientState = {
+          ws,
+          uid,
+          displayName,
+          currentLevel,
+          avatarGender,
+          statusText,
+          posX,
+          posZ,
+          rotationY,
+        };
+        clubSockets.set(ws, state);
+
+        // Send authoritative snapshot to the joining client
+        safeSend(ws, {
+          type: 'club:roster',
+          members: getUniqueClubRoster(),
+        });
+
+        // Notify everyone else of this active member
+        broadcastClub(
+          {
+            type: 'club:member_joined',
+            member: {
+              uid,
+              displayName,
+              currentLevel,
+              avatarGender,
+              statusText,
+              posX,
+              posZ,
+              rotationY,
+            },
+          },
+          ws
+        );
+        return;
+      }
+
+      const sender = clubSockets.get(ws);
+      if (!sender) return;
+
+      if (msg.type === 'club:move') {
+        sender.posX = clampClubCoord(msg.posX, sender.posX);
+        sender.posZ = clampClubCoord(msg.posZ, sender.posZ);
+        sender.rotationY = clampClubRot(msg.rotationY, sender.rotationY);
+        broadcastClub(
+          {
+            type: 'club:member_moved',
+            uid: sender.uid,
+            posX: sender.posX,
+            posZ: sender.posZ,
+            rotationY: sender.rotationY,
+          },
+          ws
+        );
+        return;
+      }
+
+      if (msg.type === 'club:wave') {
+        broadcastClub({
+          type: 'club:member_waved',
+          uid: sender.uid,
+          at: Date.now(),
+        });
+        return;
+      }
+
+      if (msg.type === 'club:talk') {
+        const durationMs =
+          typeof msg.durationMs === 'number' && Number.isFinite(msg.durationMs)
+            ? Math.max(800, Math.min(8000, Math.round(msg.durationMs)))
+            : 3200;
+        broadcastClub({
+          type: 'club:member_talked',
+          uid: sender.uid,
+          until: Date.now() + durationMs,
+        });
+        return;
+      }
+
+      if (msg.type === 'club:typing') {
+        const receiverUid =
+          typeof msg.receiverUid === 'string' && CLUB_ID_REGEX.test(msg.receiverUid)
+            ? msg.receiverUid
+            : '';
+        if (!receiverUid || receiverUid === sender.uid) return;
+        const isTyping = Boolean(msg.isTyping);
+        clubSockets.forEach((client, sock) => {
+          if (client.uid === receiverUid) {
+            safeSend(sock, {
+              type: 'club:typing',
+              senderUid: sender.uid,
+              isTyping,
+            });
+          }
+        });
+        return;
+      }
+
+      if (msg.type === 'club:dm') {
+        const receiverUid =
+          typeof msg.receiverUid === 'string' && CLUB_ID_REGEX.test(msg.receiverUid)
+            ? msg.receiverUid
+            : '';
+        const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 1000) : '';
+        const messageId =
+          typeof msg.id === 'string' && CLUB_ID_REGEX.test(msg.id)
+            ? msg.id
+            : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        if (!receiverUid || receiverUid === sender.uid || !text) return;
+
+        const pairId = [sender.uid, receiverUid].sort().join('_');
+        const dmPayload = {
+          type: 'club:dm',
+          message: {
+            id: messageId,
+            pairId,
+            participants: [sender.uid, receiverUid],
+            senderUid: sender.uid,
+            senderName: sender.displayName,
+            senderAvatar: sender.avatarGender,
+            receiverUid,
+            text,
+            createdAtMs: Date.now(),
+          },
+        };
+
+        clubSockets.forEach((client, sock) => {
+          if (client.uid === receiverUid || (client.uid === sender.uid && sock !== ws)) {
+            safeSend(sock, dmPayload);
+          }
+        });
+      }
+    });
+
+    ws.on('close', () => {
+      const leaving = clubSockets.get(ws);
+      if (!leaving) return;
+      clubSockets.delete(ws);
+
+      // Only broadcast leave if no other open tab belongs to this uid
+      let stillConnected = false;
+      clubSockets.forEach((client) => {
+        if (client.uid === leaving.uid) stillConnected = true;
+      });
+      if (!stillConnected) {
+        broadcastClub({
+          type: 'club:member_left',
+          uid: leaving.uid,
+        });
+      }
+    });
+
+    ws.on('error', () => {
+      clubSockets.delete(ws);
+    });
+  });
 
   // Mount Vite middleware in development, static dist/ in production
   if (process.env.NODE_ENV !== 'production') {

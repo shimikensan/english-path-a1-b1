@@ -32,6 +32,9 @@ import {
 import type {
   AdminRecord,
   AdminSecurityVaultDoc,
+  ClubAvatarGender,
+  ClubMemberDoc,
+  ClubMessageDoc,
   FeedbackCategory,
   FeedbackStatus,
   LeaderboardEntryDoc,
@@ -1766,16 +1769,25 @@ export async function adminDeleteUserAccount(params: {
   }
 
   try {
-    const [progressSnap, quizSnap, vocabSnap, feedbackSnap, adminSnap, leaderboardSnap, userSnap] =
-      await Promise.all([
-        getDocs(query(collection(db, 'user_progress'), where('uid', '==', targetUid))),
-        getDocs(query(collection(db, 'quiz_results'), where('uid', '==', targetUid))),
-        getDocs(query(collection(db, 'user_vocabulary'), where('uid', '==', targetUid))),
-        getDocs(query(collection(db, 'user_feedback'), where('uid', '==', targetUid))),
-        getDoc(doc(db, 'admins', targetUid)),
-        getDoc(doc(db, 'leaderboard', targetUid)),
-        getDoc(doc(db, 'users', targetUid)),
-      ]);
+    const [
+      progressSnap,
+      quizSnap,
+      vocabSnap,
+      feedbackSnap,
+      adminSnap,
+      leaderboardSnap,
+      clubMemberSnap,
+      userSnap,
+    ] = await Promise.all([
+      getDocs(query(collection(db, 'user_progress'), where('uid', '==', targetUid))),
+      getDocs(query(collection(db, 'quiz_results'), where('uid', '==', targetUid))),
+      getDocs(query(collection(db, 'user_vocabulary'), where('uid', '==', targetUid))),
+      getDocs(query(collection(db, 'user_feedback'), where('uid', '==', targetUid))),
+      getDoc(doc(db, 'admins', targetUid)),
+      getDoc(doc(db, 'leaderboard', targetUid)),
+      getDoc(doc(db, 'club_members', targetUid)),
+      getDoc(doc(db, 'users', targetUid)),
+    ]);
 
     const refsToDelete: DocumentReference[] = [];
     progressSnap.docs.forEach((d) => refsToDelete.push(d.ref));
@@ -1784,6 +1796,7 @@ export async function adminDeleteUserAccount(params: {
     feedbackSnap.docs.forEach((d) => refsToDelete.push(d.ref));
     if (adminSnap.exists()) refsToDelete.push(adminSnap.ref);
     if (leaderboardSnap.exists()) refsToDelete.push(leaderboardSnap.ref);
+    if (clubMemberSnap.exists()) refsToDelete.push(clubMemberSnap.ref);
     if (userSnap.exists()) refsToDelete.push(userSnap.ref);
 
     // Record revocation BEFORE or atomically with deletion so a concurrent login cannot recreate the profile
@@ -1841,5 +1854,211 @@ export async function adminDeleteUserAccount(params: {
     handleFirestoreError(error, OperationType.DELETE, `users/${targetUid}`);
   }
 }
+
+// --- 3D English Club Presence & 1-on-1 Direct Messaging ---
+
+export function buildClubPairId(uidA: string, uidB: string): string {
+  return [uidA, uidB].sort().join('_');
+}
+
+function clampClubNumber(val: number, min: number, max: number): number {
+  if (!Number.isFinite(val)) return 0;
+  return Math.max(min, Math.min(max, Math.round(val * 100) / 100));
+}
+
+export async function upsertClubMemberPresence(params: {
+  uid: string;
+  displayName: string;
+  currentLevel: LearnerCEFRLevel;
+  avatarGender: ClubAvatarGender;
+  statusText: string;
+  posX: number;
+  posZ: number;
+  rotationY: number;
+  isOnline: boolean;
+}): Promise<void> {
+  const path = `club_members/${params.uid}`;
+  const ref = doc(db, 'club_members', params.uid);
+
+  const safeLevel: LearnerCEFRLevel =
+    params.currentLevel === 'A2' ||
+    params.currentLevel === 'B1' ||
+    params.currentLevel === 'B2' ||
+    params.currentLevel === 'C1'
+      ? params.currentLevel
+      : 'A1';
+  const safeGender: ClubAvatarGender = params.avatarGender === 'female' ? 'female' : 'male';
+  const safeName = truncate(params.displayName.trim() || 'Phi công tập sự', 100) || 'Phi công tập sự';
+  const safeStatus = truncate(params.statusText.trim(), 120);
+  const safePosX = clampClubNumber(params.posX, -20, 20);
+  const safePosZ = clampClubNumber(params.posZ, -20, 20);
+  const safeRotY = clampClubNumber(params.rotationY, -10, 10);
+
+  try {
+    const existing = await getDoc(ref);
+    if (existing.exists()) {
+      await updateDoc(ref, {
+        displayName: safeName,
+        currentLevel: safeLevel,
+        avatarGender: safeGender,
+        statusText: safeStatus,
+        posX: safePosX,
+        posZ: safePosZ,
+        rotationY: safeRotY,
+        isOnline: Boolean(params.isOnline),
+        lastActiveAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(ref, {
+        uid: params.uid,
+        displayName: safeName,
+        currentLevel: safeLevel,
+        avatarGender: safeGender,
+        statusText: safeStatus,
+        posX: safePosX,
+        posZ: safePosZ,
+        rotationY: safeRotY,
+        isOnline: Boolean(params.isOnline),
+        joinedAt: serverTimestamp(),
+        lastActiveAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      return;
+    }
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function setClubMemberOffline(uid: string): Promise<void> {
+  if (!uid) return;
+  const ref = doc(db, 'club_members', uid);
+  try {
+    const existing = await getDoc(ref);
+    if (!existing.exists()) return;
+    await updateDoc(ref, {
+      isOnline: false,
+      lastActiveAt: serverTimestamp(),
+    });
+  } catch {
+    // Best-effort offline update on page leave/unmount
+  }
+}
+
+export function subscribeClubMembers(
+  onData: (members: ClubMemberDoc[]) => void,
+  onError?: (error: unknown) => void
+): Unsubscribe {
+  const path = 'club_members';
+  return onSnapshot(
+    collection(db, path),
+    (snapshot) => {
+      const items = snapshot.docs
+        .map((d) => d.data() as ClubMemberDoc)
+        .filter((m) => Boolean(m && m.uid))
+        .sort((a, b) => {
+          if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+          return getTimestampMillis(b.lastActiveAt) - getTimestampMillis(a.lastActiveAt);
+        });
+      onData(items);
+    },
+    (error) => {
+      if (onError) {
+        onError(error);
+      } else if (!isFirestoreQuotaError(error)) {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
+    }
+  );
+}
+
+export function subscribeUserClubMessages(
+  uid: string,
+  onData: (messages: ClubMessageDoc[]) => void,
+  onError?: (error: unknown) => void
+): Unsubscribe {
+  const path = 'club_messages';
+  // Single-clause query avoids needing a composite Firestore index; sort in-memory by createdAt
+  const q = query(collection(db, path), where('participants', 'array-contains', uid));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const items: ClubMessageDoc[] = snapshot.docs
+        .map((d) => {
+          const data = d.data() as Omit<ClubMessageDoc, 'id'>;
+          return {
+            ...data,
+            id: d.id,
+            createdAtMs: getTimestampMillis(data.createdAt) || Date.now(),
+          };
+        })
+        .sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
+      onData(items);
+    },
+    (error) => {
+      if (onError) {
+        onError(error);
+      } else if (!isFirestoreQuotaError(error)) {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
+    }
+  );
+}
+
+export async function sendClubDirectMessage(params: {
+  messageId: string;
+  senderUid: string;
+  senderName: string;
+  senderAvatar: ClubAvatarGender;
+  receiverUid: string;
+  text: string;
+}): Promise<ClubMessageDoc> {
+  const safeId = sanitizeId(params.messageId, 128);
+  const path = `club_messages/${safeId}`;
+  const cleanText = truncate(params.text.trim(), 1000);
+  if (!cleanText) {
+    throw new Error('Vui lòng nhập nội dung tin nhắn tiếng Anh.');
+  }
+  if (!params.receiverUid || params.receiverUid === params.senderUid) {
+    throw new Error('Không thể gửi tin nhắn cho chính mình.');
+  }
+
+  const pairId = buildClubPairId(params.senderUid, params.receiverUid);
+  const participants: [string, string] = [params.senderUid, params.receiverUid];
+  const safeSenderName = truncate(params.senderName.trim() || 'Phi công tập sự', 100) || 'Phi công tập sự';
+  const safeAvatar: ClubAvatarGender = params.senderAvatar === 'female' ? 'female' : 'male';
+
+  try {
+    await setDoc(doc(db, 'club_messages', safeId), {
+      pairId,
+      participants,
+      senderUid: params.senderUid,
+      senderName: safeSenderName,
+      senderAvatar: safeAvatar,
+      receiverUid: params.receiverUid,
+      text: cleanText,
+      createdAt: serverTimestamp(),
+    });
+    return {
+      id: safeId,
+      pairId,
+      participants,
+      senderUid: params.senderUid,
+      senderName: safeSenderName,
+      senderAvatar: safeAvatar,
+      receiverUid: params.receiverUid,
+      text: cleanText,
+      createdAt: new Date(),
+      createdAtMs: Date.now(),
+    };
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
 
 

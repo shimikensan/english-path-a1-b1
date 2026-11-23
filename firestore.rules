@@ -309,6 +309,51 @@ service cloud.firestore {
         && data.revokedAt is timestamp;
     }
 
+    function isValidClubMember(data) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'currentLevel', 'avatarGender', 'statusText',
+          'posX', 'posZ', 'rotationY', 'isOnline', 'joinedAt', 'lastActiveAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'currentLevel', 'avatarGender', 'statusText',
+          'posX', 'posZ', 'rotationY', 'isOnline', 'joinedAt', 'lastActiveAt'
+        ])
+        && isValidId(data.uid)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.currentLevel is string && data.currentLevel in ['A1', 'A2', 'B1', 'B2', 'C1']
+        && data.avatarGender is string && data.avatarGender in ['male', 'female']
+        && data.statusText is string && data.statusText.size() <= 120
+        && data.posX is number && data.posX >= -20 && data.posX <= 20
+        && data.posZ is number && data.posZ >= -20 && data.posZ <= 20
+        && data.rotationY is number && data.rotationY >= -10 && data.rotationY <= 10
+        && data.isOnline is bool
+        && data.joinedAt is timestamp
+        && data.lastActiveAt is timestamp;
+    }
+
+    function isValidClubMessage(data) {
+      return data.keys().hasAll([
+          'pairId', 'participants', 'senderUid', 'senderName',
+          'senderAvatar', 'receiverUid', 'text', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'pairId', 'participants', 'senderUid', 'senderName',
+          'senderAvatar', 'receiverUid', 'text', 'createdAt'
+        ])
+        && data.pairId is string && data.pairId.size() >= 3 && data.pairId.size() <= 260 && data.pairId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.participants is list && data.participants.size() == 2
+        && data.participants[0] is string && data.participants[1] is string
+        && isValidId(data.senderUid)
+        && isValidId(data.receiverUid)
+        && data.senderUid != data.receiverUid
+        && data.senderUid in data.participants
+        && data.receiverUid in data.participants
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 100
+        && data.senderAvatar is string && data.senderAvatar in ['male', 'female']
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 1000
+        && data.createdAt is timestamp;
+    }
+
     // --- Collection: users (PII Isolated to Owner & Admin) ---
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
@@ -635,6 +680,52 @@ service cloud.firestore {
           'keyPhrases', 'estimatedMinutes', 'order', 'isPublished', 'updatedAt'
         ]);
       allow delete: if isValidId(passageId) && isAdmin();
+    }
+
+    // --- Collection: club_members (3D English Club PII-Free Avatar Presence) ---
+    match /club_members/{userId} {
+      allow get: if isValidId(userId) && isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isVerifiedUser()
+        && !isRevokedUser()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidClubMember(incoming())
+        && incoming().uid == userId
+        && incoming().joinedAt == request.time
+        && incoming().lastActiveAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerifiedUser()
+        && !isRevokedUser()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidClubMember(incoming())
+        && incoming().uid == existing().uid
+        && incoming().joinedAt == existing().joinedAt
+        && incoming().lastActiveAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'currentLevel', 'avatarGender', 'statusText',
+          'posX', 'posZ', 'rotationY', 'isOnline', 'lastActiveAt'
+        ]);
+      allow delete: if isValidId(userId) && ((isVerifiedUser() && isOwner(userId)) || isAdmin());
+    }
+
+    // --- Collection: club_messages (Private 1-on-1 3D Club English Chat) ---
+    match /club_messages/{messageId} {
+      allow get: if isValidId(messageId) && (
+        isAdmin()
+        || (isSignedIn() && resource != null && request.auth.uid in existing().participants)
+      );
+      allow list: if (isSignedIn() && request.auth.uid in existing().participants) || isAdmin();
+      allow create: if isVerifiedUser()
+        && !isRevokedUser()
+        && isValidId(messageId)
+        && isValidClubMessage(incoming())
+        && incoming().senderUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if false;
+      allow delete: if isValidId(messageId) && ((isVerifiedUser() && existing().senderUid == request.auth.uid) || isAdmin());
     }
   }
 }
