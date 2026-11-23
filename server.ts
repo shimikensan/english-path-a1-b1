@@ -1,5 +1,7 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import express from 'express';
+import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -8,6 +10,136 @@ import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const BOOTSTRAPPED_ADMIN_EMAIL = 'buocngoat2020@gmail.com';
+const CLUB_MUSIC_DIR = path.resolve(__dirname, 'uploads', 'club-music');
+const SAFE_MUSIC_FILE_REGEX = /^club_bgm_[0-9]+_[a-f0-9]{12}\.(mp3|wav|ogg|m4a|webm)$/;
+const MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
+
+interface FirebaseAppletConfig {
+  projectId: string;
+  apiKey: string;
+  firestoreDatabaseId?: string;
+}
+
+function loadFirebaseAppletConfig(): FirebaseAppletConfig | null {
+  try {
+    const configPath = path.resolve(__dirname, 'firebase-applet-config.json');
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    return JSON.parse(raw) as FirebaseAppletConfig;
+  } catch {
+    return null;
+  }
+}
+
+const FIREBASE_CONFIG = loadFirebaseAppletConfig();
+
+function detectVerifiedAudioFormat(buf: Buffer): { ext: string; mime: string } | null {
+  if (!buf || buf.length < 12) return null;
+  // MP3 with ID3v2 tag ("ID3")
+  if (buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) {
+    return { ext: 'mp3', mime: 'audio/mpeg' };
+  }
+  // Raw MP3 MPEG frame sync (0xFF followed by 0xE0..0xFF)
+  if (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) {
+    return { ext: 'mp3', mime: 'audio/mpeg' };
+  }
+  // WAV ("RIFF" .... "WAVE")
+  if (
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x41 &&
+    buf[10] === 0x56 &&
+    buf[11] === 0x45
+  ) {
+    return { ext: 'wav', mime: 'audio/wav' };
+  }
+  // OGG ("OggS")
+  if (buf[0] === 0x4f && buf[1] === 0x67 && buf[2] === 0x67 && buf[3] === 0x53) {
+    return { ext: 'ogg', mime: 'audio/ogg' };
+  }
+  // M4A / MP4 audio (offset 4..7 == "ftyp")
+  if (buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) {
+    return { ext: 'm4a', mime: 'audio/mp4' };
+  }
+  // WebM / Matroska EBML header (0x1A 0x45 0xDF 0xA3)
+  if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
+    return { ext: 'webm', mime: 'audio/webm' };
+  }
+  return null;
+}
+
+function getMimeBySafeExt(fileName: string): string {
+  const ext = path.extname(fileName).toLowerCase();
+  switch (ext) {
+    case '.mp3':
+      return 'audio/mpeg';
+    case '.wav':
+      return 'audio/wav';
+    case '.ogg':
+      return 'audio/ogg';
+    case '.m4a':
+      return 'audio/mp4';
+    case '.webm':
+      return 'audio/webm';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+function resolveConfinedMusicPath(fileName: string): string | null {
+  if (!SAFE_MUSIC_FILE_REGEX.test(fileName)) return null;
+  const resolved = path.resolve(CLUB_MUSIC_DIR, fileName);
+  if (!resolved.startsWith(CLUB_MUSIC_DIR + path.sep)) return null;
+  return resolved;
+}
+
+async function verifyAdminBearerToken(
+  authHeader: string | undefined
+): Promise<{ uid: string; email: string } | null> {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const idToken = authHeader.slice(7).trim();
+  if (!idToken || idToken.length > 4096 || !FIREBASE_CONFIG?.apiKey) return null;
+
+  try {
+    // 1. Verify Firebase ID Token via official Firebase Identity Toolkit lookup
+    const lookupRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIREBASE_CONFIG.apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      }
+    );
+    if (!lookupRes.ok) return null;
+    const lookupJson = (await lookupRes.json()) as {
+      users?: Array<{ localId?: string; email?: string; emailVerified?: boolean }>;
+    };
+    const user = lookupJson.users?.[0];
+    if (!user?.localId || !user.email || !user.emailVerified) return null;
+
+    // 2. Bootstrapped root admin check
+    if (user.email.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()) {
+      return { uid: user.localId, email: user.email };
+    }
+
+    // 3. Secondary admin verification via Firestore /admins/{uid} using caller's own verified token
+    const databaseId = FIREBASE_CONFIG.firestoreDatabaseId || '(default)';
+    const adminDocUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_CONFIG.projectId)}/databases/${encodeURIComponent(databaseId)}/documents/admins/${encodeURIComponent(user.localId)}`;
+    const adminRes = await fetch(adminDocUrl, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (adminRes.ok) {
+      return { uid: user.localId, email: user.email };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const ALLOWED_LEVELS = new Set(['A1', 'A2', 'B1', 'B2', 'C1', 'ESP']);
 
@@ -237,6 +369,136 @@ async function startServer() {
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/health', (_req, res) => {
+    res.json({ ok: true });
+  });
+
+  // --- Admin 3D English Club Background Music Upload, Streaming & Cleanup ---
+  fs.mkdirSync(CLUB_MUSIC_DIR, { recursive: true });
+
+  app.post(
+    '/api/club/music/upload',
+    express.raw({
+      type: [
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
+        'audio/x-wav',
+        'audio/wave',
+        'audio/ogg',
+        'audio/mp4',
+        'audio/x-m4a',
+        'audio/m4a',
+        'audio/webm',
+        'application/octet-stream',
+      ],
+      limit: '15mb',
+    }),
+    async (req, res) => {
+      try {
+        const admin = await verifyAdminBearerToken(req.headers.authorization);
+        if (!admin) {
+          res.status(403).json({ error: 'Chỉ quản trị viên đã xác thực mới có quyền tải nhạc nền.' });
+          return;
+        }
+
+        const audioBuffer = Buffer.isBuffer(req.body) ? req.body : null;
+        if (!audioBuffer || audioBuffer.length === 0) {
+          res.status(400).json({ error: 'Không nhận được dữ liệu tệp âm thanh.' });
+          return;
+        }
+        if (audioBuffer.length > MAX_AUDIO_UPLOAD_BYTES) {
+          res.status(413).json({ error: 'Tệp nhạc vượt quá giới hạn tối đa 15 MB.' });
+          return;
+        }
+
+        const detected = detectVerifiedAudioFormat(audioBuffer);
+        if (!detected) {
+          res.status(400).json({
+            error: 'Định dạng âm thanh không hợp lệ. Vui lòng chọn tệp MP3, WAV, OGG, M4A hoặc WebM.',
+          });
+          return;
+        }
+
+        const storedFileName = `club_bgm_${Date.now()}_${crypto.randomBytes(6).toString('hex')}.${detected.ext}`;
+        const destPath = resolveConfinedMusicPath(storedFileName);
+        if (!destPath) {
+          res.status(500).json({ error: 'Không thể tạo đường dẫn lưu trữ tệp nhạc an toàn.' });
+          return;
+        }
+
+        await fs.promises.writeFile(destPath, audioBuffer, { mode: 0o640 });
+
+        res.json({
+          storedFileName,
+          audioUrl: `/api/club/music/files/${storedFileName}`,
+          mimeType: detected.mime,
+          fileSizeBytes: audioBuffer.length,
+        });
+      } catch (err) {
+        console.error('Club music upload error:', err);
+        res.status(500).json({ error: 'Không thể lưu tệp nhạc nền lúc này. Vui lòng thử lại.' });
+      }
+    }
+  );
+
+  app.get('/api/club/music/files/:fileName', async (req, res) => {
+    const fileName = String(req.params.fileName ?? '');
+    const filePath = resolveConfinedMusicPath(fileName);
+    if (!filePath) {
+      res.status(400).json({ error: 'Tên tệp âm thanh không hợp lệ.' });
+      return;
+    }
+
+    try {
+      const stat = await fs.promises.stat(filePath);
+      const total = stat.size;
+      const mimeType = getMimeBySafeExt(fileName);
+      const rangeHeader = req.headers.range;
+
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+
+      if (rangeHeader && /^bytes=\d*-\d*$/.test(rangeHeader)) {
+        const [startStr, endStr] = rangeHeader.replace('bytes=', '').split('-');
+        const start = startStr ? parseInt(startStr, 10) : 0;
+        const end = endStr ? Math.min(total - 1, parseInt(endStr, 10)) : total - 1;
+        if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= total) {
+          res.status(416).setHeader('Content-Range', `bytes */${total}`).end();
+          return;
+        }
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+        res.setHeader('Content-Length', String(end - start + 1));
+        fs.createReadStream(filePath, { start, end }).pipe(res);
+        return;
+      }
+
+      res.setHeader('Content-Length', String(total));
+      fs.createReadStream(filePath).pipe(res);
+    } catch {
+      res.status(404).json({ error: 'Không tìm thấy tệp nhạc nền yêu cầu.' });
+    }
+  });
+
+  app.delete('/api/club/music/files/:fileName', async (req, res) => {
+    const admin = await verifyAdminBearerToken(req.headers.authorization);
+    if (!admin) {
+      res.status(403).json({ error: 'Chỉ quản trị viên mới có quyền xóa tệp nhạc nền.' });
+      return;
+    }
+    const fileName = String(req.params.fileName ?? '');
+    const filePath = resolveConfinedMusicPath(fileName);
+    if (!filePath) {
+      res.status(400).json({ error: 'Tên tệp âm thanh không hợp lệ.' });
+      return;
+    }
+    try {
+      await fs.promises.unlink(filePath);
+    } catch {
+      // File may already be deleted
+    }
     res.json({ ok: true });
   });
 

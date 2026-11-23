@@ -887,6 +887,86 @@
         "text",
         "createdAt"
       ]
+    },
+    "ClubMusicConfig": {
+      "title": "ClubMusicConfig",
+      "description": "PII-free background music configuration for the 3D English Club managed by verified administrators.",
+      "type": "object",
+      "properties": {
+        "configId": {
+          "type": "string",
+          "enum": ["music"]
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["builtin_see_you_again", "uploaded"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "artist": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "audioUrl": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "fileName": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "storedFileName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "mimeType": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "fileSizeBytes": {
+          "type": "number"
+        },
+        "defaultVolume": {
+          "type": "number"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedByName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "configId",
+        "mode",
+        "title",
+        "artist",
+        "audioUrl",
+        "fileName",
+        "storedFileName",
+        "mimeType",
+        "fileSizeBytes",
+        "defaultVolume",
+        "enabled",
+        "updatedBy",
+        "updatedByName",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -945,6 +1025,10 @@
     "/club_messages/{messageId}": {
       "schema": { "$ref": "#/entities/ClubMessage" },
       "description": "Private 1-on-1 English practice messages between two 3D English Club members."
+    },
+    "/club_settings/{configId}": {
+      "schema": { "$ref": "#/entities/ClubMusicConfig" },
+      "description": "3D English Club global background music settings managed by administrators."
     }
   }
 }

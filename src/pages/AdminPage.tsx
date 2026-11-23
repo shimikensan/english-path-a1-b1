@@ -11,6 +11,7 @@ import {
   Layers,
   Lock,
   MessageSquareText,
+  Music,
   Plus,
   RefreshCw,
   Save,
@@ -20,6 +21,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { AdminClubMusicTab } from '../components/admin/AdminClubMusicTab';
 import { AdminFeedbackTab } from '../components/admin/AdminFeedbackTab';
 import { AdminPasswordGate } from '../components/admin/AdminPasswordGate';
 import { AdminReadingTab } from '../components/admin/AdminReadingTab';
@@ -64,7 +66,15 @@ import type {
 } from '../types';
 import { formatTimestampVi, getQuizRatingVi, sanitizeId } from '../utils/helpers';
 
-type AdminTab = 'overview' | 'levels' | 'lessons' | 'reading' | 'users' | 'feedback' | 'security';
+type AdminTab =
+  | 'overview'
+  | 'levels'
+  | 'lessons'
+  | 'reading'
+  | 'club-music'
+  | 'users'
+  | 'feedback'
+  | 'security';
 type EditorSection = 'meta' | 'vocabulary' | 'patterns' | 'grammar' | 'quiz';
 
 const ADMIN_SESSION_STORAGE_KEY = 'pilot-admin-vault-session';
@@ -912,6 +922,12 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
               icon: BookOpenText,
               badge: 0,
             },
+            {
+              id: 'club-music' as const,
+              label: 'Nhạc CLB 3D',
+              icon: Music,
+              badge: 0,
+            },
             { id: 'users' as const, label: `Người dùng (${usersList.length})`, icon: Users, badge: 0 },
             {
               id: 'feedback' as const,
@@ -1457,6 +1473,9 @@ export function AdminPage({ onBackToDashboard }: AdminPageProps) {
           onRequestDelete={requestDeleteReadingPassage}
         />
       )}
+
+      {/* TAB 5: 3D ENGLISH CLUB BACKGROUND MUSIC */}
+      {activeTab === 'club-music' && <AdminClubMusicTab />}
 
       {/* TAB 5: USER FEEDBACK & TRIAGE */}
       {activeTab === 'feedback' && (

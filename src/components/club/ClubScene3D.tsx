@@ -18,6 +18,13 @@ export interface ClubCameraCommand {
   seq: number;
 }
 
+export interface ClubChatBubbleData {
+  text: string;
+  createdAt: number;
+  expiresAt: number;
+  seq: number;
+}
+
 interface ClubScene3DProps {
   members: ClubMemberDoc[];
   currentUserUid: string;
@@ -26,6 +33,7 @@ interface ClubScene3DProps {
   waveTimestamps: Record<string, number>;
   talkingUntilByUid: Record<string, number>;
   activeTalkingUids: Record<string, boolean>;
+  chatBubblesByUid: Record<string, ClubChatBubbleData>;
   cameraCommand: ClubCameraCommand;
   onSelectMember: (uid: string) => void;
   onLocalMove: (posX: number, posZ: number, rotationY: number, isFinal: boolean) => void;
@@ -41,6 +49,7 @@ interface AvatarRuntimeState {
   targetRotY: number;
   walkPhase: number;
   idleSeed: number;
+  lastBubbleSeq: number;
 }
 
 // Pre-allocated scratch objects to guarantee zero GC allocations inside the render loop
@@ -91,6 +100,7 @@ export function ClubScene3D({
   waveTimestamps,
   talkingUntilByUid,
   activeTalkingUids,
+  chatBubblesByUid,
   cameraCommand,
   onSelectMember,
   onLocalMove,
@@ -105,6 +115,7 @@ export function ClubScene3D({
   const waveRef = useRef<Record<string, number>>(waveTimestamps);
   const talkingUntilRef = useRef<Record<string, number>>(talkingUntilByUid);
   const activeTalkingRef = useRef<Record<string, boolean>>(activeTalkingUids);
+  const chatBubblesRef = useRef<Record<string, ClubChatBubbleData>>(chatBubblesByUid);
   const onSelectMemberRef = useRef(onSelectMember);
   const onLocalMoveRef = useRef(onLocalMove);
   const cameraCommandRef = useRef<ClubCameraCommand>(cameraCommand);
@@ -115,6 +126,7 @@ export function ClubScene3D({
   waveRef.current = waveTimestamps;
   talkingUntilRef.current = talkingUntilByUid;
   activeTalkingRef.current = activeTalkingUids;
+  chatBubblesRef.current = chatBubblesByUid;
   onSelectMemberRef.current = onSelectMember;
   onLocalMoveRef.current = onLocalMove;
 
@@ -327,6 +339,7 @@ export function ClubScene3D({
             targetRotY: member.rotationY || 0,
             walkPhase: 0,
             idleSeed: index * 1.37 + 0.4,
+            lastBubbleSeq: 0,
           });
         } else {
           current.rig.updateLabel(labelOpts);
@@ -575,6 +588,7 @@ export function ClubScene3D({
       const waveMap = waveRef.current;
       const talkingUntilMap = talkingUntilRef.current;
       const activeTalkingMap = activeTalkingRef.current;
+      const chatBubblesMap = chatBubblesRef.current;
       const selectedPartnerId = selectedUidRef.current;
       const selfAvatarState = avatarStates.get(currentUserUid);
       const partnerAvatarState = selectedPartnerId ? avatarStates.get(selectedPartnerId) : undefined;
@@ -635,9 +649,37 @@ export function ClubScene3D({
         state.rig.setAnimationState(desiredState, fadeSec);
         state.rig.updateAnimation(dt);
 
-        // Keep 3D talk speech bubble smoothly oriented toward camera when visible
+        // Keep 3D talk indicator bubble smoothly oriented toward camera when visible
         if (desiredState === 'talk' || state.rig.talkBubbleGroup.scale.x > 0.05) {
           state.rig.talkBubbleGroup.lookAt(camera.position);
+        }
+
+        // Update floating 3D chat message speech bubble above character nameplate
+        const bubble = chatBubblesMap[uid];
+        if (bubble && bubble.expiresAt > nowEpoch && bubble.text) {
+          if (state.lastBubbleSeq !== bubble.seq) {
+            state.rig.setChatBubble(bubble.text, uid === currentUserUid);
+            state.lastBubbleSeq = bubble.seq;
+          }
+          const ageSec = Math.max(0, (nowEpoch - bubble.createdAt) / 1000);
+          const remainingSec = Math.max(0, (bubble.expiresAt - nowEpoch) / 1000);
+
+          let scaleFactor = 1;
+          let opacity = 1;
+          if (ageSec < 0.28) {
+            const t = ageSec / 0.28;
+            // Crisp pop-in overshoot curve
+            scaleFactor = 0.62 + 0.44 * Math.sin(t * Math.PI * 0.65);
+            opacity = Math.min(1, t * 1.4);
+          } else if (remainingSec < 0.85) {
+            const t = remainingSec / 0.85;
+            opacity = t;
+            scaleFactor = 0.92 + 0.08 * t;
+          }
+          const floatOffset = Math.sin(elapsedSec * 2.4 + state.idleSeed) * 0.035;
+          state.rig.setChatBubbleVisual(scaleFactor, opacity, floatOffset);
+        } else if (state.rig.chatBubbleSprite.visible) {
+          state.rig.setChatBubbleVisual(0.01, 0, 0);
         }
       });
 

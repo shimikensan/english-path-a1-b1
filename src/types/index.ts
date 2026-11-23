@@ -297,6 +297,25 @@ export interface ClubMessageDoc {
   createdAtMs?: number;
 }
 
+export type ClubMusicMode = 'builtin_see_you_again' | 'uploaded';
+
+export interface ClubMusicConfigDoc {
+  configId: 'music';
+  mode: ClubMusicMode;
+  title: string;
+  artist: string;
+  audioUrl: string;
+  fileName: string;
+  storedFileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  defaultVolume: number;
+  enabled: boolean;
+  updatedBy: string;
+  updatedByName: string;
+  updatedAt?: Timestamp | Date;
+}
+
 export type AppRoute =
   | 'dashboard'
   | 'roadmap'

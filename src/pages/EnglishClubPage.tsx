@@ -8,10 +8,15 @@ import {
   LogOut,
   MessageCircle,
   MessageSquare,
+  Music,
+  Pause,
+  Play,
   RefreshCw,
   Sparkles,
   UserCheck,
   Users,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import { ChibiAvatarThumb, ClubChatDrawer } from '../components/club/ClubChatDrawer';
@@ -19,13 +24,16 @@ import {
   ClubScene3D,
   type ClubCameraCommand,
   type ClubCameraMode,
+  type ClubChatBubbleData,
 } from '../components/club/ClubScene3D';
 import { useApp } from '../context/AppContext';
 import {
   buildClubPairId,
+  DEFAULT_CLUB_MUSIC_CONFIG,
   sendClubDirectMessage,
   setClubMemberOffline,
   subscribeClubMembers,
+  subscribeClubMusicConfig,
   subscribeUserClubMessages,
   upsertClubMemberPresence,
 } from '../services/firestoreService';
@@ -34,8 +42,10 @@ import type {
   ClubAvatarGender,
   ClubMemberDoc,
   ClubMessageDoc,
+  ClubMusicConfigDoc,
   LearnerCEFRLevel,
 } from '../types';
+import { ClubMusicEngine } from '../utils/clubMusicEngine';
 
 const AVATAR_SHEET_SRC = '/assets/aistudio/image_cacf8f7c.png';
 const STORAGE_AVATAR_KEY = 'pilot_club_avatar_gender_v1';
@@ -109,8 +119,17 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   const [typingUids, setTypingUids] = useState<Record<string, boolean>>({});
   const [waveTimestamps, setWaveTimestamps] = useState<Record<string, number>>({});
   const [talkingUntilByUid, setTalkingUntilByUid] = useState<Record<string, number>>({});
+  const [chatBubblesByUid, setChatBubblesByUid] = useState<Record<string, ClubChatBubbleData>>({});
   const [localTyping, setLocalTyping] = useState(false);
   const [ttsSpeakerUid, setTtsSpeakerUid] = useState<string | null>(null);
+
+  // Background music state (default "See You Again" or Admin uploaded track)
+  const [musicConfig, setMusicConfig] = useState<ClubMusicConfigDoc>(DEFAULT_CLUB_MUSIC_CONFIG);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const [musicVolume, setMusicVolume] = useState(DEFAULT_CLUB_MUSIC_CONFIG.defaultVolume);
+  const [musicPopoverOpen, setMusicPopoverOpen] = useState(false);
+  const userAdjustedVolumeRef = useRef(false);
+  const musicEngineRef = useRef<ClubMusicEngine | null>(null);
 
   // UI state inside 3D club
   const [selectedPartnerUid, setSelectedPartnerUid] = useState<string | null>(null);
@@ -124,12 +143,45 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     seq: 0,
   });
 
-  // Refs for WebSocket & throttled position sync
+  // Refs for WebSocket, chat bubble sequence, & throttled position sync
   const wsRef = useRef<WebSocket | null>(null);
   const localPosRef = useRef(getInitialSpawnPosition(currentUid || 'pilot'));
   const lastFirestorePosSyncRef = useRef<number>(0);
+  const bubbleSeqRef = useRef<number>(0);
+  const clubEnteredAtRef = useRef<number>(0);
+  const shownFirestoreBubbleIdsRef = useRef<Set<string>>(new Set());
 
-  // Subscribe to Firestore club members (used in both Lobby preview & 3D Club)
+  const showChatBubble = useCallback((uid: string, text: string, durationMs = 7500) => {
+    const cleaned = text.trim();
+    if (!uid || !cleaned) return;
+    const now = Date.now();
+    bubbleSeqRef.current += 1;
+    const seq = bubbleSeqRef.current;
+    setChatBubblesByUid((prev) => ({
+      ...prev,
+      [uid]: {
+        text: cleaned,
+        createdAt: now,
+        expiresAt: now + durationMs,
+        seq,
+      },
+    }));
+  }, []);
+
+  // Initialize & dispose 3D Club Background Music Engine
+  useEffect(() => {
+    const engine = new ClubMusicEngine({
+      onPlayingChange: (playing) => setMusicPlaying(playing),
+      onFallbackToBuiltin: (reason) => addToast('info', reason),
+    });
+    musicEngineRef.current = engine;
+    return () => {
+      engine.dispose();
+      musicEngineRef.current = null;
+    };
+  }, [addToast]);
+
+  // Subscribe to Firestore club members, messages & live global background music settings
   useEffect(() => {
     if (!currentUid) return;
     const unsubMembers = subscribeClubMembers(
@@ -145,11 +197,38 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         // Silently degrade to WebSocket-only messages
       }
     );
+    const unsubMusic = subscribeClubMusicConfig((cfg) => {
+      setMusicConfig(cfg);
+      musicEngineRef.current?.configure(cfg);
+      if (!userAdjustedVolumeRef.current && typeof cfg.defaultVolume === 'number') {
+        setMusicVolume(cfg.defaultVolume);
+        musicEngineRef.current?.setVolume(cfg.defaultVolume);
+      }
+    });
     return () => {
       unsubMembers();
       unsubMessages();
+      unsubMusic();
     };
   }, [currentUid]);
+
+  // Surface floating 3D chat bubbles for brand-new incoming Firestore messages while in club
+  useEffect(() => {
+    if (!inClub || !currentUid) return;
+    const enteredAt = clubEnteredAtRef.current;
+    firestoreMessages.forEach((m) => {
+      if (!m.id || shownFirestoreBubbleIdsRef.current.has(m.id)) return;
+      shownFirestoreBubbleIdsRef.current.add(m.id);
+      const msgTime = m.createdAtMs ?? 0;
+      if (msgTime > enteredAt && m.senderUid && m.senderUid !== currentUid && m.text) {
+        showChatBubble(m.senderUid, m.text, 7500);
+        setTalkingUntilByUid((prev) => ({
+          ...prev,
+          [m.senderUid]: Math.max(prev[m.senderUid] ?? 0, Date.now() + 3600),
+        }));
+      }
+    });
+  }, [firestoreMessages, inClub, currentUid, showChatBubble]);
 
   // Connect WebSocket hub when the learner enters the 3D club
   useEffect(() => {
@@ -273,12 +352,16 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         if (data.type === 'club:dm' && data.message) {
           const incoming = data.message as ClubMessageDoc;
           if (!incoming.id) return;
-          // Trigger lively 3D talk animation on the sender when a live English message arrives
+          // Trigger lively 3D talk animation & floating chat speech bubble on the sender
           if (incoming.senderUid) {
             setTalkingUntilByUid((prev) => ({
               ...prev,
               [incoming.senderUid]: Math.max(prev[incoming.senderUid] ?? 0, Date.now() + 3600),
             }));
+            if (incoming.text) {
+              shownFirestoreBubbleIdsRef.current.add(incoming.id);
+              showChatBubble(incoming.senderUid, incoming.text, 7500);
+            }
           }
           setWsMessages((prev) => {
             if (prev.some((m) => m.id === incoming.id)) return prev;
@@ -315,7 +398,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
       setWsLiveMap({});
       void setClubMemberOffline(currentUid);
     };
-  }, [inClub, currentUid, currentDisplayName, currentLevel, selectedGender, statusText]);
+  }, [inClub, currentUid, currentDisplayName, currentLevel, selectedGender, statusText, showChatBubble]);
 
   // Merge Firestore persistent members + live WebSocket roster (zero fake bots!)
   const mergedMembers = useMemo<ClubMemberDoc[]>(() => {
@@ -520,15 +603,51 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     }
 
     recordStudyActivity();
+    clubEnteredAtRef.current = Date.now();
+    // Pre-mark existing historical messages so only newly exchanged chat messages pop bubbles
+    firestoreMessages.forEach((m) => {
+      if (m.id) shownFirestoreBubbleIdsRef.current.add(m.id);
+    });
     setInClub(true);
     setJoining(false);
+
+    // Start background music cleanly from the user's "Vào Câu lạc bộ 3D" click gesture
+    if (musicConfig.enabled && musicEngineRef.current) {
+      musicEngineRef.current.configure(musicConfig);
+      musicEngineRef.current.setVolume(musicVolume);
+      void musicEngineRef.current.play();
+    }
+
     addToast(
       'success',
       `Chào mừng đến Câu lạc bộ 3D! Nhấn vào bất kỳ nhân vật nào để trò chuyện tiếng Anh.`
     );
   };
 
+  const handleToggleMusic = async () => {
+    const engine = musicEngineRef.current;
+    if (!engine) return;
+    if (musicPlaying) {
+      engine.pause();
+    } else {
+      engine.configure(musicConfig);
+      engine.setVolume(musicVolume);
+      const ok = await engine.play();
+      if (!ok) {
+        addToast('info', 'Hãy nhấn lại biểu tượng nhạc để trình duyệt cho phép phát âm thanh.');
+      }
+    }
+  };
+
+  const handleMusicVolumeChange = (nextVol: number) => {
+    userAdjustedVolumeRef.current = true;
+    setMusicVolume(nextVol);
+    musicEngineRef.current?.setVolume(nextVol);
+  };
+
   const handleLeaveClub = async (openPicker = false) => {
+    musicEngineRef.current?.pause();
+    setMusicPopoverOpen(false);
     setSelectedPartnerUid(null);
     setRosterOpen(false);
     setInClub(false);
@@ -543,8 +662,13 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   const handleSelectMemberFrom3D = useCallback(
     (uid: string) => {
       if (uid === currentUid) {
-        // Trigger a friendly self talk gesture when clicking own character
+        // Trigger a friendly self talk gesture & speech bubble when clicking own character
         triggerTalkAnimation(currentUid, 3400, true);
+        showChatBubble(
+          currentUid,
+          statusText.trim() || "Hi! Let's practice English together!",
+          5000
+        );
         addToast(
           'info',
           'Đây là nhân vật của bạn! Nhấn sàn hoặc phím WASD để di chuyển, hoặc nhấn nhân vật khác để trò chuyện tiếng Anh.'
@@ -553,10 +677,15 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
       }
       // Partner greets with a friendly talking animation upon selection
       triggerTalkAnimation(uid, 3200, false);
+      const partnerMember = mergedMembers.find((m) => m.uid === uid);
+      if (partnerMember?.statusText?.trim()) {
+        showChatBubble(uid, partnerMember.statusText.trim(), 4800);
+      }
       setSelectedPartnerUid(uid);
       setRosterOpen(false);
+      setMusicPopoverOpen(false);
     },
-    [currentUid, addToast, triggerTalkAnimation]
+    [currentUid, addToast, triggerTalkAnimation, showChatBubble, statusText, mergedMembers]
   );
 
   const handleLocalMove = useCallback(
@@ -603,6 +732,11 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   const handleTalkEmote = () => {
     if (!currentUid) return;
     triggerTalkAnimation(currentUid, 3800, true);
+    showChatBubble(
+      currentUid,
+      statusText.trim() || "Hi everyone! Let's practice English!",
+      5500
+    );
   };
 
   const handleCameraPreset = (mode: ClubCameraMode, uid?: string) => {
@@ -629,8 +763,10 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     setSendingMsg(true);
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    // Animate local character speaking in 3D when sending an English message
+    // Animate local character speaking & show floating 3D chat speech bubble immediately
     triggerTalkAnimation(currentUid, 3400, true);
+    showChatBubble(currentUid, text, 7500);
+    shownFirestoreBubbleIdsRef.current.add(messageId);
 
     // Optimistic local + WebSocket instant relay
     const optimisticMsg: ClubMessageDoc = {
@@ -705,17 +841,23 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
               </p>
             </div>
 
-            <div className="shrink-0 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-4 py-3 text-right">
+            <div className="shrink-0 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-4 py-3 text-right space-y-1.5">
               <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 Thành viên trong phòng
               </div>
-              <div className="mt-1 flex items-center justify-end gap-2">
+              <div className="flex items-center justify-end gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                 <span className="text-xl font-extrabold text-slate-900 dark:text-white tabular-nums">
                   {lobbyOnlineCount}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   đang hoạt động ({firestoreMembers.length} đã tham gia)
+                </span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#D94E00] dark:text-[#FF8524]">
+                <Music className="w-3.5 h-3.5 shrink-0" />
+                <span className="max-w-[220px] truncate">
+                  Nhạc nền: {musicConfig.enabled ? musicConfig.title : 'Đang tắt'}
                 </span>
               </div>
             </div>
@@ -893,6 +1035,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         waveTimestamps={waveTimestamps}
         talkingUntilByUid={talkingUntilByUid}
         activeTalkingUids={activeTalkingUids}
+        chatBubblesByUid={chatBubblesByUid}
         cameraCommand={cameraCommand}
         onSelectMember={handleSelectMemberFrom3D}
         onLocalMove={handleLocalMove}
@@ -1023,6 +1166,78 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         </div>
       )}
 
+      {/* Upward Background Music Popover (triggered from bottom control dock) */}
+      {musicPopoverOpen && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 w-[min(340px,calc(100%-1.5rem))] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-[#FF6B00]/12 text-[#D94E00] dark:text-[#FF8524] flex items-center justify-center shrink-0">
+                <Music className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-extrabold text-slate-900 dark:text-white truncate">
+                  {musicConfig.title}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {musicConfig.artist || 'Nhạc nền Câu lạc bộ 3D'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMusicPopoverOpen(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              aria-label="Đóng bảng nhạc nền"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => void handleToggleMusic()}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-colors ${
+                musicPlaying
+                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
+                  : 'bg-[#FF6B00] hover:bg-[#E55E00] text-white'
+              }`}
+            >
+              {musicPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              <span>{musicPlaying ? 'Tạm dừng' : 'Phát nhạc'}</span>
+            </button>
+
+            <div className="flex-1 flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-xl px-2.5 py-2">
+              <button
+                type="button"
+                onClick={() => handleMusicVolumeChange(musicVolume > 0.01 ? 0 : 0.42)}
+                className="text-slate-600 dark:text-slate-300 hover:text-[#FF6B00]"
+                aria-label="Tắt hoặc bật âm thanh"
+              >
+                {musicVolume <= 0.01 ? (
+                  <VolumeX className="w-4 h-4" />
+                ) : (
+                  <Volume2 className="w-4 h-4" />
+                )}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={musicVolume}
+                onChange={(e) => handleMusicVolumeChange(Number(e.target.value))}
+                className="w-full accent-[#FF6B00]"
+                aria-label="Âm lượng nhạc nền"
+              />
+              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 w-8 text-right tabular-nums">
+                {Math.round(musicVolume * 100)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Collapsible Bottom Control Dock (Consolidated single-dock architecture) */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 max-w-[calc(100%-1.5rem)]">
         {dockCollapsed ? (
@@ -1071,7 +1286,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
               type="button"
               onClick={handleTalkEmote}
               className="px-2.5 py-1.5 rounded-lg bg-sky-500/12 hover:bg-sky-500/20 text-sky-700 dark:text-sky-300 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors"
-              title="Kích hoạt hoạt ảnh đang nói chuyện (Talk) cho nhân vật"
+              title="Kích hoạt hoạt ảnh đang nói chuyện (Talk) và bong bóng lời thoại"
             >
               <MessageCircle className="w-3.5 h-3.5" />
               <span>Nói chuyện</span>
@@ -1079,7 +1294,33 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
 
             <button
               type="button"
-              onClick={() => setRosterOpen((v) => !v)}
+              onClick={() => {
+                setMusicPopoverOpen((v) => !v);
+                setRosterOpen(false);
+              }}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
+                musicPopoverOpen
+                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                  : musicPlaying
+                    ? 'bg-emerald-500/12 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              title={`Nhạc nền: ${musicConfig.title}`}
+            >
+              {musicPlaying ? (
+                <Volume2 className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <Music className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span className="max-w-[110px] truncate">{musicConfig.title}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setRosterOpen((v) => !v);
+                setMusicPopoverOpen(false);
+              }}
               className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
                 rosterOpen
                   ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'

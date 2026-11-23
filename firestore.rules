@@ -354,6 +354,40 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidClubMusicConfig(data) {
+      return data.keys().hasAll([
+          'configId', 'mode', 'title', 'artist', 'audioUrl', 'fileName',
+          'storedFileName', 'mimeType', 'fileSizeBytes', 'defaultVolume',
+          'enabled', 'updatedBy', 'updatedByName', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'configId', 'mode', 'title', 'artist', 'audioUrl', 'fileName',
+          'storedFileName', 'mimeType', 'fileSizeBytes', 'defaultVolume',
+          'enabled', 'updatedBy', 'updatedByName', 'updatedAt'
+        ])
+        && data.configId is string && data.configId == 'music'
+        && data.mode is string && data.mode in ['builtin_see_you_again', 'uploaded']
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+        && data.artist is string && data.artist.size() <= 100
+        && data.audioUrl is string && data.audioUrl.size() <= 300
+        && (
+          (data.mode == 'builtin_see_you_again' && data.audioUrl == '')
+          || (
+            data.mode == 'uploaded'
+            && data.audioUrl.matches('^/api/club/music/files/club_bgm_[0-9]+_[a-f0-9]{12}\\.(mp3|wav|ogg|m4a|webm)$')
+          )
+        )
+        && data.fileName is string && data.fileName.size() <= 160
+        && data.storedFileName is string && data.storedFileName.size() <= 120
+        && data.mimeType is string && data.mimeType.size() <= 60
+        && data.fileSizeBytes is number && data.fileSizeBytes >= 0 && data.fileSizeBytes <= 20971520
+        && data.defaultVolume is number && data.defaultVolume >= 0 && data.defaultVolume <= 1
+        && data.enabled is bool
+        && isValidId(data.updatedBy) && data.updatedBy == request.auth.uid
+        && data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 100
+        && data.updatedAt is timestamp;
+    }
+
     // --- Collection: users (PII Isolated to Owner & Admin) ---
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
@@ -726,6 +760,29 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(request.auth.uid));
       allow update: if false;
       allow delete: if isValidId(messageId) && ((isVerifiedUser() && existing().senderUid == request.auth.uid) || isAdmin());
+    }
+
+    // --- Collection: club_settings (3D English Club Global Background Music Config) ---
+    match /club_settings/{configId} {
+      allow get: if isValidId(configId) && configId == 'music' && isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        && isValidId(configId)
+        && configId == 'music'
+        && isValidClubMusicConfig(incoming())
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(configId)
+        && configId == 'music'
+        && isValidClubMusicConfig(incoming())
+        && incoming().configId == existing().configId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'mode', 'title', 'artist', 'audioUrl', 'fileName', 'storedFileName',
+          'mimeType', 'fileSizeBytes', 'defaultVolume', 'enabled',
+          'updatedBy', 'updatedByName', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(configId) && configId == 'music';
     }
   }
 }

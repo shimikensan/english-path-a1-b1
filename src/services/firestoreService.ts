@@ -35,6 +35,7 @@ import type {
   ClubAvatarGender,
   ClubMemberDoc,
   ClubMessageDoc,
+  ClubMusicConfigDoc,
   FeedbackCategory,
   FeedbackStatus,
   LeaderboardEntryDoc,
@@ -2059,6 +2060,126 @@ export async function sendClubDirectMessage(params: {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
 }
+
+// --- 3D English Club Global Background Music Config ---
+
+export const DEFAULT_CLUB_MUSIC_CONFIG: ClubMusicConfigDoc = {
+  configId: 'music',
+  mode: 'builtin_see_you_again',
+  title: 'See You Again (Piano Lounge)',
+  artist: 'Pilot 3D Club Instrumental',
+  audioUrl: '',
+  fileName: '',
+  storedFileName: '',
+  mimeType: '',
+  fileSizeBytes: 0,
+  defaultVolume: 0.42,
+  enabled: true,
+  updatedBy: 'system',
+  updatedByName: 'Hệ thống mặc định',
+};
+
+const SAFE_UPLOADED_AUDIO_URL_REGEX =
+  /^\/api\/club\/music\/files\/club_bgm_[0-9]+_[a-f0-9]{12}\.(mp3|wav|ogg|m4a|webm)$/;
+
+export async function getClubMusicConfig(): Promise<ClubMusicConfigDoc> {
+  const ref = doc(db, 'club_settings', 'music');
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return DEFAULT_CLUB_MUSIC_CONFIG;
+    return snap.data() as ClubMusicConfigDoc;
+  } catch {
+    return DEFAULT_CLUB_MUSIC_CONFIG;
+  }
+}
+
+export function subscribeClubMusicConfig(
+  onData: (config: ClubMusicConfigDoc) => void
+): Unsubscribe {
+  const ref = doc(db, 'club_settings', 'music');
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (snap.exists()) {
+        onData(snap.data() as ClubMusicConfigDoc);
+      } else {
+        onData(DEFAULT_CLUB_MUSIC_CONFIG);
+      }
+    },
+    () => {
+      onData(DEFAULT_CLUB_MUSIC_CONFIG);
+    }
+  );
+}
+
+export async function adminSaveClubMusicConfig(params: {
+  mode: 'builtin_see_you_again' | 'uploaded';
+  title: string;
+  artist: string;
+  audioUrl: string;
+  fileName: string;
+  storedFileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  defaultVolume: number;
+  enabled: boolean;
+  adminUid: string;
+  adminName: string;
+}): Promise<ClubMusicConfigDoc> {
+  const path = 'club_settings/music';
+  const ref = doc(db, 'club_settings', 'music');
+
+  const safeMode: 'builtin_see_you_again' | 'uploaded' =
+    params.mode === 'uploaded' ? 'uploaded' : 'builtin_see_you_again';
+  const safeAudioUrl = safeMode === 'uploaded' ? params.audioUrl.trim() : '';
+  if (safeMode === 'uploaded' && !SAFE_UPLOADED_AUDIO_URL_REGEX.test(safeAudioUrl)) {
+    throw new Error('Đường dẫn tệp âm thanh tải lên không hợp lệ.');
+  }
+
+  const safePayload = {
+    mode: safeMode,
+    title:
+      truncate(params.title.trim(), 120) ||
+      (safeMode === 'builtin_see_you_again' ? 'See You Again (Piano Lounge)' : 'Nhạc nền Câu lạc bộ 3D'),
+    artist: truncate(params.artist.trim(), 100),
+    audioUrl: truncate(safeAudioUrl, 300),
+    fileName: safeMode === 'uploaded' ? truncate(params.fileName.trim(), 160) : '',
+    storedFileName: safeMode === 'uploaded' ? truncate(params.storedFileName.trim(), 120) : '',
+    mimeType: safeMode === 'uploaded' ? truncate(params.mimeType.trim(), 60) : '',
+    fileSizeBytes:
+      safeMode === 'uploaded'
+        ? Math.max(0, Math.min(20971520, Math.round(params.fileSizeBytes || 0)))
+        : 0,
+    defaultVolume: Math.max(0, Math.min(1, Math.round((params.defaultVolume ?? 0.42) * 100) / 100)),
+    enabled: Boolean(params.enabled),
+    updatedBy: params.adminUid,
+    updatedByName: truncate(params.adminName.trim() || 'Quản trị viên', 100) || 'Quản trị viên',
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    const existing = await getDoc(ref);
+    if (existing.exists()) {
+      await updateDoc(ref, safePayload);
+    } else {
+      await setDoc(ref, {
+        configId: 'music',
+        ...safePayload,
+      });
+    }
+    return {
+      configId: 'music',
+      ...safePayload,
+      updatedAt: new Date(),
+    };
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
 
 
 

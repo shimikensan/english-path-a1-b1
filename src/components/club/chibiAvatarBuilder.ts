@@ -26,11 +26,14 @@ export interface ChibiAvatarRig {
   selectionRing: THREE.Mesh;
   hitProxy: THREE.Mesh;
   nameSprite: THREE.Sprite;
+  chatBubbleSprite: THREE.Sprite;
   mixer: THREE.AnimationMixer;
   currentAnimation: ChibiAnimationState;
   setAnimationState: (next: ChibiAnimationState, fadeDuration?: number) => void;
   updateAnimation: (dt: number) => void;
   updateLabel: (opts: AvatarLabelOptions) => void;
+  setChatBubble: (text: string | null, isSelf: boolean) => void;
+  setChatBubbleVisual: (scaleFactor: number, opacity: number, yOffset?: number) => void;
   setHighlight: (state: 'none' | 'hover' | 'selected' | 'self') => void;
   dispose: () => void;
 }
@@ -401,6 +404,127 @@ function drawNameplateCanvas(canvas: HTMLCanvasElement, opts: AvatarLabelOptions
     ctx.textAlign = 'center';
     ctx.fillText(unread > 9 ? '9+' : `+${unread}`, cursorX + 24, centerY + 1);
   }
+}
+
+function wrapBubbleLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number
+): string[] {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return [];
+  const words = cleaned.split(' ');
+  const lines: string[] = [];
+  let current = '';
+
+  for (let i = 0; i < words.length; i++) {
+    let word = words[i];
+    // Handle unusually long unbroken tokens
+    if (ctx.measureText(word).width > maxWidth) {
+      while (word.length > 3 && ctx.measureText(`${word}…`).width > maxWidth) {
+        word = word.slice(0, -1);
+      }
+      word = `${word}…`;
+    }
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+      if (lines.length === maxLines - 1) {
+        // Pack remaining words onto the final line with ellipsis if needed
+        const rest = [current, ...words.slice(i + 1)].join(' ');
+        let finalLine = rest;
+        if (ctx.measureText(finalLine).width > maxWidth) {
+          while (finalLine.length > 3 && ctx.measureText(`${finalLine}…`).width > maxWidth) {
+            finalLine = finalLine.slice(0, -1);
+          }
+          finalLine = `${finalLine.trimEnd()}…`;
+        }
+        lines.push(finalLine);
+        return lines;
+      }
+    }
+  }
+  if (current) lines.push(current);
+  return lines.slice(0, maxLines);
+}
+
+function drawChatBubbleCanvas(
+  canvas: HTMLCanvasElement,
+  text: string,
+  isSelf: boolean
+): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const fontSize = 30;
+  const lineHeight = 40;
+  ctx.font = `700 ${fontSize}px "Inter", "Segoe UI", system-ui, sans-serif`;
+
+  const maxTextW = w - 120;
+  const lines = wrapBubbleLines(ctx, text, maxTextW, 3);
+  if (lines.length === 0) return;
+
+  const widestLine = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
+  const padX = 36;
+  const padY = 24;
+  const bubbleW = Math.min(w - 32, Math.max(190, widestLine + padX * 2));
+  const bubbleH = lines.length * lineHeight + padY * 2;
+  const tailH = 22;
+  const bubbleX = (w - bubbleW) / 2;
+  const bubbleY = h - bubbleH - tailH - 16;
+
+  // Soft elevation shadow
+  ctx.save();
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.24)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 6;
+  roundRectPath(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 28);
+  ctx.fillStyle = isSelf ? '#FFF7ED' : '#FFFFFF';
+  ctx.fill();
+  ctx.restore();
+
+  // Bubble outline
+  roundRectPath(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 28);
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = isSelf ? '#FF6B00' : '#0EA5E9';
+  ctx.stroke();
+
+  // Comic speech tail pointer centered beneath bubble
+  const midX = w / 2;
+  const tailTopY = bubbleY + bubbleH - 2;
+  ctx.beginPath();
+  ctx.moveTo(midX - 18, tailTopY);
+  ctx.lineTo(midX + 18, tailTopY);
+  ctx.lineTo(midX, tailTopY + tailH);
+  ctx.closePath();
+  ctx.fillStyle = isSelf ? '#FFF7ED' : '#FFFFFF';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(midX - 18, tailTopY + 1);
+  ctx.lineTo(midX, tailTopY + tailH);
+  ctx.lineTo(midX + 18, tailTopY + 1);
+  ctx.lineWidth = 5;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = isSelf ? '#FF6B00' : '#0EA5E9';
+  ctx.stroke();
+
+  // Crisp wrapped message lines
+  ctx.fillStyle = '#0F172A';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const startY = bubbleY + padY + lineHeight / 2;
+  lines.forEach((line, idx) => {
+    ctx.fillText(line, midX, startY + idx * lineHeight, bubbleW - padX * 1.6);
+  });
 }
 
 export function createChibiAvatar(params: {
@@ -993,6 +1117,32 @@ export function createChibiAvatar(params: {
   nameSprite.renderOrder = 20;
   root.add(nameSprite);
 
+  // === FLOATING 3D CHAT MESSAGE SPEECH BUBBLE SPRITE ===
+  const chatBubbleCanvas = document.createElement('canvas');
+  chatBubbleCanvas.width = 768;
+  chatBubbleCanvas.height = 280;
+  const chatBubbleTex = track(new THREE.CanvasTexture(chatBubbleCanvas));
+  chatBubbleTex.colorSpace = THREE.SRGBColorSpace;
+  chatBubbleTex.minFilter = THREE.LinearFilter;
+
+  const chatBubbleMat = track(
+    new THREE.SpriteMaterial({
+      map: chatBubbleTex,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+    })
+  );
+  const chatBubbleSprite = new THREE.Sprite(chatBubbleMat);
+  const CHAT_BUBBLE_BASE_W = 2.85;
+  const CHAT_BUBBLE_BASE_H = 1.04;
+  const CHAT_BUBBLE_BASE_Y = 2.74;
+  chatBubbleSprite.scale.set(CHAT_BUBBLE_BASE_W, CHAT_BUBBLE_BASE_H, 1);
+  chatBubbleSprite.position.set(0, CHAT_BUBBLE_BASE_Y, 0);
+  chatBubbleSprite.renderOrder = 25;
+  chatBubbleSprite.visible = false;
+  root.add(chatBubbleSprite);
+
   // === THREE.JS ANIMATION MIXER & CROSSFADING STATE CONTROLLER ===
   const clips = getSharedChibiClips();
   const mixer = new THREE.AnimationMixer(root);
@@ -1035,6 +1185,30 @@ export function createChibiAvatar(params: {
     labelTex.needsUpdate = true;
   };
 
+  const setChatBubble = (text: string | null, isSelf: boolean) => {
+    if (!text || !text.trim()) {
+      chatBubbleSprite.visible = false;
+      chatBubbleMat.opacity = 0;
+      return;
+    }
+    drawChatBubbleCanvas(chatBubbleCanvas, text, isSelf);
+    chatBubbleTex.needsUpdate = true;
+    chatBubbleSprite.visible = true;
+  };
+
+  const setChatBubbleVisual = (scaleFactor: number, opacity: number, yOffset = 0) => {
+    const clampedOpacity = Math.max(0, Math.min(1, opacity));
+    const clampedScale = Math.max(0.01, scaleFactor);
+    chatBubbleSprite.visible = clampedOpacity > 0.01;
+    chatBubbleMat.opacity = clampedOpacity;
+    chatBubbleSprite.scale.set(
+      CHAT_BUBBLE_BASE_W * clampedScale,
+      CHAT_BUBBLE_BASE_H * clampedScale,
+      1
+    );
+    chatBubbleSprite.position.y = CHAT_BUBBLE_BASE_Y + yOffset;
+  };
+
   const setHighlight = (state: 'none' | 'hover' | 'selected' | 'self') => {
     if (state === 'selected') {
       ringMat.color.setHex(0xff6b00);
@@ -1074,11 +1248,14 @@ export function createChibiAvatar(params: {
     selectionRing,
     hitProxy,
     nameSprite,
+    chatBubbleSprite,
     mixer,
     currentAnimation,
     setAnimationState,
     updateAnimation,
     updateLabel,
+    setChatBubble,
+    setChatBubbleVisual,
     setHighlight,
     dispose,
   };
