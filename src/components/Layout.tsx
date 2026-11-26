@@ -18,6 +18,7 @@ import {
   MessageSquareQuote,
   Minimize2,
   Moon,
+  Phone,
   Plane,
   Radar,
   ShieldCheck,
@@ -155,8 +156,42 @@ export function Layout({
           );
         })}
 
+        {/* Software Author Card directly below "Tài khoản cá nhân" */}
+        <div className="pt-3 mt-3 border-t border-slate-200 dark:border-slate-800">
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/90 dark:border-slate-700/80 p-3 space-y-2.5">
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#D94E00] dark:text-[#FF8524]">
+              Tác giả phần mềm
+            </div>
+            <div className="flex items-start gap-2.5">
+              <img
+                src="/assets/aistudio/Capture_73767794.JPG"
+                alt="Đại úy Nguyễn Văn Biên"
+                className="w-12 h-14 rounded-lg object-cover object-top border border-slate-200 dark:border-slate-700 shrink-0 shadow-xs bg-white"
+              />
+              <div className="min-w-0 space-y-1">
+                <p className="text-xs font-bold text-slate-900 dark:text-white leading-snug">
+                  Đại úy Nguyễn Văn Biên
+                </p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                  Đội 1 - Phòng Kỹ thuật bảo vệ - Bộ Tư lệnh Cảnh vệ
+                </p>
+              </div>
+            </div>
+            <div className="pt-1.5 border-t border-slate-200/80 dark:border-slate-700/70 flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+              <Phone className="w-3.5 h-3.5 text-[#FF6B00] dark:text-[#FF8524] shrink-0" />
+              <span className="text-slate-500 dark:text-slate-400">SĐT:</span>
+              <a
+                href="tel:0349007041"
+                className="font-semibold text-slate-900 dark:text-white hover:text-[#D94E00] dark:hover:text-[#FF8524] tabular-nums transition-colors"
+              >
+                0349007041
+              </a>
+            </div>
+          </div>
+        </div>
+
         {isAdmin && (
-          <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
+          <div className="pt-3 mt-3 border-t border-slate-200 dark:border-slate-800">
             <button
               type="button"
               onClick={() => handleSelectRoute('admin')}
