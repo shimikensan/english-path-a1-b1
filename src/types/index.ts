@@ -223,6 +223,7 @@ export interface LeaderboardEntryDoc {
   learnedVocabCount: number;
   averageQuizScore: number;
   streakDays: number;
+  gemsEarned?: number;
   totalAccessSeconds?: number;
   firstLoginAt?: Timestamp | Date;
   isPublic: boolean;
@@ -375,6 +376,7 @@ export interface PilotHangarDoc {
     scarf: string;
     backpack: string;
     companion: string;
+    aircraft?: string;
   };
   spentGems: number;
   bonusGems: number;

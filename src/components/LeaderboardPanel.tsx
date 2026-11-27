@@ -9,6 +9,7 @@ import {
   Clock,
   ExternalLink,
   Flame,
+  Gem,
   Medal,
   Plane,
   RefreshCw,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PILOT_RANKS } from '../data';
+import { estimateLeaderboardGems } from '../data/pilotGearCatalog';
 import { FIRESTORE_PRICING_URL, FIRESTORE_UPGRADE_URL } from '../firebase';
 import type { LeaderboardEntryDoc } from '../types';
 import { formatAccessDurationVi, formatTimestampVi } from '../utils/helpers';
@@ -30,6 +32,7 @@ interface LeaderboardPanelProps {
 }
 
 type LevelFilter = 'ALL' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
+type LeaderboardSortBy = 'completion' | 'gems';
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -98,8 +101,10 @@ export function LeaderboardPanel({
     isAdmin,
     profile,
     lessons,
+    gemBreakdown,
   } = useApp();
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('ALL');
+  const [sortBy, setSortBy] = useState<LeaderboardSortBy>('completion');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Normalize all learners against the same canonical published curriculum (e.g. 51 lessons / 765 vocab)
@@ -120,15 +125,26 @@ export function LeaderboardPanel({
           100,
           Math.max(0, Math.round((lessonRatio * 0.6 + vocabRatio * 0.4) * 100))
         );
+        const isCurrentUser = Boolean(profile?.uid && entry.uid === profile.uid);
+        const gemsCount = isCurrentUser
+          ? Math.max(gemBreakdown.totalEarned, estimateLeaderboardGems(entry))
+          : estimateLeaderboardGems(entry);
         return {
           ...entry,
           totalLessons,
           completionPercent,
+          gemsCount,
         };
       })
       .sort((a, b) => {
+        if (sortBy === 'gems' && b.gemsCount !== a.gemsCount) {
+          return b.gemsCount - a.gemsCount;
+        }
         if (b.completionPercent !== a.completionPercent) {
           return b.completionPercent - a.completionPercent;
+        }
+        if (b.gemsCount !== a.gemsCount) {
+          return b.gemsCount - a.gemsCount;
         }
         if (b.completedLessons !== a.completedLessons) {
           return b.completedLessons - a.completedLessons;
@@ -141,7 +157,7 @@ export function LeaderboardPanel({
         }
         return b.streakDays - a.streakDays;
       });
-  }, [leaderboard, lessons]);
+  }, [leaderboard, lessons, profile?.uid, gemBreakdown.totalEarned, sortBy]);
 
   // Assign global rank (1-based) to every entry in the full sorted leaderboard
   const rankedAll = useMemo(() => {
@@ -316,9 +332,16 @@ export function LeaderboardPanel({
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate tabular-nums">
-                      {pilotRank.rankVi} · CEFR {entry.currentLevel} · {entry.completedLessons}/
-                      {entry.totalLessons} bài · {entry.learnedVocabCount} từ
+                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate tabular-nums flex flex-wrap items-center gap-x-1.5">
+                      <span>
+                        {pilotRank.rankVi} · CEFR {entry.currentLevel} · {entry.completedLessons}/
+                        {entry.totalLessons} bài · {entry.learnedVocabCount} từ
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span className="inline-flex items-center gap-1 font-bold text-sky-600 dark:text-sky-400">
+                        <Gem className="w-3 h-3" />
+                        {entry.gemsCount.toLocaleString('vi-VN')} Ngọc
+                      </span>
                     </div>
                   </div>
 
@@ -413,7 +436,7 @@ export function LeaderboardPanel({
       {/* Top 3 Podium Cards */}
       {!leaderboardLoading && topThree.length > 0 && (
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {topThree.map((entry: LeaderboardEntryDoc & { globalRank: number }, idx) => {
+          {topThree.map((entry: LeaderboardEntryDoc & { globalRank: number; gemsCount: number }, idx) => {
             const rankInView = levelFilter === 'ALL' ? entry.globalRank : idx + 1;
             const visual = getRankVisual(rankInView);
             const RankIcon = visual.icon;
@@ -450,9 +473,10 @@ export function LeaderboardPanel({
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-baseline justify-between tabular-nums">
-                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                      Tỷ lệ hoàn thiện
+                  <div className="flex items-baseline justify-between gap-2 tabular-nums">
+                    <span className="inline-flex items-center gap-1.5 text-sm font-extrabold text-sky-600 dark:text-sky-400">
+                      <Gem className="w-4 h-4 shrink-0" />
+                      {entry.gemsCount.toLocaleString('vi-VN')} Ngọc
                     </span>
                     <span className="text-2xl font-extrabold text-slate-900 dark:text-white">
                       {entry.completionPercent}%
@@ -528,9 +552,35 @@ export function LeaderboardPanel({
             })}
           </div>
 
-          {/* Search input & Manual Refresh */}
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
+          {/* Search input, Sort Toggle & Manual Refresh */}
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200/70 dark:border-slate-700/70">
+              <button
+                type="button"
+                onClick={() => setSortBy('completion')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                  sortBy === 'completion'
+                    ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Theo % hoàn thiện
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortBy('gems')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                  sortBy === 'gems'
+                    ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Gem className="w-3 h-3" />
+                Theo Ngọc
+              </button>
+            </div>
+
+            <div className="relative flex-1 sm:w-56">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
@@ -648,6 +698,7 @@ export function LeaderboardPanel({
                   <th className="py-3 px-4 w-16">Hạng</th>
                   <th className="py-3 px-4 min-w-[200px]">Học viên</th>
                   <th className="py-3 px-4 min-w-[190px]">Phần trăm hoàn thiện</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Số Ngọc</th>
                   <th className="py-3 px-4 whitespace-nowrap">Bài hoàn thành</th>
                   <th className="py-3 px-4 whitespace-nowrap">Từ vựng</th>
                   <th className="py-3 px-4 whitespace-nowrap">Điểm TB</th>
@@ -730,6 +781,13 @@ export function LeaderboardPanel({
                             />
                           </div>
                         </div>
+                      </td>
+
+                      <td className="py-3.5 px-4 tabular-nums whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5 font-extrabold text-sky-600 dark:text-sky-400">
+                          <Gem className="w-3.5 h-3.5 shrink-0" />
+                          {entry.gemsCount.toLocaleString('vi-VN')}
+                        </span>
                       </td>
 
                       <td className="py-3.5 px-4 tabular-nums text-slate-700 dark:text-slate-200 font-medium whitespace-nowrap">

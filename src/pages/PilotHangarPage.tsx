@@ -12,19 +12,27 @@ import {
   Gem,
   GraduationCap,
   Lock,
+  Plane,
+  Rocket,
   RotateCcw,
   ShoppingBag,
   Sparkles,
   Timer,
 } from 'lucide-react';
-import { Pilot3DCanvas } from '../components/pilot3d/Pilot3DCanvas';
+import {
+  Pilot3DCanvas,
+  type HangarCameraPresetId,
+} from '../components/pilot3d/Pilot3DCanvas';
 import { useApp } from '../context/AppContext';
 import {
+  AIRCRAFT_CATEGORY_LABELS,
   getLessonGemReward,
+  PILOT_AIRCRAFT_CATALOG,
   PILOT_GEAR_CATALOG,
   PILOT_GEAR_RARITY_META,
   PILOT_GEAR_SLOT_LABELS,
   STUDY_TIME_MILESTONES,
+  type AircraftCategory,
   type EquippedPilotGear,
   type PilotGearItem,
   type PilotGearSlot,
@@ -38,13 +46,25 @@ interface PilotHangarPageProps {
   onNavigate: (route: AppRoute) => void;
 }
 
-const SLOT_ORDER: PilotGearSlot[] = [
+type ShopSection = 'gear' | 'aircraft';
+type AircraftFilter = 'ALL' | AircraftCategory;
+
+const PERSONAL_SLOT_ORDER: Exclude<PilotGearSlot, 'aircraft'>[] = [
   'helmet',
   'goggles',
   'suit',
   'scarf',
   'backpack',
   'companion',
+];
+
+const ALL_SLOT_ORDER: PilotGearSlot[] = [...PERSONAL_SLOT_ORDER, 'aircraft'];
+
+const AIRCRAFT_CATEGORY_ORDER: AircraftCategory[] = [
+  'helicopter',
+  'civilian',
+  'fighter',
+  'spacecraft',
 ];
 
 export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPageProps) {
@@ -58,9 +78,12 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
     equipPilotGear,
   } = useApp();
 
-  const [activeSlot, setActiveSlot] = useState<PilotGearSlot>('helmet');
+  const [shopSection, setShopSection] = useState<ShopSection>('gear');
+  const [activeSlot, setActiveSlot] = useState<Exclude<PilotGearSlot, 'aircraft'>>('helmet');
+  const [aircraftFilter, setAircraftFilter] = useState<AircraftFilter>('ALL');
   const [previewGear, setPreviewGear] = useState<Partial<EquippedPilotGear>>({});
   const [celebrateCounter, setCelebrateCounter] = useState(0);
+  const [requestedPreset, setRequestedPreset] = useState<HangarCameraPresetId | undefined>(undefined);
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [questLevelFilter, setQuestLevelFilter] = useState<string>('ALL');
 
@@ -76,7 +99,7 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
 
   const previewedUnownedItems = useMemo(() => {
     const list: PilotGearItem[] = [];
-    for (const slot of SLOT_ORDER) {
+    for (const slot of ALL_SLOT_ORDER) {
       const id = previewGear[slot];
       if (!id || ownedSet.has(id)) continue;
       const item = PILOT_GEAR_CATALOG.find((g) => g.id === id);
@@ -86,20 +109,57 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
   }, [previewGear, ownedSet]);
 
   const activePreviewItem = useMemo(() => {
-    const previewId = previewGear[activeSlot];
-    if (!previewId) return null;
-    return PILOT_GEAR_CATALOG.find((g) => g.id === previewId) ?? null;
-  }, [previewGear, activeSlot]);
+    const targetSlot: PilotGearSlot = shopSection === 'aircraft' ? 'aircraft' : activeSlot;
+    const previewId = previewGear[targetSlot];
+    if (previewId) {
+      const found = PILOT_GEAR_CATALOG.find((g) => g.id === previewId);
+      if (found && !ownedSet.has(found.id)) return found;
+    }
+    return previewedUnownedItems[0] ?? null;
+  }, [shopSection, activeSlot, previewGear, ownedSet, previewedUnownedItems]);
 
   const itemsInSlot = useMemo(
     () => PILOT_GEAR_CATALOG.filter((item) => item.slot === activeSlot),
     [activeSlot]
   );
 
-  const unlockedCount = useMemo(
-    () => PILOT_GEAR_CATALOG.filter((item) => ownedSet.has(item.id)).length,
+  const filteredAircrafts = useMemo(() => {
+    if (aircraftFilter === 'ALL') return PILOT_AIRCRAFT_CATALOG;
+    return PILOT_AIRCRAFT_CATALOG.filter(
+      (item) => item.id === 'aircraft_none' || item.aircraftCategory === aircraftFilter
+    );
+  }, [aircraftFilter]);
+
+  const unlockedGearCount = useMemo(
+    () => PILOT_GEAR_CATALOG.filter((item) => item.slot !== 'aircraft' && ownedSet.has(item.id)).length,
     [ownedSet]
   );
+  const totalGearCount = useMemo(
+    () => PILOT_GEAR_CATALOG.filter((item) => item.slot !== 'aircraft').length,
+    []
+  );
+  const unlockedAircraftCount = useMemo(
+    () =>
+      PILOT_AIRCRAFT_CATALOG.filter(
+        (item) => item.id !== 'aircraft_none' && ownedSet.has(item.id)
+      ).length,
+    [ownedSet]
+  );
+  const totalAircraftCount = PILOT_AIRCRAFT_CATALOG.length - 1;
+
+  const handleSwitchShopSection = (section: ShopSection) => {
+    playTileClick();
+    setShopSection(section);
+    if (section === 'aircraft') {
+      setRequestedPreset(
+        effectiveEquipped.aircraft && effectiveEquipped.aircraft !== 'aircraft_none'
+          ? 'aircraft'
+          : 'full'
+      );
+    } else {
+      setRequestedPreset('full');
+    }
+  };
 
   const handlePreviewItem = (item: PilotGearItem) => {
     playTileClick();
@@ -107,6 +167,9 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
       ...prev,
       [item.slot]: item.id,
     }));
+    if (item.slot === 'aircraft' && item.id !== 'aircraft_none') {
+      setRequestedPreset('aircraft');
+    }
   };
 
   const handleClearPreview = () => {
@@ -122,6 +185,9 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
       return next;
     });
     await equipPilotGear(item.slot, item.id);
+    if (item.slot === 'aircraft') {
+      setRequestedPreset(item.id === 'aircraft_none' ? 'full' : 'aircraft');
+    }
     setCelebrateCounter((c) => c + 1);
   };
 
@@ -137,6 +203,9 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
           delete next[item.slot];
           return next;
         });
+        if (item.slot === 'aircraft' && item.id !== 'aircraft_none') {
+          setRequestedPreset('aircraft');
+        }
         setCelebrateCounter((c) => c + 1);
       }
     } finally {
@@ -173,10 +242,10 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
     if (previewedUnownedItems.length === 0) return null;
     if (previewedUnownedItems.length === 1) {
       const only = previewedUnownedItems[0];
-      return `Đang mặc thử: ${only.nameVi} (${only.priceGems} Ngọc)`;
+      return `Đang xem thử 3D: ${only.nameVi} (${only.priceGems.toLocaleString('vi-VN')} Ngọc)`;
     }
     const totalPrice = previewedUnownedItems.reduce((sum, i) => sum + i.priceGems, 0);
-    return `Đang phối thử ${previewedUnownedItems.length} món mới (Tổng ${totalPrice} Ngọc)`;
+    return `Đang phối thử ${previewedUnownedItems.length} vật phẩm (Tổng ${totalPrice.toLocaleString('vi-VN')} Ngọc)`;
   }, [previewedUnownedItems]);
 
   const gemSources = [
@@ -226,6 +295,160 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
     },
   ];
 
+  const renderShopCard = (item: PilotGearItem) => {
+    const isOwned = ownedSet.has(item.id);
+    const isEquipped = hangarState.equipped[item.slot] === item.id;
+    const isPreviewing = previewGear[item.slot] === item.id;
+    const canAfford = gemBreakdown.availableGems >= item.priceGems;
+    const rarityMeta = PILOT_GEAR_RARITY_META[item.rarity];
+    const missingGems = Math.max(0, item.priceGems - gemBreakdown.availableGems);
+    const isAircraft = item.slot === 'aircraft';
+
+    return (
+      <div
+        key={item.id}
+        className={`rounded-xl border p-3.5 transition-all ${
+          isEquipped
+            ? 'border-emerald-500/60 bg-emerald-500/5 dark:bg-emerald-500/10'
+            : isPreviewing
+              ? 'border-[#FF6B00] bg-[#FF6B00]/6 dark:bg-[#FF6B00]/10'
+              : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          {/* Dual-tone PBR material swatch */}
+          <div
+            className="w-11 h-11 rounded-xl shrink-0 border border-slate-200 dark:border-slate-700 relative overflow-hidden flex items-center justify-center"
+            style={{
+              background: `linear-gradient(135deg, ${item.swatchHex} 0%, ${item.swatchHex} 58%, ${item.accentHex} 58%, ${item.accentHex} 100%)`,
+            }}
+          >
+            {isAircraft && item.id !== 'aircraft_none' && (
+              <span className="w-6 h-6 rounded-md bg-slate-950/65 text-white flex items-center justify-center">
+                {item.aircraftCategory === 'spacecraft' ? (
+                  <Rocket className="w-3.5 h-3.5" />
+                ) : (
+                  <Plane className="w-3.5 h-3.5" />
+                )}
+              </span>
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white leading-snug truncate">
+                  {item.nameVi}
+                </h4>
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span className={`font-semibold ${rarityMeta.textClass}`}>
+                    {rarityMeta.labelVi}
+                  </span>
+                  <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {item.subtitleVi}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-right shrink-0 tabular-nums">
+                {isOwned ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    <Check className="w-3.5 h-3.5" />
+                    {isEquipped ? (isAircraft ? 'Đang triển khai' : 'Đang mặc') : 'Đã sở hữu'}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-sm font-extrabold text-sky-600 dark:text-sky-400">
+                    <Gem className="w-3.5 h-3.5" />
+                    {item.priceGems.toLocaleString('vi-VN')}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {item.specVi && (
+              <div className="text-[11px] font-semibold text-[#D94E00] dark:text-[#FF8524]">
+                {item.specVi}
+              </div>
+            )}
+
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              {item.descriptionVi}
+            </p>
+
+            {/* Action Buttons */}
+            <div className="pt-2 flex flex-wrap items-center gap-2">
+              {isOwned ? (
+                isEquipped ? (
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    {isAircraft
+                      ? 'Đang đỗ trên sàn bay Hangar 3D'
+                      : 'Đang hiển thị trên Phi công 3D'}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleEquipOwned(item)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 text-xs font-bold transition-opacity cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    {isAircraft
+                      ? item.id === 'aircraft_none'
+                        ? 'Cất máy bay'
+                        : 'Triển khai ra Hangar'
+                      : 'Trang bị ngay'}
+                  </button>
+                )
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handlePreviewItem(item)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+                      isPreviewing
+                        ? 'border-[#FF6B00] bg-[#FF6B00]/15 text-[#D94E00] dark:text-[#FF8524]'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    {isPreviewing ? 'Đang xem 3D' : isAircraft ? 'Xem thử 3D' : 'Thử 3D'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!canAfford || purchasingId === item.id}
+                    onClick={() => void handlePurchase(item)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                      canAfford
+                        ? 'bg-[#FF6B00] hover:bg-[#FF7E1F] text-white cursor-pointer'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {canAfford ? (
+                      <>
+                        <Gem className="w-3.5 h-3.5" />
+                        {purchasingId === item.id
+                          ? 'Đang mở khóa...'
+                          : `Mua · ${item.priceGems.toLocaleString('vi-VN')} Ngọc`}
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3.5 h-3.5" />
+                        Thiếu {missingGems.toLocaleString('vi-VN')} Ngọc
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-8">
       {/* Top Gem Vault Header */}
@@ -234,19 +457,25 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
           <div className="space-y-2 max-w-2xl">
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#FF8524]">
               <Sparkles className="w-4 h-4 shrink-0" />
-              <span>Hangar Phi công 3D tương tác</span>
+              <span>Hangar Phi công & Phi đội Máy bay 3D</span>
               <span className="text-slate-500" aria-hidden="true">
                 ·
               </span>
               <span className="text-sky-300">
-                Đã mở khóa {unlockedCount}/{PILOT_GEAR_CATALOG.length} trang bị
+                Trang bị: {unlockedGearCount}/{totalGearCount}
+              </span>
+              <span className="text-slate-500" aria-hidden="true">
+                ·
+              </span>
+              <span className="text-amber-300">
+                Máy bay: {unlockedAircraftCount}/{totalAircraftCount}
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              Cậu bé Pilot 3D & Kho Ngọc Kiến Thức
+              Cậu bé Pilot 3D & Gian hàng Phi đội
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Học càng lâu và chinh phục càng nhiều bài, bạn càng tích lũy được nhiều Ngọc — mỗi bài học có mức thưởng Ngọc riêng theo cấp độ A1–C1 & Chuyên ngành để bạn mua sắm mũ bay, kính phi công, bộ giáp, động cơ phản lực và robot đồng hành 3D.
+              Tích lũy Ngọc kiến thức qua thời gian học và từng bài học A1–C1 để nâng cấp Phi công và sở hữu bộ sưu tập máy bay 3D: từ trực thăng, máy bay dân dụng, tiêm kích siêu thanh đến tàu vũ trụ liên sao.
             </p>
           </div>
 
@@ -321,15 +550,16 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
         </div>
       </section>
 
-      {/* Main Split: 3D Pilot Hangar Viewport + 6-Slot Gear Shop */}
+      {/* Main Split: 3D Pilot + Aircraft Hangar Viewport & Dual Store */}
       <section className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* Left: Interactive 3D Pilot Stage */}
+        {/* Left: Interactive 3D Hangar Stage */}
         <div className="xl:col-span-7 space-y-4">
           <Pilot3DCanvas
             equipped={effectiveEquipped}
             celebrateTrigger={celebrateCounter}
+            requestedPreset={requestedPreset}
             previewBadgeText={previewBannerText}
-            className="h-[440px] sm:h-[520px] xl:h-[560px]"
+            className="h-[460px] sm:h-[540px] xl:h-[580px]"
           />
 
           {/* Preview Action Strip OR Current Loadout Bar */}
@@ -338,11 +568,11 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
               <div className="space-y-0.5 min-w-0">
                 <div className="text-xs font-bold text-[#D94E00] dark:text-[#FF8524] flex items-center gap-1.5">
                   <Eye className="w-3.5 h-3.5 shrink-0" />
-                  <span>Chế độ mặc thử trang bị 3D</span>
+                  <span>Chế độ xem thử 3D trong Hangar</span>
                 </div>
                 <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                  {activePreviewItem && !ownedSet.has(activePreviewItem.id)
-                    ? `${activePreviewItem.nameVi} — ${activePreviewItem.priceGems} Ngọc`
+                  {activePreviewItem
+                    ? `${activePreviewItem.nameVi} — ${activePreviewItem.priceGems.toLocaleString('vi-VN')} Ngọc`
                     : previewedUnownedItems.map((i) => i.nameVi).join(', ')}
                 </p>
               </div>
@@ -358,7 +588,7 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#FF6B00] hover:bg-[#FF7E1F] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold transition-colors whitespace-nowrap cursor-pointer"
                   >
                     <Gem className="w-3.5 h-3.5" />
-                    Mua ngay ({activePreviewItem.priceGems} Ngọc)
+                    Mua ngay ({activePreviewItem.priceGems.toLocaleString('vi-VN')} Ngọc)
                   </button>
                 )}
                 <button
@@ -367,7 +597,7 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  Bỏ mặc thử
+                  Bỏ xem thử
                 </button>
               </div>
             </div>
@@ -375,22 +605,32 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Trang bị đang mặc trên Phi công 3D
+                  Trang bị & Máy bay đang triển khai
                 </h3>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
-                  Nhấn mục bất kỳ để đổi trang bị
+                  Nhấn mục bất kỳ để tùy biến
                 </span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {SLOT_ORDER.map((slot) => {
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {ALL_SLOT_ORDER.map((slot) => {
                   const equippedId = hangarState.equipped[slot];
                   const item = PILOT_GEAR_CATALOG.find((g) => g.id === equippedId);
-                  const isActive = activeSlot === slot;
+                  const isActive =
+                    slot === 'aircraft'
+                      ? shopSection === 'aircraft'
+                      : shopSection === 'gear' && activeSlot === slot;
                   return (
                     <button
                       key={slot}
                       type="button"
-                      onClick={() => setActiveSlot(slot)}
+                      onClick={() => {
+                        if (slot === 'aircraft') {
+                          handleSwitchShopSection('aircraft');
+                        } else {
+                          setShopSection('gear');
+                          setActiveSlot(slot);
+                        }
+                      }}
                       className={`text-left px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
                         isActive
                           ? 'border-[#FF6B00] bg-[#FF6B00]/8 dark:bg-[#FF6B00]/12'
@@ -419,183 +659,132 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
           )}
         </div>
 
-        {/* Right: Pilot Wardrobe & Gem Shop */}
+        {/* Right: Dual Store (Pilot Wardrobe + Aircraft Fleet Showroom) */}
         <div className="xl:col-span-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-[#FF6B00]" />
-                Cửa hàng Trang bị Phi công
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Nhấn "Thử 3D" để ướm trực tiếp lên nhân vật trước khi đổi Ngọc.
-              </p>
-            </div>
+          {/* Primary Store Switcher: Trang bị Phi công vs Gian hàng Máy bay */}
+          <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200/70 dark:border-slate-700/70">
+            <button
+              type="button"
+              onClick={() => handleSwitchShopSection('gear')}
+              className={`inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                shopSection === 'gear'
+                  ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <ShoppingBag className="w-4 h-4 shrink-0" />
+              <span>Trang bị Phi công</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchShopSection('aircraft')}
+              className={`inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                shopSection === 'aircraft'
+                  ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Plane className="w-4 h-4 shrink-0" />
+              <span>Gian hàng Máy bay</span>
+            </button>
           </div>
 
-          {/* 6-Slot Category Tabs */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-            {SLOT_ORDER.map((slot) => {
-              const slotItems = PILOT_GEAR_CATALOG.filter((g) => g.slot === slot);
-              const ownedInSlot = slotItems.filter((g) => ownedSet.has(g.id)).length;
-              const isSelected = activeSlot === slot;
-              return (
+          {shopSection === 'gear' ? (
+            <>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Cửa hàng Trang bị Phi công
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Nhấn "Thử 3D" để ướm trực tiếp lên nhân vật trước khi đổi Ngọc.
+                </p>
+              </div>
+
+              {/* 6 Personal Gear Category Tabs */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {PERSONAL_SLOT_ORDER.map((slot) => {
+                  const slotItems = PILOT_GEAR_CATALOG.filter((g) => g.slot === slot);
+                  const ownedInSlot = slotItems.filter((g) => ownedSet.has(g.id)).length;
+                  const isSelected = activeSlot === slot;
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => setActiveSlot(slot)}
+                      className={`px-3 py-2 rounded-xl border text-left transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'border-[#FF6B00] bg-[#FF6B00] text-white'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:border-[#FF6B00]/40'
+                      }`}
+                    >
+                      <div className="text-xs font-bold truncate">
+                        {PILOT_GEAR_SLOT_LABELS[slot]}
+                      </div>
+                      <div
+                        className={`text-[11px] tabular-nums ${
+                          isSelected ? 'text-orange-100' : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {ownedInSlot}/{slotItems.length} đã mở
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                {itemsInSlot.map(renderShopCard)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Rocket className="w-4 h-4 text-[#FF6B00]" />
+                  Gian hàng Máy bay 3D (4 Hạng)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Từ Trực thăng, Máy bay dân dụng, Tiêm kích đến Tàu vũ trụ — nhấn "Xem thử 3D" để đưa ngay ra sàn bay.
+                </p>
+              </div>
+
+              {/* Aircraft Tier Filter Tabs */}
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
-                  key={slot}
                   type="button"
-                  onClick={() => setActiveSlot(slot)}
-                  className={`px-3 py-2 rounded-xl border text-left transition-colors cursor-pointer ${
-                    isSelected
+                  onClick={() => setAircraftFilter('ALL')}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors cursor-pointer ${
+                    aircraftFilter === 'ALL'
                       ? 'border-[#FF6B00] bg-[#FF6B00] text-white'
                       : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:border-[#FF6B00]/40'
                   }`}
                 >
-                  <div className="text-xs font-bold truncate">{PILOT_GEAR_SLOT_LABELS[slot]}</div>
-                  <div
-                    className={`text-[11px] tabular-nums ${
-                      isSelected ? 'text-orange-100' : 'text-slate-500 dark:text-slate-400'
-                    }`}
-                  >
-                    {ownedInSlot}/{slotItems.length} đã mở
-                  </div>
+                  Tất cả ({totalAircraftCount})
                 </button>
-              );
-            })}
-          </div>
+                {AIRCRAFT_CATEGORY_ORDER.map((cat) => {
+                  const isSelected = aircraftFilter === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setAircraftFilter(cat)}
+                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'border-[#FF6B00] bg-[#FF6B00] text-white'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:border-[#FF6B00]/40'
+                      }`}
+                    >
+                      {AIRCRAFT_CATEGORY_LABELS[cat]}
+                    </button>
+                  );
+                })}
+              </div>
 
-          {/* Gear Cards for Selected Slot */}
-          <div className="space-y-3">
-            {itemsInSlot.map((item) => {
-              const isOwned = ownedSet.has(item.id);
-              const isEquipped = hangarState.equipped[item.slot] === item.id;
-              const isPreviewing = previewGear[item.slot] === item.id;
-              const canAfford = gemBreakdown.availableGems >= item.priceGems;
-              const rarityMeta = PILOT_GEAR_RARITY_META[item.rarity];
-              const missingGems = Math.max(0, item.priceGems - gemBreakdown.availableGems);
-
-              return (
-                <div
-                  key={item.id}
-                  className={`rounded-xl border p-3.5 transition-all ${
-                    isEquipped
-                      ? 'border-emerald-500/60 bg-emerald-500/5 dark:bg-emerald-500/10'
-                      : isPreviewing
-                        ? 'border-[#FF6B00] bg-[#FF6B00]/6 dark:bg-[#FF6B00]/10'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Dual-tone PBR material swatch */}
-                    <div
-                      className="w-11 h-11 rounded-xl shrink-0 border border-slate-200 dark:border-slate-700 relative overflow-hidden"
-                      style={{
-                        background: `linear-gradient(135deg, ${item.swatchHex} 0%, ${item.swatchHex} 58%, ${item.accentHex} 58%, ${item.accentHex} 100%)`,
-                      }}
-                    />
-
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-bold text-slate-900 dark:text-white leading-snug truncate">
-                            {item.nameVi}
-                          </h4>
-                          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                            <span className={`font-semibold ${rarityMeta.textClass}`}>
-                              {rarityMeta.labelVi}
-                            </span>
-                            <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
-                              ·
-                            </span>
-                            <span className="text-slate-500 dark:text-slate-400">
-                              {item.subtitleVi}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="text-right shrink-0 tabular-nums">
-                          {isOwned ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                              <Check className="w-3.5 h-3.5" />
-                              {isEquipped ? 'Đang mặc' : 'Đã sở hữu'}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-sm font-extrabold text-sky-600 dark:text-sky-400">
-                              <Gem className="w-3.5 h-3.5" />
-                              {item.priceGems}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                        {item.descriptionVi}
-                      </p>
-
-                      {/* Action Buttons */}
-                      <div className="pt-2 flex flex-wrap items-center gap-2">
-                        {isOwned ? (
-                          isEquipped ? (
-                            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                              Đang hiển thị trên Phi công 3D
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => void handleEquipOwned(item)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 text-xs font-bold transition-opacity cursor-pointer"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              Trang bị ngay
-                            </button>
-                          )
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handlePreviewItem(item)}
-                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                                isPreviewing
-                                  ? 'border-[#FF6B00] bg-[#FF6B00]/15 text-[#D94E00] dark:text-[#FF8524]'
-                                  : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                              }`}
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              {isPreviewing ? 'Đang mặc thử' : 'Thử 3D'}
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={!canAfford || purchasingId === item.id}
-                              onClick={() => void handlePurchase(item)}
-                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                                canAfford
-                                  ? 'bg-[#FF6B00] hover:bg-[#FF7E1F] text-white cursor-pointer'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-                              }`}
-                            >
-                              {canAfford ? (
-                                <>
-                                  <Gem className="w-3.5 h-3.5" />
-                                  {purchasingId === item.id
-                                    ? 'Đang mở khóa...'
-                                    : `Mua · ${item.priceGems} Ngọc`}
-                                </>
-                              ) : (
-                                <>
-                                  <Lock className="w-3.5 h-3.5" />
-                                  Thiếu {missingGems} Ngọc
-                                </>
-                              )}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+              <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                {filteredAircrafts.map(renderShopCard)}
+              </div>
+            </>
+          )}
         </div>
       </section>
 

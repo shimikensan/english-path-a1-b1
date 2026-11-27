@@ -903,6 +903,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [quotaExceeded, firebaseUser, profile?.uid, flushAccessTime]);
 
+  const gemBreakdown = useMemo(
+    () =>
+      computeGemBreakdown({
+        profile,
+        lessons,
+        progressMap,
+        vocabMap,
+        quizResults,
+        bonusGems: hangarState.bonusGems,
+        spentGems: hangarState.spentGems,
+      }),
+    [profile, lessons, progressMap, vocabMap, quizResults, hangarState.bonusGems, hangarState.spentGems]
+  );
+
   // Automatically sync verified learner's public completion stats to /leaderboard/{uid}
   useEffect(() => {
     if (
@@ -953,6 +967,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       profile.createdAt ??
       (firebaseUser.metadata?.creationTime ? new Date(firebaseUser.metadata.creationTime) : undefined);
     const firstLoginMs = toTimestampMillis(firstLoginAt) ?? '';
+    const gemsEarned = Math.max(0, Math.floor(gemBreakdown.totalEarned));
 
     const displayName = (profile.fullName || 'Phi công tập sự').trim();
     const sig = [
@@ -966,6 +981,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       averageQuizScore,
       profile.streakDays ?? 1,
       effectiveAccessSeconds,
+      gemsEarned,
       firstLoginMs,
     ].join('|');
 
@@ -985,6 +1001,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       averageQuizScore,
       streakDays: profile.streakDays ?? 1,
       totalAccessSeconds: effectiveAccessSeconds,
+      gemsEarned,
       firstLoginAt,
       isPublic: true,
     })
@@ -1002,6 +1019,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             averageQuizScore,
             streakDays: profile.streakDays ?? 1,
             totalAccessSeconds: effectiveAccessSeconds,
+            gemsEarned,
             firstLoginAt,
             isPublic: true,
           };
@@ -1013,6 +1031,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                       ...e,
                       ...nextEntry,
                       totalAccessSeconds: Math.max(e.totalAccessSeconds ?? 0, effectiveAccessSeconds),
+                      gemsEarned,
                       firstLoginAt: e.firstLoginAt ?? firstLoginAt,
                     }
                   : e
@@ -1047,6 +1066,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     progressMap,
     vocabMap,
     quizResults,
+    gemBreakdown.totalEarned,
     notifyQuotaExceeded,
   ]);
 
@@ -1295,20 +1315,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [profile, progressMap, addToast, recordStudyActivity]
   );
 
-  const gemBreakdown = useMemo(
-    () =>
-      computeGemBreakdown({
-        profile,
-        lessons,
-        progressMap,
-        vocabMap,
-        quizResults,
-        bonusGems: hangarState.bonusGems,
-        spentGems: hangarState.spentGems,
-      }),
-    [profile, lessons, progressMap, vocabMap, quizResults, hangarState.bonusGems, hangarState.spentGems]
-  );
-
   const persistHangar = useCallback(
     async (uid: string, next: PilotHangarState) => {
       setHangarState(next);
@@ -1359,7 +1365,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         bonusGems: current.bonusGems,
       };
       await persistHangar(uid, next);
-      addToast('success', `Đã mở khóa và trang bị "${item.nameVi}" (-${item.priceGems} Ngọc)!`);
+      addToast(
+        'success',
+        item.slot === 'aircraft'
+          ? `Đã sở hữu và đưa "${item.nameVi}" vào Hangar (-${item.priceGems} Ngọc)!`
+          : `Đã mở khóa và trang bị "${item.nameVi}" (-${item.priceGems} Ngọc)!`
+      );
       return true;
     },
     [profile?.uid, firebaseUser?.uid, gemBreakdown.availableGems, persistHangar, addToast]

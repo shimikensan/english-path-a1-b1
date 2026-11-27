@@ -538,6 +538,10 @@
         "streakDays": {
           "type": "number"
         },
+        "gemsEarned": {
+          "type": "number",
+          "description": "Cumulative Knowledge Gems earned by the learner across lessons, study time, vocabulary, quizzes, streaks, and games."
+        },
         "totalAccessSeconds": {
           "type": "number",
           "description": "Cumulative active seconds the learner has spent accessing the application (0 to 315360000)."
@@ -998,7 +1002,7 @@
         },
         "equipped": {
           "type": "object",
-          "description": "Currently equipped gear item IDs across helmet, goggles, suit, scarf, backpack, and companion."
+          "description": "Currently equipped gear & aircraft item IDs across helmet, goggles, suit, scarf, backpack, companion, and aircraft."
         },
         "spentGems": {
           "type": "number",

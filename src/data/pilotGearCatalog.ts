@@ -12,7 +12,10 @@ export type PilotGearSlot =
   | 'suit'
   | 'scarf'
   | 'backpack'
-  | 'companion';
+  | 'companion'
+  | 'aircraft';
+
+export type AircraftCategory = 'helicopter' | 'civilian' | 'fighter' | 'spacecraft';
 
 export type PilotGearRarity = 'starter' | 'rare' | 'epic' | 'legendary';
 
@@ -26,6 +29,8 @@ export interface PilotGearItem {
   rarity: PilotGearRarity;
   swatchHex: string;
   accentHex: string;
+  aircraftCategory?: AircraftCategory;
+  specVi?: string;
 }
 
 export interface EquippedPilotGear {
@@ -35,6 +40,7 @@ export interface EquippedPilotGear {
   scarf: string;
   backpack: string;
   companion: string;
+  aircraft: string;
 }
 
 export interface PilotHangarState {
@@ -68,6 +74,7 @@ export const DEFAULT_EQUIPPED_GEAR: EquippedPilotGear = {
   scarf: 'scarf_white',
   backpack: 'backpack_none',
   companion: 'companion_none',
+  aircraft: 'aircraft_none',
 };
 
 export const DEFAULT_OWNED_ITEMS: string[] = [
@@ -77,6 +84,7 @@ export const DEFAULT_OWNED_ITEMS: string[] = [
   'scarf_white',
   'backpack_none',
   'companion_none',
+  'aircraft_none',
 ];
 
 export const DEFAULT_HANGAR_STATE: PilotHangarState = {
@@ -93,6 +101,14 @@ export const PILOT_GEAR_SLOT_LABELS: Record<PilotGearSlot, string> = {
   scarf: 'Khăn & Áo choàng',
   backpack: 'Phản lực & Cánh',
   companion: 'Bạn đồng hành',
+  aircraft: 'Máy bay Hangar',
+};
+
+export const AIRCRAFT_CATEGORY_LABELS: Record<AircraftCategory, string> = {
+  helicopter: 'Trực thăng',
+  civilian: 'Máy bay dân dụng',
+  fighter: 'Tiêm kích',
+  spacecraft: 'Tàu vũ trụ',
 };
 
 export const PILOT_GEAR_RARITY_META: Record<
@@ -393,7 +409,128 @@ export const PILOT_GEAR_CATALOG: PilotGearItem[] = [
     swatchHex: '#0EA5E9',
     accentHex: '#FBBF24',
   },
+
+  // 7. AIRCRAFT FLEET (Helicopter -> Civilian -> Fighter Jet -> Spacecraft)
+  {
+    id: 'aircraft_none',
+    slot: 'aircraft',
+    nameVi: 'Chưa triển khai máy bay',
+    subtitleVi: 'Sàn xoay trống · Chỉ hiển thị Phi công 3D',
+    descriptionVi: 'Tạm cất máy bay vào nhà chứa để ngắm cận cảnh trang phục nhân vật Phi công.',
+    priceGems: 0,
+    rarity: 'starter',
+    swatchHex: '#334155',
+    accentHex: '#94A3B8',
+  },
+  {
+    id: 'aircraft_heli_scout',
+    slot: 'aircraft',
+    aircraftCategory: 'helicopter',
+    nameVi: 'Trực thăng Trinh sát H-120',
+    subtitleVi: 'Trực thăng · Cánh quạt 4 lá xoay liên tục',
+    specVi: 'Tốc độ 260 km/h · Trần bay 4.500 m',
+    descriptionVi: 'Trực thăng hạng nhẹ sơn xanh hàng không với cabin kính vòm rộng và càng trượt đôi linh hoạt.',
+    priceGems: 160,
+    rarity: 'rare',
+    swatchHex: '#0284C7',
+    accentHex: '#FF8524',
+  },
+  {
+    id: 'aircraft_heli_rescue',
+    slot: 'aircraft',
+    aircraftCategory: 'helicopter',
+    nameVi: 'Trực thăng Cứu hộ Viper-9',
+    subtitleVi: 'Trực thăng · Rô-to 5 lá & đèn pha tìm kiếm',
+    specVi: 'Tốc độ 310 km/h · 2 thùng nhiên liệu hông',
+    descriptionVi: 'Phiên bản trực thăng tuần tra cứu hộ màu đỏ-trắng nổi bật kèm đèn rọi công suất cao.',
+    priceGems: 260,
+    rarity: 'rare',
+    swatchHex: '#DC2626',
+    accentHex: '#F8FAFC',
+  },
+  {
+    id: 'aircraft_civil_prop',
+    slot: 'aircraft',
+    aircraftCategory: 'civilian',
+    nameVi: 'Phi cơ Cá nhân Cessna Skyhawk',
+    subtitleVi: 'Dân dụng · Cánh cao & cánh quạt mũi',
+    specVi: 'Tốc độ 230 km/h · Tầm bay 1.185 km',
+    descriptionVi: 'Máy bay huấn luyện dân dụng kinh điển, cánh quạt trước xoay mượt và bánh đáp 3 điểm chuẩn xác.',
+    priceGems: 340,
+    rarity: 'rare',
+    swatchHex: '#F8FAFC',
+    accentHex: '#0284C7',
+  },
+  {
+    id: 'aircraft_civil_airliner',
+    slot: 'aircraft',
+    aircraftCategory: 'civilian',
+    nameVi: 'Máy bay Dân dụng A350 SkyLiner',
+    subtitleVi: 'Dân dụng · 2 động cơ tuabin phản lực',
+    specVi: 'Tốc độ 910 km/h · Xuyên lục địa 15.000 km',
+    descriptionVi: 'Chuyên cơ chở khách thân rộng với cánh xuôi đầu cong winglet cam và cặp động cơ tuabin phát sáng.',
+    priceGems: 520,
+    rarity: 'epic',
+    swatchHex: '#F8FAFC',
+    accentHex: '#0F2B5B',
+  },
+  {
+    id: 'aircraft_fighter_falcon',
+    slot: 'aircraft',
+    aircraftCategory: 'fighter',
+    nameVi: 'Tiêm kích F-16 Chim Ưng',
+    subtitleVi: 'Tiêm kích · Buồng lái mạ vàng & đốt sau',
+    specVi: 'Tốc độ Mach 2.0 · Trần bay 15.200 m',
+    descriptionVi: 'Chiến đấu cơ siêu thanh cánh tam giác sắc lẹm cùng luồng đốt sau (afterburner) rực lửa.',
+    priceGems: 750,
+    rarity: 'epic',
+    swatchHex: '#64748B',
+    accentHex: '#0EA5E9',
+  },
+  {
+    id: 'aircraft_fighter_stealth',
+    slot: 'aircraft',
+    aircraftCategory: 'fighter',
+    nameVi: 'Tiêm kích Tàng hình F-22 Bóng Đêm',
+    subtitleVi: 'Tiêm kích · Đa diện tàng hình & đuôi chữ V',
+    specVi: 'Tốc độ Mach 2.25 · Động cơ vector đôi',
+    descriptionVi: 'Tiêm kích thế hệ 5 phủ sơn đen titan viền cam neon với cặp ống xả plasma xanh siêu cơ động.',
+    priceGems: 1050,
+    rarity: 'legendary',
+    swatchHex: '#1E293B',
+    accentHex: '#FF6B00',
+  },
+  {
+    id: 'aircraft_space_shuttle',
+    slot: 'aircraft',
+    aircraftCategory: 'spacecraft',
+    nameVi: 'Tàu Con thoi Quỹ đạo Explorer',
+    subtitleVi: 'Tàu vũ trụ · Gốm chịu nhiệt & 3 động cơ tên lửa',
+    specVi: 'Tốc độ 28.000 km/h · Quỹ đạo Trái Đất',
+    descriptionVi: 'Tàu con thoi du hành không gian thân trắng bụng gốm đen cùng cụm 3 động cơ đẩy phát sáng xanh dương.',
+    priceGems: 1400,
+    rarity: 'legendary',
+    swatchHex: '#F1F5F9',
+    accentHex: '#2563EB',
+  },
+  {
+    id: 'aircraft_space_starship',
+    slot: 'aircraft',
+    aircraftCategory: 'spacecraft',
+    nameVi: 'Phi thuyền Liên sao Nova-X',
+    subtitleVi: 'Tàu vũ trụ · Vòng năng lượng lượng tử xoay',
+    specVi: 'Tốc độ Warp · Du hành Liên hành tinh',
+    descriptionVi: 'Chiến hạm vũ trụ tối thượng chế tác từ titan và vàng, trang bị vòng lượng tử quay liên tục cùng động cơ ion.',
+    priceGems: 1950,
+    rarity: 'legendary',
+    swatchHex: '#E2E8F0',
+    accentHex: '#22D3EE',
+  },
 ];
+
+export const PILOT_AIRCRAFT_CATALOG: PilotGearItem[] = PILOT_GEAR_CATALOG.filter(
+  (item) => item.slot === 'aircraft'
+);
 
 export const PILOT_GEAR_BY_ID: Record<string, PilotGearItem> = Object.fromEntries(
   PILOT_GEAR_CATALOG.map((item) => [item.id, item])
@@ -521,4 +658,38 @@ export function computeGemBreakdown(params: {
     nextMilestoneMinutes,
     nextMilestoneBonus,
   };
+}
+
+/**
+ * Fallback deterministic Knowledge Gem estimate for leaderboard rows whose
+ * `gemsEarned` field has not been freshly synced from the learner's device yet.
+ */
+export function estimateLeaderboardGems(entry: {
+  gemsEarned?: number;
+  completedLessons: number;
+  learnedVocabCount: number;
+  averageQuizScore: number;
+  streakDays: number;
+  totalAccessSeconds?: number;
+}): number {
+  if (typeof entry.gemsEarned === 'number' && Number.isFinite(entry.gemsEarned) && entry.gemsEarned >= 0) {
+    return Math.floor(entry.gemsEarned);
+  }
+  const welcome = 30;
+  const fromLessons = Math.max(0, entry.completedLessons) * 45;
+  const fromVocab = Math.max(0, entry.learnedVocabCount) * 3;
+  const sec = Math.max(0, Math.floor(entry.totalAccessSeconds ?? 0));
+  const mins = Math.floor(sec / 60);
+  const fromTime = Math.floor(sec / 30);
+  let fromMilestones = 0;
+  for (const m of STUDY_TIME_MILESTONES) {
+    if (mins >= m.minutes) fromMilestones += m.bonusGems;
+  }
+  const streak = Math.max(0, entry.streakDays);
+  const fromStreak = streak * 10 + (streak >= 7 ? 50 : 0);
+  const fromQuizEst =
+    entry.averageQuizScore > 0 && entry.completedLessons > 0
+      ? Math.round((entry.averageQuizScore / 100) * 20) * entry.completedLessons
+      : 0;
+  return welcome + fromLessons + fromVocab + fromTime + fromMilestones + fromStreak + fromQuizEst;
 }

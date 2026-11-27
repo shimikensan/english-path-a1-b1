@@ -12,45 +12,59 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { EquippedPilotGear } from '../../data/pilotGearCatalog';
 import {
+  buildPilotAircraft,
+  type AircraftRigHandles,
+} from './buildPilotAircraft';
+import {
   buildPilotAvatar,
   createContactShadowTexture,
   createHangarPedestalTexture,
   type PilotRigHandles,
 } from './buildPilotAvatar';
 
-type CameraPresetId = 'full' | 'head' | 'back' | 'hero';
+export type HangarCameraPresetId = 'full' | 'head' | 'aircraft' | 'back';
 
 interface CameraPreset {
-  id: CameraPresetId;
+  id: HangarCameraPresetId;
   label: string;
-  position: [number, number, number];
-  target: [number, number, number];
+  soloPosition: [number, number, number];
+  soloTarget: [number, number, number];
+  fleetPosition: [number, number, number];
+  fleetTarget: [number, number, number];
 }
 
 const CAMERA_PRESETS: CameraPreset[] = [
   {
     id: 'full',
-    label: 'Toàn thân',
-    position: [0.35, 1.48, 3.65],
-    target: [0, 1.02, 0],
+    label: 'Toàn cảnh',
+    soloPosition: [0.35, 1.48, 3.65],
+    soloTarget: [0, 1.02, 0],
+    fleetPosition: [0.45, 1.95, 5.15],
+    fleetTarget: [0.05, 0.96, -0.22],
   },
   {
     id: 'head',
-    label: 'Mũ & Kính',
-    position: [0.22, 1.72, 1.95],
-    target: [0, 1.54, 0],
+    label: 'Phi công',
+    soloPosition: [0.22, 1.72, 1.95],
+    soloTarget: [0, 1.54, 0],
+    fleetPosition: [-0.85, 1.52, 2.75],
+    fleetTarget: [-0.95, 1.12, 0.68],
+  },
+  {
+    id: 'aircraft',
+    label: 'Máy bay',
+    soloPosition: [2.15, 1.62, 2.75],
+    soloTarget: [0, 1.05, 0],
+    fleetPosition: [2.65, 1.92, 2.45],
+    fleetTarget: [0.58, 0.84, -0.68],
   },
   {
     id: 'back',
-    label: 'Phản lực sau',
-    position: [-1.45, 1.52, -2.85],
-    target: [0, 1.08, 0],
-  },
-  {
-    id: 'hero',
-    label: 'Góc 3/4',
-    position: [2.15, 1.62, 2.75],
-    target: [0, 1.05, 0],
+    label: 'Góc sau',
+    soloPosition: [-1.45, 1.52, -2.85],
+    soloTarget: [0, 1.08, 0],
+    fleetPosition: [-2.15, 1.95, -4.15],
+    fleetTarget: [0.25, 0.92, -0.45],
   },
 ];
 
@@ -74,6 +88,7 @@ function detectSoftwareWebGL(): boolean {
 export interface Pilot3DCanvasProps {
   equipped: EquippedPilotGear;
   celebrateTrigger?: number;
+  requestedPreset?: HangarCameraPresetId;
   previewBadgeText?: string | null;
   className?: string;
 }
@@ -81,47 +96,61 @@ export interface Pilot3DCanvasProps {
 export function Pilot3DCanvas({
   equipped,
   celebrateTrigger = 0,
+  requestedPreset,
   previewBadgeText = null,
   className = '',
 }: Pilot3DCanvasProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const [activePreset, setActivePreset] = useState<CameraPresetId>('full');
+  const [activePreset, setActivePreset] = useState<HangarCameraPresetId>('full');
   const [autoRotate, setAutoRotate] = useState(true);
   const [dockExpanded, setDockExpanded] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
 
+  const hasAircraft = Boolean(equipped.aircraft && equipped.aircraft !== 'aircraft_none');
+  const hasAircraftRef = useRef<boolean>(hasAircraft);
+  hasAircraftRef.current = hasAircraft;
+
   // Refs shared between React controls and Three.js loop without recreating renderer
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rigRef = useRef<PilotRigHandles | null>(null);
+  const aircraftRigRef = useRef<AircraftRigHandles | null>(null);
   const isSoftRef = useRef<boolean>(false);
   const autoRotateRef = useRef<boolean>(autoRotate);
   const desiredCamPosRef = useRef<THREE.Vector3 | null>(null);
   const desiredTargetRef = useRef<THREE.Vector3 | null>(null);
   const celebrateTimerRef = useRef<number>(0);
-  const equippedKeyRef = useRef<string>('');
+  const pilotKeyRef = useRef<string>('');
+  const aircraftKeyRef = useRef<string>('');
 
   useEffect(() => {
     autoRotateRef.current = autoRotate;
   }, [autoRotate]);
 
-  const applyCameraPreset = (presetId: CameraPresetId) => {
+  const applyCameraPreset = (presetId: HangarCameraPresetId, fleetMode = hasAircraftRef.current) => {
     const found = CAMERA_PRESETS.find((p) => p.id === presetId);
     if (!found) return;
     setActivePreset(presetId);
-    desiredCamPosRef.current = new THREE.Vector3(...found.position);
-    desiredTargetRef.current = new THREE.Vector3(...found.target);
+    const pos = fleetMode ? found.fleetPosition : found.soloPosition;
+    const tgt = fleetMode ? found.fleetTarget : found.soloTarget;
+    desiredCamPosRef.current = new THREE.Vector3(...pos);
+    desiredTargetRef.current = new THREE.Vector3(...tgt);
   };
 
   const triggerWaveEmote = () => {
     celebrateTimerRef.current = 1.35;
   };
 
-  // Trigger celebration bounce/wave when parent increments celebrateTrigger
   useEffect(() => {
     if (celebrateTrigger > 0) {
       celebrateTimerRef.current = 1.45;
     }
   }, [celebrateTrigger]);
+
+  // Respond smoothly when parent switches between Pilot Shop and Aircraft Store
+  useEffect(() => {
+    if (!requestedPreset) return;
+    applyCameraPreset(requestedPreset, hasAircraft);
+  }, [requestedPreset, hasAircraft]);
 
   // Mount Three.js scene once
   useEffect(() => {
@@ -149,7 +178,7 @@ export function Pilot3DCanvas({
     renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height, false);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1.12;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = !isSoftwareGl;
     if (!isSoftwareGl) {
@@ -163,7 +192,7 @@ export function Pilot3DCanvas({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#07111F');
-    scene.fog = new THREE.FogExp2('#07111F', 0.042);
+    scene.fog = new THREE.FogExp2('#07111F', 0.036);
     sceneRef.current = scene;
 
     // Studio IBL reflections via RoomEnvironment
@@ -172,23 +201,30 @@ export function Pilot3DCanvas({
     scene.environment = envTarget.texture;
 
     // Camera & OrbitControls
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 60);
-    camera.position.set(0.35, 1.48, 3.65);
+    const initialPreset = CAMERA_PRESETS[0];
+    const startPos = hasAircraftRef.current
+      ? initialPreset.fleetPosition
+      : initialPreset.soloPosition;
+    const startTgt = hasAircraftRef.current
+      ? initialPreset.fleetTarget
+      : initialPreset.soloTarget;
+
+    const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 70);
+    camera.position.set(...startPos);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 1.02, 0);
+    controls.target.set(...startTgt);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controls.enablePan = false;
     controls.minDistance = 1.65;
-    controls.maxDistance = 5.8;
-    controls.minPolarAngle = 0.28;
+    controls.maxDistance = 8.4;
+    controls.minPolarAngle = 0.24;
     controls.maxPolarAngle = Math.PI * 0.49;
     controls.autoRotate = autoRotateRef.current;
-    controls.autoRotateSpeed = 1.1;
+    controls.autoRotateSpeed = 0.9;
     controls.update();
 
-    // User drag cancels any ongoing camera preset lerp
     const handleControlsStart = () => {
       desiredCamPosRef.current = null;
       desiredTargetRef.current = null;
@@ -196,45 +232,44 @@ export function Pilot3DCanvas({
     controls.addEventListener('start', handleControlsStart);
 
     // 3-Point Studio Hangar Lighting
-    const hemiLight = new THREE.HemisphereLight('#DCEBFF', '#1E293B', 0.82);
+    const hemiLight = new THREE.HemisphereLight('#DCEBFF', '#1E293B', 0.85);
     scene.add(hemiLight);
 
-    const keyLight = new THREE.DirectionalLight('#FFF3E0', 2.2);
-    keyLight.position.set(3.2, 5.2, 3.8);
+    const keyLight = new THREE.DirectionalLight('#FFF3E0', 2.25);
+    keyLight.position.set(4.2, 6.2, 4.6);
     if (!isSoftwareGl) {
       keyLight.castShadow = true;
       keyLight.shadow.mapSize.set(1024, 1024);
       keyLight.shadow.camera.near = 1;
-      keyLight.shadow.camera.far = 14;
-      keyLight.shadow.camera.left = -2.4;
-      keyLight.shadow.camera.right = 2.4;
-      keyLight.shadow.camera.top = 3.0;
-      keyLight.shadow.camera.bottom = -1.2;
+      keyLight.shadow.camera.far = 18;
+      keyLight.shadow.camera.left = -3.8;
+      keyLight.shadow.camera.right = 3.8;
+      keyLight.shadow.camera.top = 3.8;
+      keyLight.shadow.camera.bottom = -2.2;
       keyLight.shadow.bias = -0.0005;
       keyLight.shadow.normalBias = 0.02;
     }
     scene.add(keyLight);
 
-    const rimLight = new THREE.DirectionalLight('#FF8524', 1.25);
-    rimLight.position.set(-3.4, 2.8, -3.2);
+    const rimLight = new THREE.DirectionalLight('#FF8524', 1.3);
+    rimLight.position.set(-4.2, 3.2, -3.8);
     scene.add(rimLight);
 
-    const coolFill = new THREE.DirectionalLight('#38BDF8', 0.65);
-    coolFill.position.set(-2.6, 1.9, 2.6);
+    const coolFill = new THREE.DirectionalLight('#38BDF8', 0.72);
+    coolFill.position.set(-3.0, 2.2, 3.2);
     scene.add(coolFill);
 
-    // Track local environment resources for clean disposal
     const envGeometries: THREE.BufferGeometry[] = [];
     const envMaterials: THREE.Material[] = [];
     const envTextures: THREE.Texture[] = [];
 
-    // --- Hangar Turntable Pedestal ---
+    // --- Expanded Hangar Turntable Apron (accommodates Pilot + Full 3D Aircraft) ---
     const pedestalGroup = new THREE.Group();
     const maxAniso = isSoftwareGl ? 1 : Math.min(8, renderer.capabilities.getMaxAnisotropy());
     const topDeckTex = createHangarPedestalTexture(maxAniso);
     envTextures.push(topDeckTex);
 
-    const baseCylGeo = new THREE.CylinderGeometry(1.18, 1.32, 0.16, 48);
+    const baseCylGeo = new THREE.CylinderGeometry(2.45, 2.68, 0.16, 64);
     const baseSideMat = new THREE.MeshStandardMaterial({
       color: '#132238',
       roughness: 0.42,
@@ -253,12 +288,11 @@ export function Pilot3DCanvas({
     pedestalMesh.receiveShadow = !isSoftwareGl;
     pedestalGroup.add(pedestalMesh);
 
-    // Glowing cockpit-orange rim ring around the turntable
-    const rimRingGeo = new THREE.TorusGeometry(1.19, 0.022, 12, 64);
+    const rimRingGeo = new THREE.TorusGeometry(2.46, 0.026, 12, 72);
     const rimRingMat = new THREE.MeshStandardMaterial({
       color: '#FF7E1F',
       emissive: '#FF6B00',
-      emissiveIntensity: 1.5,
+      emissiveIntensity: 1.45,
       roughness: 0.25,
       metalness: 0.5,
     });
@@ -266,11 +300,10 @@ export function Pilot3DCanvas({
     envMaterials.push(rimRingMat);
     const rimRing = new THREE.Mesh(rimRingGeo, rimRingMat);
     rimRing.rotation.x = Math.PI / 2;
-    rimRing.position.y = -0.005;
+    rimRing.position.y = -0.004;
     pedestalGroup.add(rimRing);
 
-    // Subtle secondary dark steel lower ring
-    const lowerStepGeo = new THREE.CylinderGeometry(1.42, 1.54, 0.08, 48);
+    const lowerStepGeo = new THREE.CylinderGeometry(2.78, 2.94, 0.08, 64);
     const lowerStepMat = new THREE.MeshStandardMaterial({
       color: '#0C1728',
       roughness: 0.55,
@@ -282,8 +315,7 @@ export function Pilot3DCanvas({
     lowerStep.position.y = -0.2;
     pedestalGroup.add(lowerStep);
 
-    // Hangar subtle floor plane fading smoothly into fog
-    const floorGeo = new THREE.CircleGeometry(14, 48);
+    const floorGeo = new THREE.CircleGeometry(18, 48);
     const floorMat = new THREE.MeshStandardMaterial({
       color: '#081324',
       roughness: 0.78,
@@ -297,28 +329,28 @@ export function Pilot3DCanvas({
     floor.receiveShadow = !isSoftwareGl;
     scene.add(floor);
 
-    // Grounded contact shadow directly beneath the pilot's boots
+    // Contact shadow for Pilot & secondary soft shadow pad
     const contactShadowTex = createContactShadowTexture();
     envTextures.push(contactShadowTex);
-    const contactGeo = new THREE.PlaneGeometry(1.1, 1.1);
+    const contactGeo = new THREE.PlaneGeometry(1.15, 1.15);
     const contactMat = new THREE.MeshBasicMaterial({
       map: contactShadowTex,
       transparent: true,
       depthWrite: false,
-      opacity: 0.85,
+      opacity: 0.8,
     });
     envGeometries.push(contactGeo);
     envMaterials.push(contactMat);
-    const contactShadow = new THREE.Mesh(contactGeo, contactMat);
-    contactShadow.rotation.x = -Math.PI / 2;
-    contactShadow.position.y = 0.003;
-    pedestalGroup.add(contactShadow);
+    const pilotShadow = new THREE.Mesh(contactGeo, contactMat);
+    pilotShadow.rotation.x = -Math.PI / 2;
+    pilotShadow.position.set(hasAircraftRef.current ? -0.95 : 0, 0.003, hasAircraftRef.current ? 0.68 : 0);
+    pedestalGroup.add(pilotShadow);
 
     scene.add(pedestalGroup);
 
     // --- Decorative Floating Knowledge Gems around Hangar Perimeter ---
     const gemOrbitGroup = new THREE.Group();
-    const gemGeo = new THREE.OctahedronGeometry(0.068, 0);
+    const gemGeo = new THREE.OctahedronGeometry(0.072, 0);
     const gemMatCyan = new THREE.MeshStandardMaterial({
       color: '#38BDF8',
       emissive: '#0284C7',
@@ -339,8 +371,8 @@ export function Pilot3DCanvas({
     const floatingGems: Array<{ mesh: THREE.Mesh; baseY: number; phase: number }> = [];
     for (let i = 0; i < 6; i++) {
       const angle = (i / 6) * Math.PI * 2;
-      const radius = 1.92 + (i % 2) * 0.28;
-      const baseY = 0.55 + (i % 3) * 0.42;
+      const radius = 3.05 + (i % 2) * 0.28;
+      const baseY = 0.65 + (i % 3) * 0.45;
       const mesh = new THREE.Mesh(gemGeo, i % 2 === 0 ? gemMatCyan : gemMatOrange);
       mesh.position.set(Math.cos(angle) * radius, baseY, Math.sin(angle) * radius);
       gemOrbitGroup.add(mesh);
@@ -350,16 +382,35 @@ export function Pilot3DCanvas({
 
     // --- Initial Pilot Avatar ---
     const initialRig = buildPilotAvatar(equipped, isSoftwareGl);
+    if (hasAircraftRef.current) {
+      initialRig.root.position.set(-0.95, 0, 0.68);
+      initialRig.root.rotation.y = 0.32;
+    }
     scene.add(initialRig.root);
     rigRef.current = initialRig;
-    equippedKeyRef.current = JSON.stringify(equipped);
+    pilotKeyRef.current = JSON.stringify({
+      helmet: equipped.helmet,
+      goggles: equipped.goggles,
+      suit: equipped.suit,
+      scarf: equipped.scarf,
+      backpack: equipped.backpack,
+      companion: equipped.companion,
+    });
 
-    // Pre-compile shaders only on hardware GPU
+    // --- Initial Aircraft ---
+    const initialAircraft = buildPilotAircraft(equipped.aircraft, isSoftwareGl);
+    if (initialAircraft) {
+      initialAircraft.root.position.set(0.58, initialAircraft.baseY, -0.68);
+      initialAircraft.root.rotation.y = -0.52;
+      scene.add(initialAircraft.root);
+      aircraftRigRef.current = initialAircraft;
+    }
+    aircraftKeyRef.current = equipped.aircraft || 'aircraft_none';
+
     if (!isSoftwareGl) {
       renderer.compile(scene, camera);
     }
 
-    // ResizeObserver for crisp layout transitions
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const w = Math.max(Math.floor(entry.contentRect.width), 240);
@@ -371,13 +422,11 @@ export function Pilot3DCanvas({
     });
     resizeObserver.observe(container);
 
-    // WebGL context lost / restored handling
     const handleContextLost = (e: Event) => {
       e.preventDefault();
     };
     renderer.domElement.addEventListener('webglcontextlost', handleContextLost);
 
-    // Animation loop with software WebGL pacing (`afterDraw`)
     let disposed = false;
     let rafId = 0;
     let timerId = 0;
@@ -419,48 +468,17 @@ export function Pilot3DCanvas({
       lastTime = now;
       elapsed += dt;
 
-      // Sync autoRotate toggle cleanly
       controls.autoRotate = autoRotateRef.current && desiredCamPosRef.current === null;
 
       // Damped camera preset transitions
       if (desiredCamPosRef.current && desiredTargetRef.current) {
-        const lambda = 6.5;
-        camera.position.x = THREE.MathUtils.damp(
-          camera.position.x,
-          desiredCamPosRef.current.x,
-          lambda,
-          dt
-        );
-        camera.position.y = THREE.MathUtils.damp(
-          camera.position.y,
-          desiredCamPosRef.current.y,
-          lambda,
-          dt
-        );
-        camera.position.z = THREE.MathUtils.damp(
-          camera.position.z,
-          desiredCamPosRef.current.z,
-          lambda,
-          dt
-        );
-        controls.target.x = THREE.MathUtils.damp(
-          controls.target.x,
-          desiredTargetRef.current.x,
-          lambda,
-          dt
-        );
-        controls.target.y = THREE.MathUtils.damp(
-          controls.target.y,
-          desiredTargetRef.current.y,
-          lambda,
-          dt
-        );
-        controls.target.z = THREE.MathUtils.damp(
-          controls.target.z,
-          desiredTargetRef.current.z,
-          lambda,
-          dt
-        );
+        const lambda = 6.2;
+        camera.position.x = THREE.MathUtils.damp(camera.position.x, desiredCamPosRef.current.x, lambda, dt);
+        camera.position.y = THREE.MathUtils.damp(camera.position.y, desiredCamPosRef.current.y, lambda, dt);
+        camera.position.z = THREE.MathUtils.damp(camera.position.z, desiredCamPosRef.current.z, lambda, dt);
+        controls.target.x = THREE.MathUtils.damp(controls.target.x, desiredTargetRef.current.x, lambda, dt);
+        controls.target.y = THREE.MathUtils.damp(controls.target.y, desiredTargetRef.current.y, lambda, dt);
+        controls.target.z = THREE.MathUtils.damp(controls.target.z, desiredTargetRef.current.z, lambda, dt);
 
         if (
           camera.position.distanceTo(desiredCamPosRef.current) < 0.015 &&
@@ -471,9 +489,19 @@ export function Pilot3DCanvas({
         }
       }
 
-      // Animate Pilot Avatar
+      // Smoothly position Pilot & contact shadow depending on whether an aircraft is deployed
+      const targetPilotX = hasAircraftRef.current ? -0.95 : 0;
+      const targetPilotZ = hasAircraftRef.current ? 0.68 : 0;
+      const targetPilotRot = hasAircraftRef.current ? 0.32 : 0;
+
       const rig = rigRef.current;
       if (rig) {
+        rig.root.position.x = THREE.MathUtils.damp(rig.root.position.x, targetPilotX, 6.5, dt);
+        rig.root.position.z = THREE.MathUtils.damp(rig.root.position.z, targetPilotZ, 6.5, dt);
+        rig.root.rotation.y = THREE.MathUtils.damp(rig.root.rotation.y, targetPilotRot, 6.5, dt);
+        pilotShadow.position.x = rig.root.position.x;
+        pilotShadow.position.z = rig.root.position.z;
+
         const breath = Math.sin(elapsed * 2.2);
         let bounceY = 0;
         let celebrateWave = 0;
@@ -490,31 +518,11 @@ export function Pilot3DCanvas({
         rig.headGroup.rotation.x = Math.sin(elapsed * 1.4) * 0.035;
 
         if (celebrateTimerRef.current > 0) {
-          rig.rightArm.rotation.z = THREE.MathUtils.damp(
-            rig.rightArm.rotation.z,
-            2.45 + celebrateWave,
-            10,
-            dt
-          );
-          rig.leftArm.rotation.z = THREE.MathUtils.damp(
-            rig.leftArm.rotation.z,
-            -0.38,
-            8,
-            dt
-          );
+          rig.rightArm.rotation.z = THREE.MathUtils.damp(rig.rightArm.rotation.z, 2.45 + celebrateWave, 10, dt);
+          rig.leftArm.rotation.z = THREE.MathUtils.damp(rig.leftArm.rotation.z, -0.38, 8, dt);
         } else {
-          rig.rightArm.rotation.z = THREE.MathUtils.damp(
-            rig.rightArm.rotation.z,
-            0.14 + Math.sin(elapsed * 2.0) * 0.04,
-            6,
-            dt
-          );
-          rig.leftArm.rotation.z = THREE.MathUtils.damp(
-            rig.leftArm.rotation.z,
-            -0.14 - Math.sin(elapsed * 2.0) * 0.04,
-            6,
-            dt
-          );
+          rig.rightArm.rotation.z = THREE.MathUtils.damp(rig.rightArm.rotation.z, 0.14 + Math.sin(elapsed * 2.0) * 0.04, 6, dt);
+          rig.leftArm.rotation.z = THREE.MathUtils.damp(rig.leftArm.rotation.z, -0.14 - Math.sin(elapsed * 2.0) * 0.04, 6, dt);
         }
 
         if (rig.scarfTail) {
@@ -543,8 +551,40 @@ export function Pilot3DCanvas({
         }
       }
 
-      // Gently orbit perimeter knowledge gems
-      gemOrbitGroup.rotation.y = elapsed * 0.16;
+      // Animate Deployed 3D Aircraft
+      const craft = aircraftRigRef.current;
+      if (craft) {
+        if (craft.isHovering) {
+          craft.root.position.y = craft.baseY + Math.sin(elapsed * 1.9) * 0.08;
+          craft.bodyGroup.rotation.z = Math.sin(elapsed * 1.1) * 0.03;
+          craft.bodyGroup.rotation.x = Math.cos(elapsed * 1.3) * 0.02;
+        }
+        if (craft.mainRotor) {
+          craft.mainRotor.rotation.y = elapsed * 14.5;
+        }
+        if (craft.tailRotor) {
+          craft.tailRotor.rotation.x = elapsed * 22;
+        }
+        if (craft.propeller) {
+          craft.propeller.rotation.z = elapsed * 20;
+        }
+        if (craft.energyRing) {
+          craft.energyRing.rotation.z = elapsed * 2.4;
+          craft.energyRing.rotation.x = Math.sin(elapsed * 1.5) * 0.16;
+        }
+        for (let i = 0; i < craft.afterburners.length; i++) {
+          const flame = craft.afterburners[i];
+          const pulse = 0.84 + Math.sin(elapsed * 22 + i * 1.7) * 0.24;
+          flame.scale.set(1, pulse, 1);
+        }
+        const navBlink = Math.sin(elapsed * 5.2) > 0.2 ? 2.4 : 0.45;
+        for (const mat of craft.navLights) {
+          mat.emissiveIntensity = navBlink;
+        }
+      }
+
+      // Orbit perimeter knowledge gems
+      gemOrbitGroup.rotation.y = elapsed * 0.14;
       for (const item of floatingGems) {
         item.mesh.position.y = item.baseY + Math.sin(elapsed * 1.8 + item.phase) * 0.09;
         item.mesh.rotation.y = elapsed * 1.4 + item.phase;
@@ -581,6 +621,11 @@ export function Pilot3DCanvas({
         rigRef.current.dispose();
         rigRef.current = null;
       }
+      if (aircraftRigRef.current) {
+        scene.remove(aircraftRigRef.current.root);
+        aircraftRigRef.current.dispose();
+        aircraftRigRef.current = null;
+      }
 
       for (const g of envGeometries) g.dispose();
       for (const m of envMaterials) m.dispose();
@@ -598,14 +643,23 @@ export function Pilot3DCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Hot-swap 3D pilot rig when equipped gear changes (without tearing down WebGLRenderer)
+  // Hot-swap 3D pilot rig when personal gear changes
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    const nextKey = JSON.stringify(equipped);
-    if (nextKey === equippedKeyRef.current) return;
-    equippedKeyRef.current = nextKey;
+    const nextKey = JSON.stringify({
+      helmet: equipped.helmet,
+      goggles: equipped.goggles,
+      suit: equipped.suit,
+      scarf: equipped.scarf,
+      backpack: equipped.backpack,
+      companion: equipped.companion,
+    });
+    if (nextKey === pilotKeyRef.current) return;
+    pilotKeyRef.current = nextKey;
 
+    const prevPos = rigRef.current?.root.position.clone();
+    const prevRotY = rigRef.current?.root.rotation.y ?? 0;
     if (rigRef.current) {
       scene.remove(rigRef.current.root);
       rigRef.current.dispose();
@@ -613,10 +667,51 @@ export function Pilot3DCanvas({
     }
 
     const nextRig = buildPilotAvatar(equipped, isSoftRef.current);
+    if (prevPos) {
+      nextRig.root.position.copy(prevPos);
+      nextRig.root.rotation.y = prevRotY;
+    }
     scene.add(nextRig.root);
     rigRef.current = nextRig;
     celebrateTimerRef.current = 1.15;
-  }, [equipped]);
+  }, [
+    equipped.helmet,
+    equipped.goggles,
+    equipped.suit,
+    equipped.scarf,
+    equipped.backpack,
+    equipped.companion,
+    equipped,
+  ]);
+
+  // Hot-swap 3D Aircraft when equipped or previewed aircraft changes
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const nextCraftId = equipped.aircraft || 'aircraft_none';
+    if (nextCraftId === aircraftKeyRef.current) return;
+    aircraftKeyRef.current = nextCraftId;
+
+    if (aircraftRigRef.current) {
+      scene.remove(aircraftRigRef.current.root);
+      aircraftRigRef.current.dispose();
+      aircraftRigRef.current = null;
+    }
+
+    const nextCraft = buildPilotAircraft(nextCraftId, isSoftRef.current);
+    if (nextCraft) {
+      nextCraft.root.position.set(0.58, nextCraft.baseY, -0.68);
+      nextCraft.root.rotation.y = -0.52;
+      scene.add(nextCraft.root);
+      aircraftRigRef.current = nextCraft;
+      celebrateTimerRef.current = 1.25;
+      // Smoothly frame the hangar fleet when an aircraft enters the bay
+      applyCameraPreset(activePreset === 'head' ? 'full' : activePreset, true);
+    } else {
+      applyCameraPreset('full', false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equipped.aircraft]);
 
   if (webglError) {
     return (
@@ -636,8 +731,8 @@ export function Pilot3DCanvas({
     <div
       className={`relative overflow-hidden rounded-2xl bg-[#07111F] border border-slate-800 select-none ${className}`}
     >
-      {/* Dedicated isolated WebGL canvas mount — never shares children with React overlays */}
-      <div ref={mountRef} className="w-full h-full min-h-[400px]" />
+      {/* Dedicated isolated WebGL canvas mount */}
+      <div ref={mountRef} className="w-full h-full min-h-[420px]" />
 
       {/* Top minimal unboxed preview notice (solid dark surface, zero backdrop-filter) */}
       {previewBadgeText && (
@@ -659,7 +754,7 @@ export function Pilot3DCanvas({
           <div className="flex items-center justify-between gap-2 px-3 py-1.5">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
               <Camera className="w-3.5 h-3.5 text-[#FF8524]" />
-              <span>Góc nhìn 3D</span>
+              <span>Góc nhìn Hangar 3D</span>
               <span className="hidden sm:inline text-slate-500">· Kéo xoay / Cuộn thu phóng</span>
             </div>
             <button
@@ -680,7 +775,7 @@ export function Pilot3DCanvas({
 
           {dockExpanded && (
             <div className="flex flex-wrap items-center justify-center gap-1.5 px-2.5 pb-2.5 pt-1 border-t border-slate-800">
-              {CAMERA_PRESETS.map((preset) => {
+              {CAMERA_PRESETS.filter((p) => (p.id === 'aircraft' ? hasAircraft : true)).map((preset) => {
                 const isSelected = activePreset === preset.id;
                 return (
                   <button

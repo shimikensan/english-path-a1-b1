@@ -26,6 +26,7 @@ import {
   DEFAULT_EQUIPPED_GEAR,
   DEFAULT_HANGAR_STATE,
   DEFAULT_OWNED_ITEMS,
+  estimateLeaderboardGems,
   PILOT_GEAR_CATALOG,
   type PilotHangarState,
 } from '../data/pilotGearCatalog';
@@ -1097,6 +1098,7 @@ export async function syncUserLeaderboardEntry(entry: {
   learnedVocabCount: number;
   averageQuizScore: number;
   streakDays: number;
+  gemsEarned?: number;
   totalAccessSeconds?: number;
   firstLoginAt?: Timestamp | Date;
   isPublic?: boolean;
@@ -1116,6 +1118,10 @@ export async function syncUserLeaderboardEntry(entry: {
     0,
     Math.min(315360000, Math.floor(entry.totalAccessSeconds ?? 0))
   );
+  const safeGemsEarned = Math.max(
+    0,
+    Math.min(10000000, Math.floor(entry.gemsEarned ?? 0))
+  );
   const candidateFirstLogin = toSafePastFirestoreTimestamp(entry.firstLoginAt);
 
   const baseMutableFields = {
@@ -1127,6 +1133,7 @@ export async function syncUserLeaderboardEntry(entry: {
     learnedVocabCount: Math.max(0, Math.min(5000, Math.round(entry.learnedVocabCount))),
     averageQuizScore: Math.max(0, Math.min(100, Math.round(entry.averageQuizScore))),
     streakDays: Math.max(0, Math.min(10000, Math.round(entry.streakDays))),
+    gemsEarned: safeGemsEarned,
     isPublic: entry.isPublic ?? true,
     updatedAt: serverTimestamp(),
   };
@@ -1292,6 +1299,19 @@ export async function adminSyncAllUsersLeaderboard(
         toSafePastFirestoreTimestamp(existingEntry?.firstLoginAt) ??
         toSafePastFirestoreTimestamp(user.createdAt);
 
+      const estimatedGems = estimateLeaderboardGems({
+        completedLessons,
+        learnedVocabCount,
+        averageQuizScore,
+        streakDays: safeStreak,
+        totalAccessSeconds,
+      });
+      const existingGems =
+        typeof existingEntry?.gemsEarned === 'number' && Number.isFinite(existingEntry.gemsEarned)
+          ? Math.max(0, Math.floor(existingEntry.gemsEarned))
+          : 0;
+      const gemsEarned = Math.min(10000000, Math.max(existingGems, estimatedGems));
+
       const payload: Record<string, unknown> = {
         displayName: safeName,
         currentLevel: safeLevel,
@@ -1302,6 +1322,7 @@ export async function adminSyncAllUsersLeaderboard(
         averageQuizScore,
         streakDays: safeStreak,
         totalAccessSeconds,
+        gemsEarned,
         isPublic: true,
         updatedAt: serverTimestamp(),
       };
@@ -1328,6 +1349,7 @@ export async function adminSyncAllUsersLeaderboard(
         existing.averageQuizScore !== next.averageQuizScore ||
         existing.streakDays !== next.streakDays ||
         (existing.totalAccessSeconds ?? 0) !== (next.totalAccessSeconds as number) ||
+        (existing.gemsEarned ?? -1) !== (next.gemsEarned as number) ||
         (existingFirstMs === null && nextFirstMs !== null) ||
         existing.isPublic !== true
       );
@@ -2298,7 +2320,7 @@ function normalizeHangarState(raw?: Partial<PilotHangarDoc> | null): PilotHangar
   };
 
   return {
-    ownedItemIds: Array.from(ownedSet).slice(0, 40),
+    ownedItemIds: Array.from(ownedSet).slice(0, 60),
     equipped: {
       helmet: pickValidSlot(raw.equipped?.helmet, DEFAULT_EQUIPPED_GEAR.helmet),
       goggles: pickValidSlot(raw.equipped?.goggles, DEFAULT_EQUIPPED_GEAR.goggles),
@@ -2306,6 +2328,7 @@ function normalizeHangarState(raw?: Partial<PilotHangarDoc> | null): PilotHangar
       scarf: pickValidSlot(raw.equipped?.scarf, DEFAULT_EQUIPPED_GEAR.scarf),
       backpack: pickValidSlot(raw.equipped?.backpack, DEFAULT_EQUIPPED_GEAR.backpack),
       companion: pickValidSlot(raw.equipped?.companion, DEFAULT_EQUIPPED_GEAR.companion),
+      aircraft: pickValidSlot(raw.equipped?.aircraft, DEFAULT_EQUIPPED_GEAR.aircraft),
     },
     spentGems: Math.max(0, Math.min(1000000, Math.floor(Number(raw.spentGems ?? 0) || 0))),
     bonusGems: Math.max(0, Math.min(1000000, Math.floor(Number(raw.bonusGems ?? 0) || 0))),
