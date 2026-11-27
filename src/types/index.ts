@@ -526,6 +526,7 @@ export interface ToeicGroupChallengeDoc {
   participants: Record<string, ToeicChallengeParticipant>;
   isQuickChallenge?: boolean;
   invitedUids?: string[];
+  declinedUids?: string[];
   startedAtMs: number;
   createdAt?: Timestamp | Date;
   updatedAt?: Timestamp | Date;

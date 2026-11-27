@@ -527,6 +527,31 @@ export function subscribeGroupChallenges(
   );
 }
 
+export function subscribeActiveGroupChallenges(
+  groupId: string,
+  onUpdate: (challenges: ToeicGroupChallengeDoc[]) => void,
+  onError?: (err: unknown) => void
+): Unsubscribe {
+  const path = `toeic_groups/${groupId}/challenges`;
+  const q = query(
+    collection(db, 'toeic_groups', groupId, 'challenges'),
+    where('status', 'in', ['waiting', 'active'])
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items = snap.docs
+        .map((d) => d.data() as ToeicGroupChallengeDoc)
+        .sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt));
+      onUpdate(items);
+    },
+    (error) => {
+      if (onError) onError(error);
+      else handleFirestoreError(error, OperationType.LIST, path);
+    }
+  );
+}
+
 export async function createGroupChallenge(params: {
   groupId: string;
   title: string;
@@ -630,10 +655,45 @@ export async function joinGroupChallenge(
     finishedAtMs: 0,
   };
 
+  const updates: Record<string, unknown> = {
+    participantUids: [...challenge.participantUids, user.uid],
+    [`participants.${user.uid}`]: entry,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (challenge.declinedUids?.includes(user.uid)) {
+    updates.declinedUids = challenge.declinedUids.filter((id) => id !== user.uid);
+  }
+
+  try {
+    await updateDoc(doc(db, 'toeic_groups', groupId, 'challenges', challenge.challengeId), updates);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function declineGroupChallenge(
+  groupId: string,
+  challenge: ToeicGroupChallengeDoc,
+  uid: string
+): Promise<void> {
+  if (
+    challenge.status === 'finished' ||
+    challenge.hostUid === uid ||
+    challenge.participantUids.includes(uid)
+  ) {
+    return;
+  }
+
+  const existingDeclined = Array.isArray(challenge.declinedUids) ? challenge.declinedUids : [];
+  if (existingDeclined.includes(uid)) return;
+
+  const path = `toeic_groups/${groupId}/challenges/${challenge.challengeId}`;
+  const nextDeclined = [...existingDeclined, uid].slice(0, 12);
+
   try {
     await updateDoc(doc(db, 'toeic_groups', groupId, 'challenges', challenge.challengeId), {
-      participantUids: [...challenge.participantUids, user.uid],
-      [`participants.${user.uid}`]: entry,
+      declinedUids: nextDeclined,
       updatedAt: serverTimestamp(),
     });
   } catch (error) {

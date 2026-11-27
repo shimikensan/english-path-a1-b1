@@ -45,6 +45,7 @@ import {
 import {
   createGroupChallenge,
   createToeicGroup,
+  declineGroupChallenge,
   deleteGroupChallenge,
   deleteGroupVocab,
   deleteToeicGroup,
@@ -85,9 +86,12 @@ import {
   ToeicGroupBadgeEmblem,
 } from './ToeicGroupBadgeEmblem';
 
+import type { ToeicChallengeNavTarget } from './ToeicQuickChallengeNotifier';
+
 interface ToeicStudyGroupsPanelProps {
   accent: SpeechAccent;
   toeicLessons: LessonDoc[];
+  initialGroupTarget?: ToeicChallengeNavTarget | null;
 }
 
 type GroupSubTab = 'vocab' | 'challenges' | 'members';
@@ -122,6 +126,7 @@ function rankParticipants(challenge: ToeicGroupChallengeDoc): ToeicChallengePart
 export function ToeicStudyGroupsPanel({
   accent,
   toeicLessons,
+  initialGroupTarget,
 }: ToeicStudyGroupsPanelProps) {
   const {
     firebaseUser: user,
@@ -138,9 +143,13 @@ export function ToeicStudyGroupsPanel({
   const [myGroups, setMyGroups] = useState<ToeicGroupDoc[]>([]);
   const [publicGroups, setPublicGroups] = useState<ToeicGroupDoc[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(true);
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(
+    () => initialGroupTarget?.groupId ?? null
+  );
   const [activeGroup, setActiveGroup] = useState<ToeicGroupDoc | null>(null);
-  const [groupSubTab, setGroupSubTab] = useState<GroupSubTab>('vocab');
+  const [groupSubTab, setGroupSubTab] = useState<GroupSubTab>(() =>
+    initialGroupTarget?.challengeId ? 'challenges' : 'vocab'
+  );
 
   // Create group form
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -188,7 +197,20 @@ export function ToeicStudyGroupsPanel({
 
   // Active group challenges
   const [challenges, setChallenges] = useState<ToeicGroupChallengeDoc[]>([]);
-  const [selectedChallengeId, setSelectedChallengeId] = useState<string | null>(null);
+  const [selectedChallengeId, setSelectedChallengeId] = useState<string | null>(
+    () => initialGroupTarget?.challengeId ?? null
+  );
+  const lastHandledTargetNonceRef = useRef<number>(initialGroupTarget?.nonce ?? 0);
+
+  // Open target group & challenge room immediately when user accepts a global real-time invite
+  useEffect(() => {
+    if (!initialGroupTarget) return;
+    if (initialGroupTarget.nonce === lastHandledTargetNonceRef.current) return;
+    lastHandledTargetNonceRef.current = initialGroupTarget.nonce;
+    setActiveGroupId(initialGroupTarget.groupId);
+    setGroupSubTab('challenges');
+    setSelectedChallengeId(initialGroupTarget.challengeId);
+  }, [initialGroupTarget]);
   const [showChallengeForm, setShowChallengeForm] = useState(false);
   const [challengeTitle, setChallengeTitle] = useState('Thách đấu TOEIC tốc độ');
   const [challengeScope, setChallengeScope] = useState<string>('all_vocab');
@@ -801,6 +823,19 @@ export function ToeicStudyGroupsPanel({
     }
   };
 
+  const handleDeclineQuickInvite = async (challenge: ToeicGroupChallengeDoc) => {
+    if (!activeGroup || !userProfile) return;
+    setBusyChallengeAction(true);
+    try {
+      await declineGroupChallenge(activeGroup.groupId, challenge, userProfile.uid);
+      addToast('info', `Đã từ chối lời mời thách đấu từ ${challenge.hostName}.`);
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Không thể từ chối lời mời lúc này.');
+    } finally {
+      setBusyChallengeAction(false);
+    }
+  };
+
   const handleCreateChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeGroup || !userProfile) return;
@@ -941,6 +976,7 @@ export function ToeicStudyGroupsPanel({
       (c) =>
         c.status !== 'finished' &&
         !c.participantUids.includes(user.uid) &&
+        !(c.declinedUids ?? []).includes(user.uid) &&
         c.challengeId !== selectedChallengeId &&
         (Boolean(c.invitedUids?.includes(user.uid)) ||
           (Boolean(c.isQuickChallenge) && c.hostUid !== user.uid))
@@ -1154,6 +1190,15 @@ export function ToeicStudyGroupsPanel({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={busyChallengeAction}
+                    onClick={() => void handleDeclineQuickInvite(invite)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-300 disabled:opacity-60 text-xs sm:text-sm font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    <span>Từ chối</span>
+                  </button>
                   <button
                     type="button"
                     disabled={busyChallengeAction}
@@ -2299,20 +2344,39 @@ export function ToeicStudyGroupsPanel({
                             .filter((uid) => !selectedChallenge.participantUids.includes(uid))
                             .map((uid) => {
                               const invitedMember = activeGroup.members[uid];
+                              const hasDeclined = Boolean(
+                                selectedChallenge.declinedUids?.includes(uid)
+                              );
                               return (
                                 <div
                                   key={`inv_${uid}`}
-                                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-dashed border-amber-300/80 dark:border-amber-700/70 bg-amber-50/40 dark:bg-amber-950/15"
+                                  className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-dashed ${
+                                    hasDeclined
+                                      ? 'border-rose-300/70 dark:border-rose-800/60 bg-rose-50/40 dark:bg-rose-950/15'
+                                      : 'border-amber-300/80 dark:border-amber-700/70 bg-amber-50/40 dark:bg-amber-950/15'
+                                  }`}
                                 >
                                   <div className="min-w-0">
                                     <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
                                       {invitedMember?.displayName || 'Thành viên nhóm'}
                                     </div>
-                                    <div className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
-                                      Đã gửi lời mời · Đang chờ tham gia
+                                    <div
+                                      className={`text-[11px] font-medium ${
+                                        hasDeclined
+                                          ? 'text-rose-600 dark:text-rose-400'
+                                          : 'text-amber-700 dark:text-amber-400'
+                                      }`}
+                                    >
+                                      {hasDeclined
+                                        ? 'Đã từ chối lời mời'
+                                        : 'Đã gửi lời mời · Đang chờ phản hồi'}
                                     </div>
                                   </div>
-                                  <BellRing className="w-4 h-4 text-amber-500 shrink-0" />
+                                  {hasDeclined ? (
+                                    <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                                  ) : (
+                                    <BellRing className="w-4 h-4 text-amber-500 shrink-0" />
+                                  )}
                                 </div>
                               );
                             })}

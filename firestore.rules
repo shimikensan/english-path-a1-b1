@@ -547,7 +547,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'challengeId', 'groupId', 'title', 'scopeLabel', 'hostUid', 'hostName',
           'status', 'questionCount', 'timeLimitSeconds', 'questions',
-          'participantUids', 'participants', 'isQuickChallenge', 'invitedUids',
+          'participantUids', 'participants', 'isQuickChallenge', 'invitedUids', 'declinedUids',
           'startedAtMs', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.challengeId)
@@ -570,6 +570,11 @@ service cloud.firestore {
           data.invitedUids is list
           && data.invitedUids.size() <= 12
           && (data.invitedUids.size() == 0 || data.invitedUids[0] is string)
+        ))
+        && (!('declinedUids' in data) || (
+          data.declinedUids is list
+          && data.declinedUids.size() <= 12
+          && (data.declinedUids.size() == 0 || data.declinedUids[0] is string)
         ))
         && data.startedAtMs is number && data.startedAtMs >= 0
         && data.createdAt is timestamp
@@ -1173,6 +1178,7 @@ service cloud.firestore {
           && incoming().participantUids.size() == 1
           && request.auth.uid in incoming().participantUids
           && incoming().participants.keys().hasOnly([request.auth.uid])
+          && (!('declinedUids' in incoming()) || incoming().declinedUids.size() == 0)
           && incoming().createdAt == request.time
           && incoming().updatedAt == request.time
           && isToeicGroupMember(groupId);
@@ -1192,7 +1198,7 @@ service cloud.firestore {
           && incoming().updatedAt == request.time
           && (
             isAdmin()
-            // Action 1: Group member joins waiting or active challenge (adds only self)
+            // Action 1: Group member joins waiting or active challenge (adds only self, optionally clears own decline)
             || (
               existing().status != 'finished'
               && isToeicGroupMember(groupId)
@@ -1202,7 +1208,17 @@ service cloud.firestore {
               && incoming().participantUids.hasAll(existing().participantUids)
               && incoming().participants.diff(existing().participants).affectedKeys().hasOnly([request.auth.uid])
               && request.auth.uid in incoming().participants
-              && incoming().diff(existing()).affectedKeys().hasOnly(['participantUids', 'participants', 'updatedAt'])
+              && (
+                incoming().diff(existing()).affectedKeys().hasOnly(['participantUids', 'participants', 'updatedAt'])
+                || (
+                  incoming().diff(existing()).affectedKeys().hasOnly(['participantUids', 'participants', 'declinedUids', 'updatedAt'])
+                  && 'declinedUids' in existing()
+                  && request.auth.uid in existing().declinedUids
+                  && !(request.auth.uid in incoming().declinedUids)
+                  && incoming().declinedUids.size() == existing().declinedUids.size() - 1
+                  && existing().declinedUids.hasAll(incoming().declinedUids)
+                )
+              )
             )
             // Action 2: Host starts the live quiz battle (waiting -> active)
             || (
@@ -1236,6 +1252,27 @@ service cloud.firestore {
                 || incoming().participants.diff(existing().participants).affectedKeys().hasOnly([request.auth.uid])
               )
               && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'participants', 'updatedAt'])
+            )
+            // Action 5: Invited group member declines waiting or active challenge (adds only self to declinedUids)
+            || (
+              existing().status != 'finished'
+              && isToeicGroupMember(groupId)
+              && existing().hostUid != request.auth.uid
+              && !(request.auth.uid in existing().participantUids)
+              && request.auth.uid in incoming().declinedUids
+              && (
+                (
+                  !('declinedUids' in existing())
+                  && incoming().declinedUids.size() == 1
+                )
+                || (
+                  'declinedUids' in existing()
+                  && !(request.auth.uid in existing().declinedUids)
+                  && incoming().declinedUids.size() == existing().declinedUids.size() + 1
+                  && incoming().declinedUids.hasAll(existing().declinedUids)
+                )
+              )
+              && incoming().diff(existing()).affectedKeys().hasOnly(['declinedUids', 'updatedAt'])
             )
           );
         allow delete: if isValidId(groupId) && isValidId(challengeId) && (

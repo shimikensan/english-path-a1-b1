@@ -231,3 +231,32 @@ export function playCockpitToggleBeep(): void {
     },
   ]);
 }
+
+/**
+ * Crisp 3-pulse cockpit radar alert played when a real-time TOEIC Quick Challenge invite arrives.
+ */
+export function playChallengeInviteChime(): void {
+  playSequence([
+    {
+      startFreq: 783.99, // G5
+      delaySec: 0,
+      durationSec: 0.075,
+      gain: 0.06,
+      type: 'sine',
+    },
+    {
+      startFreq: 1046.5, // C6
+      delaySec: 0.09,
+      durationSec: 0.075,
+      gain: 0.065,
+      type: 'sine',
+    },
+    {
+      startFreq: 1567.98, // G6
+      delaySec: 0.18,
+      durationSec: 0.14,
+      gain: 0.07,
+      type: 'triangle',
+    },
+  ]);
+}

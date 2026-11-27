@@ -13,6 +13,10 @@ import { Layout } from './components/Layout';
 import { LeaderboardPanel } from './components/LeaderboardPanel';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ToastContainer } from './components/ToastContainer';
+import {
+  ToeicQuickChallengeNotifier,
+  type ToeicChallengeNavTarget,
+} from './components/ToeicQuickChallengeNotifier';
 import { TooltipDictionary } from './components/TooltipDictionary';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -96,6 +100,9 @@ function AppShell() {
   const [initialLessonTab, setInitialLessonTab] = useState<LessonTab>('vocabulary');
   const [focusMode, setFocusMode] = useState<boolean>(false);
   const [showOfflineVocabModal, setShowOfflineVocabModal] = useState<boolean>(false);
+  const [pendingToeicTarget, setPendingToeicTarget] = useState<ToeicChallengeNavTarget | null>(
+    null
+  );
   const preFocusRouteRef = useRef<AppRoute>('dashboard');
 
   // Resolve the learner's current active lesson for instant Focus Mode launch
@@ -438,7 +445,10 @@ function AppShell() {
               <SpecializedHubPage onOpenLesson={(id, tab) => handleOpenLesson(id, tab ?? 'vocabulary')} />
             )}
             {route === 'toeic' && (
-              <ToeicHubPage onOpenLesson={(id, tab) => handleOpenLesson(id, tab ?? 'vocabulary')} />
+              <ToeicHubPage
+                onOpenLesson={(id, tab) => handleOpenLesson(id, tab ?? 'vocabulary')}
+                initialGroupTarget={pendingToeicTarget}
+              />
             )}
             {route === 'ai-tutor' && <AITutorPage />}
             {route === 'english-club' && <EnglishClubPage onNavigate={handleNavigate} />}
@@ -493,6 +503,12 @@ function AppShell() {
       </Layout>
       <DailyChallengesCelebration />
       <GemLeaderboardFlight onOpenLeaderboard={() => handleNavigate('leaderboard')} />
+      <ToeicQuickChallengeNotifier
+        onAcceptChallenge={(groupId, challengeId) => {
+          setPendingToeicTarget({ groupId, challengeId, nonce: Date.now() });
+          handleNavigate('toeic');
+        }}
+      />
       <OfflineIndicator
         showSavedShortcut={route !== 'saved'}
         onOpenSavedWords={() => handleNavigate('saved')}

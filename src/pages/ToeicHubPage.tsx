@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   Award,
@@ -22,6 +22,7 @@ import {
   Volume2,
   XCircle,
 } from 'lucide-react';
+import type { ToeicChallengeNavTarget } from '../components/ToeicQuickChallengeNotifier';
 import { ToeicStudyGroupsPanel } from '../components/ToeicStudyGroupsPanel';
 import { useApp } from '../context/AppContext';
 import {
@@ -40,6 +41,7 @@ import { speakEnglish, type SpeechAccent } from '../utils/speech';
 
 interface ToeicHubPageProps {
   onOpenLesson: (lessonId: string, tab?: LessonTab) => void;
+  initialGroupTarget?: ToeicChallengeNavTarget | null;
 }
 
 type ToeicWorkspaceTab = 'topics' | 'word_family' | 'part5' | 'listening' | 'groups';
@@ -59,7 +61,7 @@ interface ListeningQuestion {
 
 const CATEGORY_MAP = new Map(TOEIC_CATEGORIES.map((c) => [c.id, c]));
 
-export function ToeicHubPage({ onOpenLesson }: ToeicHubPageProps) {
+export function ToeicHubPage({ onOpenLesson, initialGroupTarget }: ToeicHubPageProps) {
   const {
     lessons,
     progressMap,
@@ -71,7 +73,15 @@ export function ToeicHubPage({ onOpenLesson }: ToeicHubPageProps) {
     addToast,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<ToeicWorkspaceTab>('topics');
+  const [activeTab, setActiveTab] = useState<ToeicWorkspaceTab>(() =>
+    initialGroupTarget ? 'groups' : 'topics'
+  );
+
+  useEffect(() => {
+    if (initialGroupTarget?.groupId) {
+      setActiveTab('groups');
+    }
+  }, [initialGroupTarget?.nonce, initialGroupTarget?.groupId]);
   const [accent, setAccent] = useState<SpeechAccent>('en-US');
   const [selectedCategory, setSelectedCategory] = useState<'all' | ToeicCategoryId>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'todo' | 'done'>('all');
@@ -1353,7 +1363,11 @@ export function ToeicHubPage({ onOpenLesson }: ToeicHubPageProps) {
       {/* TAB 5: NHÓM HỌC TOEIC (CHIA SẺ TỪ VỰNG & THÁCH ĐẤU REAL-TIME)     */}
       {/* ================================================================= */}
       {activeTab === 'groups' && (
-        <ToeicStudyGroupsPanel accent={accent} toeicLessons={toeicLessons} />
+        <ToeicStudyGroupsPanel
+          accent={accent}
+          toeicLessons={toeicLessons}
+          initialGroupTarget={initialGroupTarget}
+        />
       )}
     </div>
   );

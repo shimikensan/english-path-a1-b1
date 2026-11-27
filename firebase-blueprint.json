@@ -1291,6 +1291,10 @@
           "type": "array",
           "description": "Bounded list of up to 12 group member UIDs explicitly invited to this challenge."
         },
+        "declinedUids": {
+          "type": "array",
+          "description": "Bounded list of up to 12 group member UIDs who explicitly declined this challenge invitation."
+        },
         "startedAtMs": {
           "type": "number"
         },

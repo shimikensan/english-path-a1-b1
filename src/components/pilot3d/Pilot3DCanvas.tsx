@@ -37,8 +37,8 @@ const CAMERA_PRESETS: CameraPreset[] = [
   {
     id: 'full',
     label: 'Toàn cảnh',
-    soloPosition: [0.35, 1.48, 3.65],
-    soloTarget: [0, 1.02, 0],
+    soloPosition: [0.35, 1.52, 3.85],
+    soloTarget: [0, 0.96, 0],
     fleetPosition: [0.45, 1.95, 5.15],
     fleetTarget: [0.05, 0.96, -0.22],
   },
@@ -61,8 +61,8 @@ const CAMERA_PRESETS: CameraPreset[] = [
   {
     id: 'back',
     label: 'Góc sau',
-    soloPosition: [-1.45, 1.52, -2.85],
-    soloTarget: [0, 1.08, 0],
+    soloPosition: [-1.68, 1.56, -3.45],
+    soloTarget: [0, 0.96, 0],
     fleetPosition: [-2.15, 1.95, -4.15],
     fleetTarget: [0.25, 0.92, -0.45],
   },
