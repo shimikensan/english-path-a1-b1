@@ -365,8 +365,25 @@ export interface EnglishStory {
   quiz: StoryComprehensionQuestion[];
 }
 
+export interface PilotHangarDoc {
+  uid: string;
+  ownedItemIds: string[];
+  equipped: {
+    helmet: string;
+    goggles: string;
+    suit: string;
+    scarf: string;
+    backpack: string;
+    companion: string;
+  };
+  spentGems: number;
+  bonusGems: number;
+  updatedAt: unknown;
+}
+
 export type AppRoute =
   | 'dashboard'
+  | 'pilot-hangar'
   | 'roadmap'
   | 'specialized'
   | 'ai-tutor'

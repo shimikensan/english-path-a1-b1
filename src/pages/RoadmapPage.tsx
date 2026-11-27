@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { ArrowRight, CheckCircle2, Clock, Search } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock, Gem, Search } from 'lucide-react';
 import { LessonMiniProgress } from '../components/LessonMiniProgress';
 import { useApp } from '../context/AppContext';
 import { LEVEL_BANNERS, PILOT_RANKS } from '../data';
+import { getLessonGemReward } from '../data/pilotGearCatalog';
 
 interface RoadmapPageProps {
   onOpenLesson: (lessonId: string) => void;
@@ -179,18 +180,17 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
                         </div>
 
                         <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
-                          <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                          <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums flex flex-wrap items-center gap-x-1.5 gap-y-1">
                             <span>
                               Từ vựng: {learnedCount}/{lesson.vocabulary.length}
                             </span>
-                            <span className="mx-1.5" aria-hidden="true">
-                              ·
-                            </span>
+                            <span aria-hidden="true">·</span>
                             <span>{lesson.sentencePatterns.length} mẫu câu</span>
-                            <span className="mx-1.5" aria-hidden="true">
-                              ·
+                            <span aria-hidden="true">·</span>
+                            <span className="inline-flex items-center gap-1 font-bold text-sky-600 dark:text-sky-400">
+                              <Gem className="w-3.5 h-3.5" />
+                              +{getLessonGemReward(lesson)} Ngọc
                             </span>
-                            <span>{lesson.quiz.length} câu hỏi</span>
                           </div>
 
                           <button

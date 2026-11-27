@@ -6,6 +6,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
+  Gem,
   Maximize2,
   MessageSquare,
   Plane,
@@ -45,7 +46,7 @@ export function DashboardPage({
   onEnterFocusMode,
   onNavigate,
 }: DashboardPageProps) {
-  const { profile, lessons, progressMap, quizResults, vocabMap } = useApp();
+  const { profile, lessons, progressMap, quizResults, vocabMap, gemBreakdown } = useApp();
   const { theme } = useTheme();
   const [pilotAvatarFailed, setPilotAvatarFailed] = useState(false);
   const [selectedCardLevel, setSelectedCardLevel] = useState<string | null>(null);
@@ -200,6 +201,14 @@ export function DashboardPage({
                 </button>
               </>
             )}
+            <button
+              type="button"
+              onClick={() => onNavigate('pilot-hangar')}
+              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-sky-400/55 bg-sky-500/15 text-sm font-bold text-sky-200 hover:bg-sky-500/25 transition-colors whitespace-nowrap cursor-pointer tabular-nums"
+            >
+              <Gem className="w-4 h-4 text-sky-300" />
+              Phi công 3D · {gemBreakdown.availableGems.toLocaleString('vi-VN')} Ngọc
+            </button>
             <button
               type="button"
               onClick={() => onNavigate('roadmap')}

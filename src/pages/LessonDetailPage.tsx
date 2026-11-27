@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   FileText,
+  Gem,
   Maximize2,
   MessageSquareQuote,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import { QuizSection } from '../components/lesson/QuizSection';
 import { SentencePatternsSection } from '../components/lesson/SentencePatternsSection';
 import { VocabularySection } from '../components/lesson/VocabularySection';
 import { useApp } from '../context/AppContext';
+import { getLessonGemReward } from '../data/pilotGearCatalog';
 import type { LessonTab } from '../types';
 import { playMissionCompleteChime } from '../utils/cockpitAudio';
 
@@ -117,6 +119,11 @@ export function LessonDetailPage({
             </span>
             <span aria-hidden="true">·</span>
             <span>{lesson.topic}</span>
+            <span aria-hidden="true">·</span>
+            <span className="inline-flex items-center gap-1 font-bold text-sky-600 dark:text-sky-400">
+              <Gem className="w-3.5 h-3.5" />
+              Thưởng +{getLessonGemReward(lesson)} Ngọc
+            </span>
             {progress?.lessonCompleted && (
               <>
                 <span aria-hidden="true">·</span>

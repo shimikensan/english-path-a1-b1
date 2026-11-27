@@ -15,6 +15,15 @@ import {
 } from 'firebase/auth';
 import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS, DEFAULT_READING_PASSAGES } from '../data';
 import {
+  computeGemBreakdown,
+  DEFAULT_HANGAR_STATE,
+  getLessonGemReward,
+  PILOT_GEAR_CATALOG,
+  type GemBreakdown,
+  type PilotGearSlot,
+  type PilotHangarState,
+} from '../data/pilotGearCatalog';
+import {
   auth,
   BOOTSTRAPPED_ADMIN_EMAIL,
   googleProvider,
@@ -31,7 +40,9 @@ import {
   fetchPublicLeaderboardOnce,
   fetchReadingPassagesOnce,
   getCachedLeaderboardSnapshot,
+  savePilotHangarState,
   seedCurriculumToFirestore,
+  subscribePilotHangar,
   subscribeQuizResults,
   subscribeUserProfile,
   subscribeUserProgress,
@@ -173,6 +184,11 @@ interface AppContextValue {
     rating: QuizRating;
     durationSeconds: number;
   }) => Promise<string>;
+  hangarState: PilotHangarState;
+  gemBreakdown: GemBreakdown;
+  purchasePilotGear: (itemId: string) => Promise<boolean>;
+  equipPilotGear: (slot: PilotGearSlot, itemId: string) => Promise<void>;
+  awardBonusGems: (amount: number, reason?: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
@@ -234,6 +250,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [localStudyTick, setLocalStudyTick] = useState(0);
+  const [hangarState, setHangarState] = useState<PilotHangarState>(DEFAULT_HANGAR_STATE);
+  const hangarStateRef = useRef<PilotHangarState>(DEFAULT_HANGAR_STATE);
+  hangarStateRef.current = hangarState;
 
   const autoSeededRef = useRef(false);
   const quotaToastShownRef = useRef(false);
@@ -531,10 +550,65 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           handleSubError('user_vocabulary', OperationType.LIST)
         )
       );
+      unsubscribers.push(
+        subscribePilotHangar(
+          firebaseUser.uid,
+          (remoteHangar) => {
+            if (!cancelled) {
+              setHangarState((prev) => {
+                const mergedOwned = Array.from(
+                  new Set([...prev.ownedItemIds, ...remoteHangar.ownedItemIds])
+                );
+                const merged: PilotHangarState = {
+                  ownedItemIds: mergedOwned,
+                  equipped: remoteHangar.equipped,
+                  spentGems: Math.max(prev.spentGems, remoteHangar.spentGems),
+                  bonusGems: Math.max(prev.bonusGems, remoteHangar.bonusGems),
+                };
+                try {
+                  window.localStorage.setItem(
+                    `pilot_hangar_v1_${firebaseUser.uid}`,
+                    JSON.stringify(merged)
+                  );
+                } catch {
+                  // Ignore storage quota errors
+                }
+                return merged;
+              });
+            }
+          },
+          () => {
+            // Keep local hangar state seamlessly if Firestore is temporarily offline or quota-limited
+          }
+        )
+      );
     };
 
     const bootstrap = async () => {
       setDataLoading(true);
+
+      // Hydrate cached 3D Pilot Hangar state immediately for instant UI responsiveness
+      try {
+        const rawHangar = window.localStorage.getItem(`pilot_hangar_v1_${firebaseUser.uid}`);
+        if (rawHangar) {
+          const parsed = JSON.parse(rawHangar) as Partial<PilotHangarState>;
+          setHangarState({
+            ownedItemIds: Array.isArray(parsed.ownedItemIds)
+              ? Array.from(new Set([...DEFAULT_HANGAR_STATE.ownedItemIds, ...parsed.ownedItemIds]))
+              : [...DEFAULT_HANGAR_STATE.ownedItemIds],
+            equipped: {
+              ...DEFAULT_HANGAR_STATE.equipped,
+              ...(parsed.equipped || {}),
+            },
+            spentGems: Math.max(0, Math.floor(Number(parsed.spentGems ?? 0) || 0)),
+            bonusGems: Math.max(0, Math.floor(Number(parsed.bonusGems ?? 0) || 0)),
+          });
+        } else {
+          setHangarState(DEFAULT_HANGAR_STATE);
+        }
+      } catch {
+        setHangarState(DEFAULT_HANGAR_STATE);
+      }
 
       // Hydrate offline cached vocabulary & profile immediately so learned words remain viewable offline
       const cachedVocab = readOfflineVocabCache(firebaseUser.uid);
@@ -1164,6 +1238,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       recordStudyActivity();
+      const wasLearned = Boolean(vocabMap[vocab.id]?.isLearned);
       await toggleUserVocabularyState(
         profile,
         lesson,
@@ -1172,6 +1247,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         vocabMap[vocab.id],
         progressMap[lesson.lessonId]
       );
+      if (changes.isLearned && !wasLearned) {
+        addToast('success', `Đã thuộc "${vocab.word}" · +3 Ngọc kiến thức!`);
+      }
     },
     [profile, vocabMap, progressMap, recordStudyActivity, addToast]
   );
@@ -1188,6 +1266,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }) => {
       if (!profile) throw new Error('Bạn cần đăng nhập để lưu kết quả kiểm tra.');
       recordStudyActivity();
+      const wasCompleted = Boolean(progressMap[params.lesson.lessonId]?.lessonCompleted);
       const id = await submitQuizAttempt({
         profile,
         lesson: params.lesson,
@@ -1199,10 +1278,127 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         durationSeconds: params.durationSeconds,
         existingProgress: progressMap[params.lesson.lessonId],
       });
-      addToast('success', `Đã lưu kết quả kiểm tra (${params.score}%) lên Firestore!`);
+      const quizGems =
+        Math.round((Math.max(0, Math.min(100, params.score)) / 100) * 20) +
+        (params.score >= 100 ? 8 : 0);
+      const completedNow = !wasCompleted && params.score >= 60;
+      const lessonBonus = completedNow ? getLessonGemReward(params.lesson) : 0;
+      const totalGained = quizGems + lessonBonus;
+      addToast(
+        'success',
+        completedNow
+          ? `Hoàn thành bài học (${params.score}%) · Nhận +${totalGained} Ngọc kiến thức!`
+          : `Đã lưu kết quả kiểm tra (${params.score}%) · Nhận +${quizGems} Ngọc!`
+      );
       return id;
     },
     [profile, progressMap, addToast, recordStudyActivity]
+  );
+
+  const gemBreakdown = useMemo(
+    () =>
+      computeGemBreakdown({
+        profile,
+        lessons,
+        progressMap,
+        vocabMap,
+        quizResults,
+        bonusGems: hangarState.bonusGems,
+        spentGems: hangarState.spentGems,
+      }),
+    [profile, lessons, progressMap, vocabMap, quizResults, hangarState.bonusGems, hangarState.spentGems]
+  );
+
+  const persistHangar = useCallback(
+    async (uid: string, next: PilotHangarState) => {
+      setHangarState(next);
+      try {
+        window.localStorage.setItem(`pilot_hangar_v1_${uid}`, JSON.stringify(next));
+      } catch {
+        // Ignore storage quota errors
+      }
+      if (!navigator.onLine) return;
+      try {
+        await savePilotHangarState(uid, next);
+      } catch (err) {
+        if (isFirestoreQuotaError(err)) {
+          notifyQuotaExceeded();
+        }
+      }
+    },
+    [notifyQuotaExceeded]
+  );
+
+  const purchasePilotGear = useCallback(
+    async (itemId: string): Promise<boolean> => {
+      const uid = profile?.uid || firebaseUser?.uid;
+      if (!uid) return false;
+      const item = PILOT_GEAR_CATALOG.find((g) => g.id === itemId);
+      if (!item) return false;
+
+      const current = hangarStateRef.current;
+      if (current.ownedItemIds.includes(item.id)) {
+        return true;
+      }
+
+      if (gemBreakdown.availableGems < item.priceGems) {
+        addToast(
+          'info',
+          `Bạn cần thêm ${item.priceGems - gemBreakdown.availableGems} Ngọc để mở khóa "${item.nameVi}".`
+        );
+        return false;
+      }
+
+      const next: PilotHangarState = {
+        ownedItemIds: Array.from(new Set([...current.ownedItemIds, item.id])),
+        equipped: {
+          ...current.equipped,
+          [item.slot]: item.id,
+        },
+        spentGems: current.spentGems + item.priceGems,
+        bonusGems: current.bonusGems,
+      };
+      await persistHangar(uid, next);
+      addToast('success', `Đã mở khóa và trang bị "${item.nameVi}" (-${item.priceGems} Ngọc)!`);
+      return true;
+    },
+    [profile?.uid, firebaseUser?.uid, gemBreakdown.availableGems, persistHangar, addToast]
+  );
+
+  const equipPilotGear = useCallback(
+    async (slot: PilotGearSlot, itemId: string): Promise<void> => {
+      const uid = profile?.uid || firebaseUser?.uid;
+      if (!uid) return;
+      const current = hangarStateRef.current;
+      if (!current.ownedItemIds.includes(itemId)) return;
+      const next: PilotHangarState = {
+        ...current,
+        equipped: {
+          ...current.equipped,
+          [slot]: itemId,
+        },
+      };
+      await persistHangar(uid, next);
+    },
+    [profile?.uid, firebaseUser?.uid, persistHangar]
+  );
+
+  const awardBonusGems = useCallback(
+    (amount: number, reason?: string) => {
+      const uid = profile?.uid || firebaseUser?.uid;
+      const safeAdd = Math.max(0, Math.min(200, Math.floor(amount)));
+      if (!uid || safeAdd <= 0) return;
+      const current = hangarStateRef.current;
+      const next: PilotHangarState = {
+        ...current,
+        bonusGems: current.bonusGems + safeAdd,
+      };
+      void persistHangar(uid, next);
+      if (reason) {
+        addToast('success', `${reason} (+${safeAdd} Ngọc)`);
+      }
+    },
+    [profile?.uid, firebaseUser?.uid, persistHangar, addToast]
   );
 
   return (
@@ -1251,6 +1447,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateProfileSettings,
         toggleVocabState,
         saveQuizAttempt,
+        hangarState,
+        gemBreakdown,
+        purchasePilotGear,
+        equipPilotGear,
+        awardBonusGems,
       }}
     >
       {children}

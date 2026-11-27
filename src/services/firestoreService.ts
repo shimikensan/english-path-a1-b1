@@ -23,6 +23,13 @@ import {
   getDefaultLessonsByLevel,
 } from '../data';
 import {
+  DEFAULT_EQUIPPED_GEAR,
+  DEFAULT_HANGAR_STATE,
+  DEFAULT_OWNED_ITEMS,
+  PILOT_GEAR_CATALOG,
+  type PilotHangarState,
+} from '../data/pilotGearCatalog';
+import {
   auth,
   BOOTSTRAPPED_ADMIN_EMAIL,
   db,
@@ -43,6 +50,7 @@ import type {
   LearnerCEFRLevel,
   LessonDoc,
   LevelDoc,
+  PilotHangarDoc,
   QuizRating,
   QuizResultDoc,
   ReadingPassageDoc,
@@ -2261,6 +2269,122 @@ export async function adminSaveClubMusicConfig(params: {
   } catch (error) {
     if (isFirestoreQuotaError(error)) {
       throw error;
+    }
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// --- 3D Pilot Hangar & Gem Economy Ledger ---
+
+const VALID_GEAR_ID_SET = new Set(PILOT_GEAR_CATALOG.map((item) => item.id));
+
+function normalizeHangarState(raw?: Partial<PilotHangarDoc> | null): PilotHangarState {
+  if (!raw) return DEFAULT_HANGAR_STATE;
+
+  const ownedSet = new Set<string>(DEFAULT_OWNED_ITEMS);
+  if (Array.isArray(raw.ownedItemIds)) {
+    for (const id of raw.ownedItemIds) {
+      if (typeof id === 'string' && VALID_GEAR_ID_SET.has(id)) {
+        ownedSet.add(id);
+      }
+    }
+  }
+
+  const pickValidSlot = (val: unknown, fallback: string): string => {
+    if (typeof val === 'string' && VALID_GEAR_ID_SET.has(val) && ownedSet.has(val)) {
+      return val;
+    }
+    return fallback;
+  };
+
+  return {
+    ownedItemIds: Array.from(ownedSet).slice(0, 40),
+    equipped: {
+      helmet: pickValidSlot(raw.equipped?.helmet, DEFAULT_EQUIPPED_GEAR.helmet),
+      goggles: pickValidSlot(raw.equipped?.goggles, DEFAULT_EQUIPPED_GEAR.goggles),
+      suit: pickValidSlot(raw.equipped?.suit, DEFAULT_EQUIPPED_GEAR.suit),
+      scarf: pickValidSlot(raw.equipped?.scarf, DEFAULT_EQUIPPED_GEAR.scarf),
+      backpack: pickValidSlot(raw.equipped?.backpack, DEFAULT_EQUIPPED_GEAR.backpack),
+      companion: pickValidSlot(raw.equipped?.companion, DEFAULT_EQUIPPED_GEAR.companion),
+    },
+    spentGems: Math.max(0, Math.min(1000000, Math.floor(Number(raw.spentGems ?? 0) || 0))),
+    bonusGems: Math.max(0, Math.min(1000000, Math.floor(Number(raw.bonusGems ?? 0) || 0))),
+  };
+}
+
+export function subscribePilotHangar(
+  uid: string,
+  onData: (state: PilotHangarState) => void,
+  onError?: (error: unknown) => void
+): Unsubscribe {
+  const path = `pilot_hangar/${uid}`;
+  return onSnapshot(
+    doc(db, 'pilot_hangar', uid),
+    (snap) => {
+      if (snap.exists()) {
+        onData(normalizeHangarState(snap.data() as Partial<PilotHangarDoc>));
+      } else {
+        onData(DEFAULT_HANGAR_STATE);
+      }
+    },
+    (error) => {
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.GET, path);
+      }
+    }
+  );
+}
+
+export async function savePilotHangarState(
+  uid: string,
+  state: PilotHangarState
+): Promise<PilotHangarState> {
+  const path = `pilot_hangar/${uid}`;
+  const ref = doc(db, 'pilot_hangar', uid);
+  const safe = normalizeHangarState(state);
+
+  const payload = {
+    uid,
+    ownedItemIds: safe.ownedItemIds,
+    equipped: safe.equipped,
+    spentGems: safe.spentGems,
+    bonusGems: safe.bonusGems,
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    const existing = await getDoc(ref);
+    if (existing.exists()) {
+      const existingData = existing.data() as Partial<PilotHangarDoc>;
+      const mergedSpent = Math.max(
+        safe.spentGems,
+        Math.floor(Number(existingData.spentGems ?? 0) || 0)
+      );
+      const mergedBonus = Math.max(
+        safe.bonusGems,
+        Math.floor(Number(existingData.bonusGems ?? 0) || 0)
+      );
+      await updateDoc(ref, {
+        ownedItemIds: safe.ownedItemIds,
+        equipped: safe.equipped,
+        spentGems: mergedSpent,
+        bonusGems: mergedBonus,
+        updatedAt: serverTimestamp(),
+      });
+      return {
+        ...safe,
+        spentGems: mergedSpent,
+        bonusGems: mergedBonus,
+      };
+    }
+
+    await setDoc(ref, payload);
+    return safe;
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      return safe;
     }
     handleFirestoreError(error, OperationType.WRITE, path);
   }

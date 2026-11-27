@@ -11,6 +11,7 @@ import {
   Flame,
   Focus,
   Gamepad2,
+  Gem,
   Home,
   LogOut,
   Maximize2,
@@ -60,6 +61,7 @@ interface NavItem {
 
 const MAIN_NAV: NavItem[] = [
   { id: 'dashboard', label: 'Trang chủ', icon: Home },
+  { id: 'pilot-hangar', label: 'Phi công 3D', icon: Gem },
   { id: 'roadmap', label: 'Lộ trình học', icon: Compass },
   { id: 'specialized', label: 'Chuyên ngành', icon: Radar },
   { id: 'ai-tutor', label: 'Nhắn tin AI', icon: MessageSquare },
@@ -88,7 +90,7 @@ export function Layout({
   onExitFocusMode,
   children,
 }: LayoutProps) {
-  const { profile, isAdmin, signOutUser } = useApp();
+  const { profile, isAdmin, signOutUser, gemBreakdown } = useApp();
   const { theme, toggleTheme } = useTheme();
   const { audioEnabled, toggleAudio } = useCockpitAudio();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -339,6 +341,17 @@ export function Layout({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleSelectRoute('pilot-hangar')}
+                title="Mở Hangar Phi công 3D & Đổi Ngọc lấy trang bị"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/15 text-xs font-extrabold tabular-nums transition-colors whitespace-nowrap cursor-pointer"
+              >
+                <Gem className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400 shrink-0" />
+                <span>{gemBreakdown.availableGems.toLocaleString('vi-VN')}</span>
+                <span className="hidden sm:inline font-semibold">Ngọc</span>
+              </button>
+
               <div className="hidden md:flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 tabular-nums mr-1">
                 <Flame className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
                 <span>{profile?.streakDays ?? 1} ngày bay</span>

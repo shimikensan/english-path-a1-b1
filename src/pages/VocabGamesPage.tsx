@@ -51,7 +51,7 @@ function readScores(storageKey: string): GameHighScores {
 }
 
 export function VocabGamesPage() {
-  const { profile, lessons, recordStudyActivity } = useApp();
+  const { profile, lessons, recordStudyActivity, awardBonusGems } = useApp();
   const [activeGame, setActiveGame] = useState<ActiveVocabGame>('wordalot');
   const [sfxMuted, setSfxMuted] = useState<boolean>(() => isGameSfxMuted());
 
@@ -101,11 +101,12 @@ export function VocabGamesPage() {
 
   const handleWordMastered = useCallback(() => {
     recordStudyActivity();
+    awardBonusGems(2);
     persistScores((prev) => ({
       ...prev,
       wordsMastered: prev.wordsMastered + 1,
     }));
-  }, [persistScores, recordStudyActivity]);
+  }, [persistScores, recordStudyActivity, awardBonusGems]);
 
   const handleWordalotScore = useCallback(
     (points: number) => {

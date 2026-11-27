@@ -27,6 +27,7 @@ import { EnglishClubPage } from './pages/EnglishClubPage';
 import { FeedbackPage } from './pages/FeedbackPage';
 import { LessonDetailPage } from './pages/LessonDetailPage';
 import { PatternsHubPage } from './pages/PatternsHubPage';
+import { PilotHangarPage } from './pages/PilotHangarPage';
 import { PracticePage } from './pages/PracticePage';
 import { ProgressPage } from './pages/ProgressPage';
 import { QuizzesHubPage } from './pages/QuizzesHubPage';
@@ -49,6 +50,7 @@ import {
 
 const ROUTE_TITLES: Record<AppRoute, string> = {
   dashboard: 'Buồng lái · Trang chủ',
+  'pilot-hangar': 'Hangar Phi công 3D & Kho Ngọc',
   roadmap: 'Đường bay CEFR A1–C1 & Chuyên ngành',
   specialized: 'Tiếng Anh Chuyên ngành (ESP)',
   'ai-tutor': 'Nhắn tin tiếng Anh với AI',
@@ -414,6 +416,12 @@ function AppShell() {
               <DashboardPage
                 onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')}
                 onEnterFocusMode={(id) => handleEnterFocusMode(id, 'vocabulary')}
+                onNavigate={handleNavigate}
+              />
+            )}
+            {route === 'pilot-hangar' && (
+              <PilotHangarPage
+                onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')}
                 onNavigate={handleNavigate}
               />
             )}

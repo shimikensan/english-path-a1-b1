@@ -392,6 +392,31 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidPilotHangar(data) {
+      return data.keys().hasOnly([
+          'uid', 'ownedItemIds', 'equipped', 'spentGems', 'bonusGems', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'uid', 'ownedItemIds', 'equipped', 'spentGems', 'bonusGems', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.ownedItemIds is list
+        && data.ownedItemIds.size() >= 1
+        && data.ownedItemIds.size() <= 40
+        && data.equipped is map
+        && data.equipped.keys().hasOnly(['helmet', 'goggles', 'suit', 'scarf', 'backpack', 'companion'])
+        && data.equipped.keys().hasAll(['helmet', 'goggles', 'suit', 'scarf', 'backpack', 'companion'])
+        && isValidId(data.equipped.helmet)
+        && isValidId(data.equipped.goggles)
+        && isValidId(data.equipped.suit)
+        && isValidId(data.equipped.scarf)
+        && isValidId(data.equipped.backpack)
+        && isValidId(data.equipped.companion)
+        && data.spentGems is int && data.spentGems >= 0 && data.spentGems <= 1000000
+        && data.bonusGems is int && data.bonusGems >= 0 && data.bonusGems <= 1000000
+        && data.updatedAt is timestamp;
+    }
+
     // --- Collection: users (PII Isolated to Owner & Admin) ---
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
@@ -796,6 +821,32 @@ service cloud.firestore {
           'updatedBy', 'updatedByName', 'updatedAt'
         ]);
       allow delete: if isAdmin() && isValidId(configId) && configId == 'music';
+    }
+
+    // --- Collection: pilot_hangar (Per-User 3D Pilot Wardrobe & Gem Ledger) ---
+    match /pilot_hangar/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isVerifiedUser()
+        && !isRevokedUser()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidPilotHangar(incoming())
+        && incoming().uid == userId
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser()
+        && !isRevokedUser()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidPilotHangar(incoming())
+        && incoming().uid == existing().uid
+        && incoming().spentGems >= existing().spentGems
+        && incoming().bonusGems >= existing().bonusGems
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'ownedItemIds', 'equipped', 'spentGems', 'bonusGems', 'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isAdmin();
     }
   }
 }

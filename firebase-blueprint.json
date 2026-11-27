@@ -980,6 +980,47 @@
         "updatedByName",
         "updatedAt"
       ]
+    },
+    "PilotHangar": {
+      "title": "PilotHangar",
+      "description": "Per-user 3D Pilot avatar wardrobe, owned gear items, spent gems, and bonus mini-game gems.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownedItemIds": {
+          "type": "array",
+          "description": "Bounded list of unlocked 3D pilot gear item IDs (max 40)."
+        },
+        "equipped": {
+          "type": "object",
+          "description": "Currently equipped gear item IDs across helmet, goggles, suit, scarf, backpack, and companion."
+        },
+        "spentGems": {
+          "type": "number",
+          "description": "Total gems spent purchasing 3D pilot gear."
+        },
+        "bonusGems": {
+          "type": "number",
+          "description": "Additional gems earned from mini-games and special activities."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "ownedItemIds",
+        "equipped",
+        "spentGems",
+        "bonusGems",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -1042,6 +1083,10 @@
     "/club_settings/{configId}": {
       "schema": { "$ref": "#/entities/ClubMusicConfig" },
       "description": "3D English Club global background music settings managed by administrators."
+    },
+    "/pilot_hangar/{userId}": {
+      "schema": { "$ref": "#/entities/PilotHangar" },
+      "description": "Per-user 3D Pilot avatar wardrobe and gem spending ledger isolated to owner and admins."
     }
   }
 }
