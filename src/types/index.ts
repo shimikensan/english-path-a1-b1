@@ -319,6 +319,52 @@ export interface ClubMusicConfigDoc {
   updatedAt?: Timestamp | Date;
 }
 
+export type StoryCollectionId = 'grimm' | 'andersen' | 'aesop' | 'perrault' | 'originals';
+
+export interface StorySentence {
+  en: string;
+  vi: string;
+}
+
+export interface StoryGlossaryItem {
+  word: string;
+  ipa: string;
+  partOfSpeech: string;
+  meaningVi: string;
+}
+
+export interface StoryGrammarPoint {
+  title: string;
+  formula: string;
+  explanationVi: string;
+  exampleEn: string;
+  exampleVi: string;
+}
+
+export interface StoryComprehensionQuestion {
+  question: string;
+  options: [string, string, string, string];
+  correctIndex: number;
+  explanationVi: string;
+}
+
+export interface EnglishStory {
+  id: string;
+  titleEn: string;
+  titleVi: string;
+  author: string;
+  collection: StoryCollectionId;
+  levelId: LearnerCEFRLevel;
+  estimatedMinutes: number;
+  coverImage: string;
+  summaryVi: string;
+  moralVi: string;
+  sentences: StorySentence[];
+  glossary: StoryGlossaryItem[];
+  grammarPoints: StoryGrammarPoint[];
+  quiz: StoryComprehensionQuestion[];
+}
+
 export type AppRoute =
   | 'dashboard'
   | 'roadmap'
@@ -328,6 +374,7 @@ export type AppRoute =
   | 'vocabulary'
   | 'patterns'
   | 'reading'
+  | 'stories'
   | 'practice'
   | 'quizzes'
   | 'saved'

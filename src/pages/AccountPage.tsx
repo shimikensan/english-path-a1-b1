@@ -1,9 +1,27 @@
-import React, { useEffect, useState } from 'react';
-import { BellRing, KeyRound, LogOut, Moon, Save, ShieldCheck, Sun } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BellRing,
+  ChevronDown,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  KeyRound,
+  Loader2,
+  LogOut,
+  Moon,
+  Save,
+  ShieldCheck,
+  Sun,
+} from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { PILOT_RANKS } from '../data';
 import type { LearnerCEFRLevel } from '../types';
+import {
+  buildStudyReportSummary,
+  exportStudyReportCsv,
+  exportStudyReportPdf,
+} from '../utils/exportStudyReport';
 import { formatTimestampVi } from '../utils/helpers';
 import { buildStudyReminderCopy, STUDY_INACTIVITY_THRESHOLD_MS } from '../utils/studyReminder';
 
@@ -17,6 +35,10 @@ export function AccountPage({ onStartPractice }: AccountPageProps) {
     profile,
     isAdmin,
     lastStudyAtMs,
+    lessons,
+    progressMap,
+    vocabMap,
+    quizResults,
     addToast,
     updateProfileSettings,
     changeUserPassword,
@@ -32,12 +54,75 @@ export function AccountPage({ onStartPractice }: AccountPageProps) {
   const [reminderEnabled, setReminderEnabled] = useState(profile?.reminderEnabled ?? true);
   const [savingProfile, setSavingProfile] = useState(false);
 
+  // Study report export state
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<'pdf' | 'csv' | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+
   // Password change state
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  const reportSummary = useMemo(
+    () =>
+      buildStudyReportSummary({
+        profile,
+        lessons,
+        progressMap,
+        vocabMap,
+        quizResults,
+      }),
+    [profile, lessons, progressMap, vocabMap, quizResults]
+  );
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExportMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [exportMenuOpen]);
+
+  const handleExportReport = async (format: 'pdf' | 'csv') => {
+    setExportMenuOpen(false);
+    setExportingFormat(format);
+    try {
+      const payload = { profile, lessons, progressMap, vocabMap, quizResults };
+      if (format === 'csv') {
+        const res = exportStudyReportCsv(payload);
+        addToast(
+          'success',
+          `Đã tải báo cáo CSV (${res.learnedVocabCount} từ vựng đã học, ${res.quizAttemptsCount} bài trắc nghiệm).`
+        );
+      } else {
+        const res = await exportStudyReportPdf(payload);
+        addToast(
+          'success',
+          `Đã tải báo cáo PDF (${res.learnedVocabCount} từ vựng đã học, ${res.quizAttemptsCount} bài trắc nghiệm).`
+        );
+      }
+    } catch (err) {
+      addToast(
+        'error',
+        err instanceof Error ? err.message : 'Không thể xuất báo cáo học tập. Vui lòng thử lại.'
+      );
+    } finally {
+      setExportingFormat(null);
+    }
+  };
 
   useEffect(() => {
     if (profile) {
@@ -241,6 +326,109 @@ export function AccountPage({ onStartPractice }: AccountPageProps) {
             </button>
           </div>
         </form>
+      </section>
+
+      {/* Study Data Export Section */}
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Download className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />
+              Báo cáo &amp; Xuất dữ liệu học tập
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Tải xuống báo cáo chi tiết tiến độ cá nhân gồm danh sách từ vựng đã học, phiên âm IPA, lịch sử điểm trắc nghiệm và tiến độ từng bài học.
+            </p>
+            <p className="text-xs text-slate-600 dark:text-slate-300 pt-1 tabular-nums">
+              <strong className="font-semibold text-slate-900 dark:text-white">
+                {reportSummary.learnedVocabCount}
+              </strong>{' '}
+              từ vựng đã học ·{' '}
+              <strong className="font-semibold text-slate-900 dark:text-white">
+                {reportSummary.quizAttemptsCount}
+              </strong>{' '}
+              lượt trắc nghiệm
+              {reportSummary.quizAttemptsCount > 0 && (
+                <> (TB {reportSummary.averageQuizScore}%)</>
+              )}{' '}
+              ·{' '}
+              <strong className="font-semibold text-slate-900 dark:text-white">
+                {reportSummary.completedLessons}/{reportSummary.totalLessons}
+              </strong>{' '}
+              bài học hoàn thành
+            </p>
+          </div>
+
+          <div ref={exportMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              disabled={exportingFormat !== null}
+              onClick={() => setExportMenuOpen((prev) => !prev)}
+              aria-expanded={exportMenuOpen}
+              aria-haspopup="menu"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#FF6B00] text-white text-sm font-bold hover:bg-[#FF7E1F] transition-colors disabled:opacity-60 cursor-pointer"
+            >
+              {exportingFormat ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>
+                {exportingFormat === 'pdf'
+                  ? 'Đang tạo PDF...'
+                  : exportingFormat === 'csv'
+                    ? 'Đang tạo CSV...'
+                    : 'Xuất dữ liệu học tập'}
+              </span>
+              <ChevronDown
+                className={`w-4 h-4 transition-transform duration-150 ${
+                  exportMenuOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+
+            {exportMenuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl py-1.5 z-30"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void handleExportReport('pdf')}
+                  className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors flex items-start gap-3 cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Tải báo cáo PDF (.pdf)
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Định dạng A4 trình bày đẹp, hỗ trợ tiếng Việt &amp; IPA
+                    </div>
+                  </div>
+                </button>
+                <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void handleExportReport('csv')}
+                  className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors flex items-start gap-3 cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Tải bảng dữ liệu CSV (.csv)
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Mở trực tiếp bằng Excel hoặc Google Sheets (UTF-8)
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </section>
 
       {/* Password Management */}

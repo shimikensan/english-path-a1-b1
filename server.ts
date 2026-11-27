@@ -829,7 +829,22 @@ async function startServer() {
     return Array.from(byUid.values());
   };
 
-  const wss = new WebSocketServer({ server, path: '/ws/club', maxPayload: 16 * 1024 });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
+
+  server.on('upgrade', (req, socket, head) => {
+    let pathname = '';
+    try {
+      pathname = new URL(req.url || '/', 'http://localhost').pathname;
+    } catch {
+      return;
+    }
+    if (pathname !== '/ws/club') {
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  });
 
   wss.on('connection', (ws) => {
     ws.on('message', (rawData) => {
@@ -1022,7 +1037,10 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
