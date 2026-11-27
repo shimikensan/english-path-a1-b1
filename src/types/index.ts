@@ -375,6 +375,7 @@ export type AppRoute =
   | 'patterns'
   | 'reading'
   | 'stories'
+  | 'games'
   | 'practice'
   | 'quizzes'
   | 'saved'

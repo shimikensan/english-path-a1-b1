@@ -35,6 +35,7 @@ import { RoadmapPage } from './pages/RoadmapPage';
 import { SavedWordsPage } from './pages/SavedWordsPage';
 import { SpecializedHubPage } from './pages/SpecializedHubPage';
 import { StoriesPage } from './pages/StoriesPage';
+import { VocabGamesPage } from './pages/VocabGamesPage';
 import { VocabularyHubPage } from './pages/VocabularyHubPage';
 import type { AppRoute, LessonTab } from './types';
 import {
@@ -56,6 +57,7 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   patterns: 'Mẫu câu giao tiếp',
   reading: 'Đọc hiểu · Thẻ lật song ngữ',
   stories: 'Học tiếng Anh qua truyện',
+  games: 'Game học từ vựng',
   practice: 'Luyện tập tương tác',
   quizzes: 'Kiểm tra trắc nghiệm',
   saved: 'Từ vựng đã lưu',
@@ -159,7 +161,8 @@ function AppShell() {
         nextRoute === 'ai-tutor' ||
         nextRoute === 'english-club' ||
         nextRoute === 'reading' ||
-        nextRoute === 'stories'
+        nextRoute === 'stories' ||
+        nextRoute === 'games'
       ) {
         recordStudyActivity();
       }
@@ -198,6 +201,7 @@ function AppShell() {
       'english-club',
       'reading',
       'stories',
+      'games',
     ]);
 
     const checkAndNotifyInactivity = () => {
@@ -429,6 +433,7 @@ function AppShell() {
             )}
             {route === 'reading' && <ReadingHubPage />}
             {route === 'stories' && <StoriesPage />}
+            {route === 'games' && <VocabGamesPage />}
             {route === 'practice' && <PracticePage />}
             {route === 'quizzes' && (
               <QuizzesHubPage onStartLessonQuiz={(id) => handleOpenLesson(id, 'quiz')} />
