@@ -1090,6 +1090,10 @@
         "isPublic": {
           "type": "boolean"
         },
+        "badge": {
+          "type": "object",
+          "description": "Personalized group emblem configuration (shape, icon, paletteId, pattern, frame, monogram up to 4 chars, motto up to 28 chars)."
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time"

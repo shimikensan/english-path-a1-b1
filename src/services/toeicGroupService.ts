@@ -16,6 +16,12 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import type {
   ToeicChallengeParticipant,
   ToeicChallengeQuestion,
+  ToeicGroupBadge,
+  ToeicGroupBadgeFrame,
+  ToeicGroupBadgeIcon,
+  ToeicGroupBadgePaletteId,
+  ToeicGroupBadgePattern,
+  ToeicGroupBadgeShape,
   ToeicGroupChallengeDoc,
   ToeicGroupDoc,
   ToeicGroupMemberInfo,
@@ -46,6 +52,77 @@ function getTimestampMs(ts: unknown): number {
 
 function sanitizeText(value: string, maxLen: number): string {
   return value.trim().slice(0, maxLen);
+}
+
+const VALID_BADGE_SHAPES: readonly ToeicGroupBadgeShape[] = [
+  'shield',
+  'hexagon',
+  'wings',
+  'crest',
+  'diamond',
+  'circle',
+];
+const VALID_BADGE_ICONS: readonly ToeicGroupBadgeIcon[] = [
+  'plane',
+  'crown',
+  'trophy',
+  'bolt',
+  'book',
+  'compass',
+  'star',
+  'flame',
+];
+const VALID_BADGE_PALETTES: readonly ToeicGroupBadgePaletteId[] = [
+  'pilot_orange',
+  'navy_gold',
+  'emerald_ace',
+  'royal_violet',
+  'crimson_jet',
+  'arctic_cyan',
+  'obsidian_amber',
+  'rose_squad',
+];
+const VALID_BADGE_PATTERNS: readonly ToeicGroupBadgePattern[] = [
+  'solid',
+  'stripes',
+  'rays',
+  'grid',
+];
+const VALID_BADGE_FRAMES: readonly ToeicGroupBadgeFrame[] = [
+  'classic',
+  'double',
+  'laurel',
+  'wings_trim',
+];
+
+export function sanitizeToeicGroupBadge(raw?: Partial<ToeicGroupBadge> | null): ToeicGroupBadge {
+  const shape =
+    raw?.shape && VALID_BADGE_SHAPES.includes(raw.shape) ? raw.shape : 'shield';
+  const icon =
+    raw?.icon && VALID_BADGE_ICONS.includes(raw.icon) ? raw.icon : 'plane';
+  const paletteId =
+    raw?.paletteId && VALID_BADGE_PALETTES.includes(raw.paletteId)
+      ? raw.paletteId
+      : 'pilot_orange';
+  const pattern =
+    raw?.pattern && VALID_BADGE_PATTERNS.includes(raw.pattern) ? raw.pattern : 'rays';
+  const frame =
+    raw?.frame && VALID_BADGE_FRAMES.includes(raw.frame) ? raw.frame : 'laurel';
+  const monogram = (raw?.monogram ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9+]/g, '')
+    .slice(0, 4);
+  const motto = sanitizeText(raw?.motto ?? '', 28);
+
+  return {
+    shape,
+    icon,
+    paletteId,
+    pattern,
+    frame,
+    monogram,
+    motto,
+  };
 }
 
 function buildMemberInfo(user: UserProfile): ToeicGroupMemberInfo {
@@ -128,6 +205,7 @@ export async function createToeicGroup(params: {
   targetScore: number;
   maxMembers: number;
   isPublic: boolean;
+  badge?: Partial<ToeicGroupBadge>;
   user: UserProfile;
 }): Promise<ToeicGroupDoc> {
   const cleanName = sanitizeText(params.name, 80);
@@ -148,6 +226,7 @@ export async function createToeicGroup(params: {
   const targetScore = Math.min(990, Math.max(450, Math.round(params.targetScore)));
   const maxMembers = Math.min(12, Math.max(2, Math.round(params.maxMembers)));
   const memberInfo = buildMemberInfo(params.user);
+  const badge = sanitizeToeicGroupBadge(params.badge);
 
   const payload = {
     groupId,
@@ -163,6 +242,7 @@ export async function createToeicGroup(params: {
       [params.user.uid]: memberInfo,
     },
     isPublic: Boolean(params.isPublic),
+    badge,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -177,6 +257,26 @@ export async function createToeicGroup(params: {
     };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
+  }
+}
+
+export async function updateToeicGroupBadge(
+  groupId: string,
+  rawBadge: Partial<ToeicGroupBadge>
+): Promise<ToeicGroupBadge> {
+  const cleanId = groupId.trim();
+  const path = `toeic_groups/${cleanId}`;
+  const badge = sanitizeToeicGroupBadge(rawBadge);
+
+  try {
+    await updateDoc(doc(db, 'toeic_groups', cleanId), {
+      badge,
+      updatedAt: serverTimestamp(),
+    });
+    return badge;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
     throw error;
   }
 }

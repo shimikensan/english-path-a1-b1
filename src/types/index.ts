@@ -411,6 +411,48 @@ export interface ToeicGroupMemberInfo {
   joinedAtMs: number;
 }
 
+export type ToeicGroupBadgeShape =
+  | 'shield'
+  | 'hexagon'
+  | 'wings'
+  | 'crest'
+  | 'diamond'
+  | 'circle';
+
+export type ToeicGroupBadgeIcon =
+  | 'plane'
+  | 'crown'
+  | 'trophy'
+  | 'bolt'
+  | 'book'
+  | 'compass'
+  | 'star'
+  | 'flame';
+
+export type ToeicGroupBadgePaletteId =
+  | 'pilot_orange'
+  | 'navy_gold'
+  | 'emerald_ace'
+  | 'royal_violet'
+  | 'crimson_jet'
+  | 'arctic_cyan'
+  | 'obsidian_amber'
+  | 'rose_squad';
+
+export type ToeicGroupBadgePattern = 'solid' | 'stripes' | 'rays' | 'grid';
+
+export type ToeicGroupBadgeFrame = 'classic' | 'double' | 'laurel' | 'wings_trim';
+
+export interface ToeicGroupBadge {
+  shape: ToeicGroupBadgeShape;
+  icon: ToeicGroupBadgeIcon;
+  paletteId: ToeicGroupBadgePaletteId;
+  pattern: ToeicGroupBadgePattern;
+  frame: ToeicGroupBadgeFrame;
+  monogram: string;
+  motto: string;
+}
+
 export interface ToeicGroupDoc {
   groupId: string;
   name: string;
@@ -423,6 +465,7 @@ export interface ToeicGroupDoc {
   memberUids: string[];
   members: Record<string, ToeicGroupMemberInfo>;
   isPublic: boolean;
+  badge?: ToeicGroupBadge;
   createdAt?: Timestamp | Date;
   updatedAt?: Timestamp | Date;
 }

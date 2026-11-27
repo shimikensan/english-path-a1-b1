@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  Award,
   BellRing,
   BookOpen,
   Check,
@@ -9,6 +10,7 @@ import {
   Clock,
   Copy,
   Crown,
+  Download,
   Gem,
   Globe,
   Heart,
@@ -16,6 +18,7 @@ import {
   Lock,
   LogOut,
   Medal,
+  Palette,
   Play,
   Plus,
   RotateCcw,
@@ -60,11 +63,13 @@ import {
   subscribeToeicGroup,
   toggleLikeGroupVocab,
   updateMyChallengeProgress,
+  updateToeicGroupBadge,
 } from '../services/toeicGroupService';
 import type {
   LessonDoc,
   ToeicChallengeParticipant,
   ToeicChallengeQuestion,
+  ToeicGroupBadge,
   ToeicGroupChallengeDoc,
   ToeicGroupDoc,
   ToeicGroupVocabDoc,
@@ -72,6 +77,13 @@ import type {
 } from '../types';
 import { shuffleArray } from '../utils/helpers';
 import { speakEnglish, type SpeechAccent } from '../utils/speech';
+import {
+  exportBadgeSvgToPng,
+  getDefaultToeicGroupBadge,
+  resolveToeicGroupBadge,
+  ToeicGroupBadgeCustomizer,
+  ToeicGroupBadgeEmblem,
+} from './ToeicGroupBadgeEmblem';
 
 interface ToeicStudyGroupsPanelProps {
   accent: SpeechAccent;
@@ -137,7 +149,20 @@ export function ToeicStudyGroupsPanel({
   const [groupTargetScore, setGroupTargetScore] = useState(750);
   const [groupMaxMembers, setGroupMaxMembers] = useState(8);
   const [groupIsPublic, setGroupIsPublic] = useState(true);
+  const [groupBadge, setGroupBadge] = useState<ToeicGroupBadge>(() =>
+    getDefaultToeicGroupBadge('', 750)
+  );
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const createBadgeSvgRef = useRef<SVGSVGElement | null>(null);
+
+  // Active group badge studio modal
+  const [showBadgeModal, setShowBadgeModal] = useState(false);
+  const [editingBadge, setEditingBadge] = useState<ToeicGroupBadge>(() =>
+    getDefaultToeicGroupBadge('', 750)
+  );
+  const [savingBadge, setSavingBadge] = useState(false);
+  const modalBadgeSvgRef = useRef<SVGSVGElement | null>(null);
+  const sidebarBadgeSvgRef = useRef<SVGSVGElement | null>(null);
 
   // Join by code
   const [inviteCodeInput, setInviteCodeInput] = useState('');
@@ -423,18 +448,55 @@ export function ToeicStudyGroupsPanel({
         targetScore: groupTargetScore,
         maxMembers: groupMaxMembers,
         isPublic: groupIsPublic,
+        badge: groupBadge,
         user: userProfile,
       });
       setGroupName('');
       setGroupDesc('');
+      setGroupBadge(getDefaultToeicGroupBadge('', 750));
       setShowCreateForm(false);
       setActiveGroupId(created.groupId);
       setGroupSubTab('vocab');
-      addToast('success', `Đã tạo nhóm "${created.name}" · Mã mời: ${created.inviteCode}`);
+      addToast('success', `Đã tạo nhóm "${created.name}" cùng huy hiệu riêng · Mã mời: ${created.inviteCode}`);
     } catch (err) {
       addToast('error', err instanceof Error ? err.message : 'Không thể tạo nhóm lúc này.');
     } finally {
       setCreatingGroup(false);
+    }
+  };
+
+  const openBadgeStudioModal = () => {
+    if (!activeGroup) return;
+    setEditingBadge(
+      resolveToeicGroupBadge(activeGroup.badge, activeGroup.name, activeGroup.targetScore)
+    );
+    setShowBadgeModal(true);
+  };
+
+  const handleSaveGroupBadge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeGroup) return;
+    setSavingBadge(true);
+    try {
+      await updateToeicGroupBadge(activeGroup.groupId, editingBadge);
+      setShowBadgeModal(false);
+      addToast('success', `Đã cập nhật huy hiệu mới cho nhóm "${activeGroup.name}"!`);
+    } catch (err) {
+      addToast(
+        'error',
+        err instanceof Error ? err.message : 'Không thể lưu huy hiệu nhóm lúc này.'
+      );
+    } finally {
+      setSavingBadge(false);
+    }
+  };
+
+  const handleDownloadBadgePng = async (svgEl: SVGSVGElement | null, label: string) => {
+    const ok = await exportBadgeSvgToPng(svgEl, `huy_hieu_${label}`);
+    if (ok) {
+      addToast('success', 'Đã tải xuống ảnh huy hiệu PNG sắc nét (512×512)!');
+    } else {
+      addToast('error', 'Không thể xuất ảnh PNG huy hiệu lúc này.');
     }
   };
 
@@ -889,52 +951,81 @@ export function ToeicStudyGroupsPanel({
         {/* Group Header */}
         <section className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 sm:p-6 space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="space-y-1.5 min-w-0">
+            <div className="flex items-start gap-4 min-w-0">
               <button
                 type="button"
-                onClick={() => {
-                  setActiveGroupId(null);
-                  setSelectedChallengeId(null);
-                  setConfirmDeleteGroup(false);
-                  setShowQuickChallengeModal(false);
-                }}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-[#FF6B00] transition-colors cursor-pointer"
+                onClick={openBadgeStudioModal}
+                title={isCreator ? 'Nhấn để tùy chỉnh huy hiệu nhóm' : 'Xem & tải huy hiệu nhóm'}
+                className="group relative shrink-0 rounded-2xl p-1 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Quay lại danh sách Nhóm học TOEIC</span>
+                <ToeicGroupBadgeEmblem
+                  badge={activeGroup.badge}
+                  groupName={activeGroup.name}
+                  targetScore={activeGroup.targetScore}
+                  size="lg"
+                />
+                {isCreator && (
+                  <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center shadow-md border-2 border-white dark:border-slate-900">
+                    <Palette className="w-3 h-3" />
+                  </span>
+                )}
               </button>
 
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white truncate">
-                  {activeGroup.name}
-                </h3>
-                <span className="inline-flex items-center gap-1 text-xs font-bold text-[#D94E00] dark:text-[#FF8524] tabular-nums">
-                  Mục tiêu {activeGroup.targetScore}+ TOEIC
-                </span>
-                <span className="text-slate-300 dark:text-slate-700">·</span>
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {activeGroup.isPublic ? (
-                    <>
-                      <Globe className="w-3.5 h-3.5 text-emerald-500" />
-                      Công khai
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-3.5 h-3.5 text-amber-500" />
-                      Riêng tư
-                    </>
-                  )}
-                </span>
-              </div>
+              <div className="space-y-1.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveGroupId(null);
+                    setSelectedChallengeId(null);
+                    setConfirmDeleteGroup(false);
+                    setShowQuickChallengeModal(false);
+                    setShowBadgeModal(false);
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-[#FF6B00] transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Quay lại danh sách Nhóm học TOEIC</span>
+                </button>
 
-              {activeGroup.description && (
-                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-                  {activeGroup.description}
-                </p>
-              )}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white truncate">
+                    {activeGroup.name}
+                  </h3>
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-[#D94E00] dark:text-[#FF8524] tabular-nums">
+                    Mục tiêu {activeGroup.targetScore}+ TOEIC
+                  </span>
+                  <span className="text-slate-300 dark:text-slate-700">·</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {activeGroup.isPublic ? (
+                      <>
+                        <Globe className="w-3.5 h-3.5 text-emerald-500" />
+                        Công khai
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        Riêng tư
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                {activeGroup.badge?.motto && (
+                  <p className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+                    <Award className="w-3.5 h-3.5 shrink-0" />
+                    <span>&ldquo;{activeGroup.badge.motto}&rdquo;</span>
+                  </p>
+                )}
+
+                {activeGroup.description && (
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                    {activeGroup.description}
+                  </p>
+                )}
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={openQuickChallengeLauncher}
@@ -942,6 +1033,15 @@ export function ToeicStudyGroupsPanel({
               >
                 <Zap className="w-4 h-4 shrink-0" />
                 <span>Thách đấu nhanh (10 câu)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={openBadgeStudioModal}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-300/80 dark:border-amber-700/70 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-900 dark:text-amber-200 text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Palette className="w-3.5 h-3.5 text-[#FF6B00]" />
+                <span>{isCreator ? 'Tùy chỉnh huy hiệu' : 'Huy hiệu nhóm'}</span>
               </button>
 
               <button
@@ -1276,6 +1376,138 @@ export function ToeicStudyGroupsPanel({
                 </div>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* Group Badge Studio / Showcase Modal */}
+        {showBadgeModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-3 sm:p-5 overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="group-badge-studio-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowBadgeModal(false);
+            }}
+          >
+            {isCreator ? (
+              <form
+                onSubmit={handleSaveGroupBadge}
+                className="w-full max-w-4xl rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden my-auto"
+              >
+                <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-gradient-to-r from-[#07111F] to-[#132B4D] text-white">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-[#FF6B00] flex items-center justify-center shrink-0">
+                      <Award className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <h4
+                        id="group-badge-studio-title"
+                        className="text-base font-extrabold truncate"
+                      >
+                        Xưởng thiết kế Huy hiệu nhóm · {activeGroup.name}
+                      </h4>
+                      <p className="text-xs text-slate-300 truncate">
+                        Cá nhân hóa hình dáng, biểu tượng, bảng màu và khẩu hiệu nhận diện cho cả nhóm
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowBadgeModal(false)}
+                    className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    aria-label="Đóng xưởng thiết kế huy hiệu"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-5 max-h-[75vh] overflow-y-auto">
+                  <ToeicGroupBadgeCustomizer
+                    value={editingBadge}
+                    onChange={setEditingBadge}
+                    groupName={activeGroup.name}
+                    targetScore={activeGroup.targetScore}
+                    previewSvgRef={modalBadgeSvgRef}
+                    onDownloadPng={() =>
+                      void handleDownloadBadgePng(modalBadgeSvgRef.current, activeGroup.inviteCode)
+                    }
+                  />
+                </div>
+
+                <div className="px-5 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Huy hiệu sẽ tự động đồng bộ thời gian thực tới tất cả thành viên và danh sách nhóm công khai.
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowBadgeModal(false)}
+                      className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingBadge}
+                      className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] disabled:opacity-60 text-white text-xs sm:text-sm font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{savingBadge ? 'Đang lưu huy hiệu...' : 'Lưu huy hiệu nhóm'}</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden my-auto">
+                <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+                  <h4
+                    id="group-badge-studio-title"
+                    className="text-sm font-extrabold text-slate-900 dark:text-white truncate"
+                  >
+                    Huy hiệu chính thức · {activeGroup.name}
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setShowBadgeModal(false)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                    aria-label="Đóng"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="p-6 bg-gradient-to-br from-[#07111F] via-[#0D1F38] to-[#132B4D] cockpit-grid flex flex-col items-center text-center gap-3 text-white">
+                  <ToeicGroupBadgeEmblem
+                    ref={modalBadgeSvgRef}
+                    badge={activeGroup.badge}
+                    groupName={activeGroup.name}
+                    targetScore={activeGroup.targetScore}
+                    size="xl"
+                  />
+                  <div className="space-y-1">
+                    <div className="text-base font-extrabold">{activeGroup.name}</div>
+                    {activeGroup.badge?.motto && (
+                      <div className="text-xs font-semibold text-amber-300">
+                        &ldquo;{activeGroup.badge.motto}&rdquo;
+                      </div>
+                    )}
+                    <div className="text-xs text-slate-300">
+                      Mục tiêu {activeGroup.targetScore}+ TOEIC · Trưởng nhóm: {activeGroup.creatorName}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void handleDownloadBadgePng(modalBadgeSvgRef.current, activeGroup.inviteCode)
+                    }
+                    className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Tải ảnh huy hiệu PNG</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2675,16 +2907,68 @@ export function ToeicStudyGroupsPanel({
               </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 space-y-4">
-              <div className="space-y-1">
-                <h5 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Mời bạn bè vào nhóm
-                </h5>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Gửi mã mời 6 ký tự bên dưới để bạn học nhập tại mục Nhóm học TOEIC và tham gia
-                  ngay.
-                </p>
+            <div className="space-y-4">
+              {/* Official Group Emblem Showcase Card */}
+              <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 space-y-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <h5 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Award className="w-4 h-4 text-[#FF6B00]" />
+                    <span>Huy hiệu nhận diện nhóm</span>
+                  </h5>
+                </div>
+
+                <div className="rounded-xl bg-gradient-to-br from-[#07111F] via-[#0D1F38] to-[#132B4D] cockpit-grid p-4 flex flex-col items-center text-center gap-2 text-white">
+                  <ToeicGroupBadgeEmblem
+                    ref={sidebarBadgeSvgRef}
+                    badge={activeGroup.badge}
+                    groupName={activeGroup.name}
+                    targetScore={activeGroup.targetScore}
+                    size="lg"
+                  />
+                  <div className="text-xs font-extrabold truncate max-w-full">
+                    {activeGroup.name}
+                  </div>
+                  {activeGroup.badge?.motto && (
+                    <div className="text-[11px] text-amber-300 font-medium truncate max-w-full">
+                      &ldquo;{activeGroup.badge.motto}&rdquo;
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {isCreator && (
+                    <button
+                      type="button"
+                      onClick={openBadgeStudioModal}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-xs font-bold transition-colors whitespace-nowrap cursor-pointer"
+                    >
+                      <Palette className="w-3.5 h-3.5" />
+                      <span>Tùy chỉnh</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void handleDownloadBadgePng(sidebarBadgeSvgRef.current, activeGroup.inviteCode)
+                    }
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 hover:border-[#FF6B00] text-slate-800 dark:text-slate-100 text-xs font-bold transition-colors whitespace-nowrap cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-[#FF6B00]" />
+                    <span>Tải PNG</span>
+                  </button>
+                </div>
               </div>
+
+              <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 space-y-4">
+                <div className="space-y-1">
+                  <h5 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Mời bạn bè vào nhóm
+                  </h5>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Gửi mã mời 6 ký tự bên dưới để bạn học nhập tại mục Nhóm học TOEIC và tham gia
+                    ngay.
+                  </p>
+                </div>
 
               <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3.5 flex items-center justify-between gap-2">
                 <span className="font-mono text-lg font-extrabold tracking-widest text-[#D94E00] dark:text-[#FF8524]">
@@ -2744,6 +3028,7 @@ export function ToeicStudyGroupsPanel({
                     <span>Rời khỏi nhóm</span>
                   </button>
                 )}
+              </div>
               </div>
             </div>
           </div>
@@ -2851,8 +3136,15 @@ export function ToeicStudyGroupsPanel({
                   <button
                     key={score}
                     type="button"
-                    onClick={() => setGroupTargetScore(score)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold tabular-nums transition-colors ${
+                    onClick={() => {
+                      setGroupTargetScore(score);
+                      setGroupBadge((prev) =>
+                        !prev.monogram || /^\d{3}\+?$/.test(prev.monogram)
+                          ? { ...prev, monogram: `${score}` }
+                          : prev
+                      );
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold tabular-nums transition-colors cursor-pointer ${
                       groupTargetScore === score
                         ? 'bg-[#FF6B00] text-white'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
@@ -2874,7 +3166,7 @@ export function ToeicStudyGroupsPanel({
                     key={cap}
                     type="button"
                     onClick={() => setGroupMaxMembers(cap)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold tabular-nums transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold tabular-nums transition-colors cursor-pointer ${
                       groupMaxMembers === cap
                         ? 'bg-[#FF6B00] text-white'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
@@ -2885,6 +3177,33 @@ export function ToeicStudyGroupsPanel({
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Personalized Group Badge Designer inside Create Group Form */}
+          <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h5 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Award className="w-4 h-4 text-[#FF6B00]" />
+                  <span>Thiết kế Huy hiệu cá nhân hóa cho nhóm</span>
+                </h5>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Tạo biểu trưng riêng giúp nhóm nổi bật và chuyên nghiệp trong danh sách cộng đồng TOEIC.
+                </p>
+              </div>
+            </div>
+
+            <ToeicGroupBadgeCustomizer
+              value={groupBadge}
+              onChange={setGroupBadge}
+              groupName={groupName}
+              targetScore={groupTargetScore}
+              previewSvgRef={createBadgeSvgRef}
+              onDownloadPng={() =>
+                void handleDownloadBadgePng(createBadgeSvgRef.current, groupName || 'toeic_group')
+              }
+              compact
+            />
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/80 dark:border-slate-800">
@@ -2963,23 +3282,36 @@ export function ToeicStudyGroupsPanel({
                 key={group.groupId}
                 className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 flex flex-col justify-between gap-4"
               >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="font-bold text-[#D94E00] dark:text-[#FF8524] tabular-nums">
-                      Mục tiêu {group.targetScore}+ TOEIC
-                    </span>
-                    <span className="text-slate-500 dark:text-slate-400 tabular-nums">
-                      {group.memberUids.length}/{group.maxMembers} thành viên
-                    </span>
+                <div className="flex items-start gap-3.5">
+                  <ToeicGroupBadgeEmblem
+                    badge={group.badge}
+                    groupName={group.name}
+                    targetScore={group.targetScore}
+                    size="md"
+                  />
+                  <div className="space-y-1.5 min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-bold text-[#D94E00] dark:text-[#FF8524] tabular-nums">
+                        Mục tiêu {group.targetScore}+ TOEIC
+                      </span>
+                      <span className="text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
+                        {group.memberUids.length}/{group.maxMembers} TV
+                      </span>
+                    </div>
+                    <h5 className="text-base font-extrabold text-slate-900 dark:text-white leading-snug truncate">
+                      {group.name}
+                    </h5>
+                    {group.badge?.motto && (
+                      <p className="text-[11px] font-bold text-amber-700 dark:text-amber-300 truncate">
+                        &ldquo;{group.badge.motto}&rdquo;
+                      </p>
+                    )}
+                    {group.description && (
+                      <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
+                        {group.description}
+                      </p>
+                    )}
                   </div>
-                  <h5 className="text-base font-extrabold text-slate-900 dark:text-white leading-snug">
-                    {group.name}
-                  </h5>
-                  {group.description && (
-                    <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
-                      {group.description}
-                    </p>
-                  )}
                 </div>
 
                 <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-200/80 dark:border-slate-800">
@@ -3031,26 +3363,39 @@ export function ToeicStudyGroupsPanel({
                   key={group.groupId}
                   className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 flex flex-col justify-between gap-4"
                 >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2 text-xs">
-                      <span className="font-bold text-[#D94E00] dark:text-[#FF8524] tabular-nums">
-                        Mục tiêu {group.targetScore}+ TOEIC
-                      </span>
-                      <span className="text-slate-500 dark:text-slate-400 tabular-nums">
-                        {group.memberUids.length}/{group.maxMembers} thành viên
-                      </span>
-                    </div>
-                    <h5 className="text-base font-extrabold text-slate-900 dark:text-white leading-snug">
-                      {group.name}
-                    </h5>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Trưởng nhóm: <span className="font-semibold">{group.creatorName}</span>
-                    </p>
-                    {group.description && (
-                      <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
-                        {group.description}
+                  <div className="flex items-start gap-3.5">
+                    <ToeicGroupBadgeEmblem
+                      badge={group.badge}
+                      groupName={group.name}
+                      targetScore={group.targetScore}
+                      size="md"
+                    />
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="font-bold text-[#D94E00] dark:text-[#FF8524] tabular-nums">
+                          Mục tiêu {group.targetScore}+ TOEIC
+                        </span>
+                        <span className="text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
+                          {group.memberUids.length}/{group.maxMembers} TV
+                        </span>
+                      </div>
+                      <h5 className="text-base font-extrabold text-slate-900 dark:text-white leading-snug truncate">
+                        {group.name}
+                      </h5>
+                      {group.badge?.motto && (
+                        <p className="text-[11px] font-bold text-amber-700 dark:text-amber-300 truncate">
+                          &ldquo;{group.badge.motto}&rdquo;
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Trưởng nhóm: <span className="font-semibold">{group.creatorName}</span>
                       </p>
-                    )}
+                      {group.description && (
+                        <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
+                          {group.description}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex justify-end pt-3 border-t border-slate-200/80 dark:border-slate-800">

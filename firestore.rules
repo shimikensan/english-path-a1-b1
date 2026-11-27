@@ -458,6 +458,23 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/toeic_groups/$(groupId)).data.creatorUid == request.auth.uid;
     }
 
+    function isValidToeicGroupBadge(badge) {
+      return badge is map
+        && badge.keys().hasAll(['shape', 'icon', 'paletteId', 'pattern', 'frame', 'monogram', 'motto'])
+        && badge.keys().hasOnly(['shape', 'icon', 'paletteId', 'pattern', 'frame', 'monogram', 'motto'])
+        && badge.shape is string && badge.shape in ['shield', 'hexagon', 'wings', 'crest', 'diamond', 'circle']
+        && badge.icon is string && badge.icon in ['plane', 'crown', 'trophy', 'bolt', 'book', 'compass', 'star', 'flame']
+        && badge.paletteId is string && badge.paletteId in [
+          'pilot_orange', 'navy_gold', 'emerald_ace', 'royal_violet',
+          'crimson_jet', 'arctic_cyan', 'obsidian_amber', 'rose_squad'
+        ]
+        && badge.pattern is string && badge.pattern in ['solid', 'stripes', 'rays', 'grid']
+        && badge.frame is string && badge.frame in ['classic', 'double', 'laurel', 'wings_trim']
+        && badge.monogram is string && badge.monogram.size() <= 4
+        && (badge.monogram.size() == 0 || badge.monogram.matches('^[A-Z0-9+]{1,4}$'))
+        && badge.motto is string && badge.motto.size() <= 28;
+    }
+
     function isValidToeicGroup(data) {
       return data.keys().hasAll([
           'groupId', 'name', 'description', 'inviteCode', 'targetScore',
@@ -467,7 +484,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'groupId', 'name', 'description', 'inviteCode', 'targetScore',
           'maxMembers', 'creatorUid', 'creatorName', 'memberUids', 'members',
-          'isPublic', 'createdAt', 'updatedAt'
+          'isPublic', 'badge', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.groupId)
         && data.name is string && data.name.size() >= 2 && data.name.size() <= 80
@@ -483,6 +500,7 @@ service cloud.firestore {
         && data.members is map && data.members.size() >= 1 && data.members.size() <= 12
         && data.memberUids.size() == data.members.size()
         && data.isPublic is bool
+        && (!('badge' in data) || isValidToeicGroupBadge(data.badge))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -1028,7 +1046,7 @@ service cloud.firestore {
             && request.auth.uid in existing().memberUids
             && incoming().maxMembers >= existing().memberUids.size()
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'name', 'description', 'targetScore', 'maxMembers', 'isPublic', 'updatedAt'
+              'name', 'description', 'targetScore', 'maxMembers', 'isPublic', 'badge', 'updatedAt'
             ])
           )
           // Action 2: Verified learner joins group (adds only self, cannot alter other members)
