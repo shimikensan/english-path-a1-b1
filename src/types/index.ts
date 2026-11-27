@@ -136,6 +136,7 @@ export interface UserProfile {
   reminderEnabled: boolean;
   createdAt?: Timestamp | Date;
   lastLogin?: Timestamp | Date;
+  totalAccessSeconds?: number;
 }
 
 export interface AdminRecord {
@@ -222,6 +223,8 @@ export interface LeaderboardEntryDoc {
   learnedVocabCount: number;
   averageQuizScore: number;
   streakDays: number;
+  totalAccessSeconds?: number;
+  firstLoginAt?: Timestamp | Date;
   isPublic: boolean;
   updatedAt?: Timestamp | Date;
 }

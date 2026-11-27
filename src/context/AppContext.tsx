@@ -39,6 +39,7 @@ import {
   submitQuizAttempt,
   syncUserLeaderboardEntry,
   toggleUserVocabularyState,
+  updateUserAccessTime,
   updateUserProfileData,
 } from '../services/firestoreService';
 import type {
@@ -54,6 +55,7 @@ import type {
   UserVocabularyDoc,
   VocabularyItem,
 } from '../types';
+import { toTimestampMillis } from '../utils/helpers';
 import {
   clearLastReminderShownMs,
   computeLastStudyTimestampMs,
@@ -225,6 +227,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const quotaToastShownRef = useRef(false);
   const lastLeaderboardSigRef = useRef('');
   const toastTimersRef = useRef<Map<string, number>>(new Map());
+  const profileRef = useRef<UserProfile | null>(null);
+  const trackedAccessUidRef = useRef<string | null>(null);
+  const pendingAccessSecondsRef = useRef(0);
+  const lastAccessTickMsRef = useRef(Date.now());
+  const lastSyncedAccessSecondsRef = useRef(0);
+  const hasFlushedAccessOnceRef = useRef(false);
+  const flushingAccessRef = useRef(false);
+
+  useEffect(() => {
+    profileRef.current = profile;
+    if (!profile?.uid) {
+      return;
+    }
+    if (trackedAccessUidRef.current !== profile.uid) {
+      trackedAccessUidRef.current = profile.uid;
+      pendingAccessSecondsRef.current = 0;
+      lastAccessTickMsRef.current = Date.now();
+      lastSyncedAccessSecondsRef.current = Math.max(0, Math.floor(profile.totalAccessSeconds ?? 0));
+      hasFlushedAccessOnceRef.current = false;
+    } else if (typeof profile.totalAccessSeconds === 'number' && Number.isFinite(profile.totalAccessSeconds)) {
+      lastSyncedAccessSecondsRef.current = Math.max(
+        lastSyncedAccessSecondsRef.current,
+        Math.floor(profile.totalAccessSeconds)
+      );
+    }
+  }, [profile]);
 
   const dismissToast = useCallback((id: string) => {
     const existingTimer = toastTimersRef.current.get(id);
@@ -365,6 +393,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setVocabHydrated(false);
         autoSeededRef.current = false;
         lastLeaderboardSigRef.current = '';
+        trackedAccessUidRef.current = null;
+        pendingAccessSecondsRef.current = 0;
+        lastSyncedAccessSecondsRef.current = 0;
+        hasFlushedAccessOnceRef.current = false;
         setFirestoreLevels([]);
         setFirestoreLessons([]);
         setFirestoreReadings([]);
@@ -630,6 +662,103 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   }, [firestoreReadings, hasExtendedReadingsInFirestore, extendedReadingIds]);
 
+  const flushAccessTime = useCallback(
+    async (minPendingSeconds: number) => {
+      if (
+        flushingAccessRef.current ||
+        quotaExceeded ||
+        !firebaseUser ||
+        !firebaseUser.emailVerified
+      ) {
+        return;
+      }
+      const currentProfile = profileRef.current;
+      if (!currentProfile?.uid) return;
+
+      const pending = Math.floor(pendingAccessSecondsRef.current);
+      if (pending < minPendingSeconds) return;
+
+      const uid = currentProfile.uid;
+      const baseTotal = Math.max(
+        0,
+        Math.floor(currentProfile.totalAccessSeconds ?? 0),
+        lastSyncedAccessSecondsRef.current
+      );
+      const nextTotal = Math.min(315360000, baseTotal + pending);
+
+      pendingAccessSecondsRef.current = Math.max(0, pendingAccessSecondsRef.current - pending);
+      flushingAccessRef.current = true;
+      try {
+        await updateUserAccessTime(uid, nextTotal);
+        lastSyncedAccessSecondsRef.current = Math.max(lastSyncedAccessSecondsRef.current, nextTotal);
+        hasFlushedAccessOnceRef.current = true;
+        setProfile((prev) =>
+          prev && prev.uid === uid
+            ? {
+                ...prev,
+                totalAccessSeconds: Math.max(prev.totalAccessSeconds ?? 0, nextTotal),
+              }
+            : prev
+        );
+      } catch (err) {
+        if (isFirestoreQuotaError(err)) {
+          notifyQuotaExceeded();
+        } else {
+          pendingAccessSecondsRef.current += pending;
+        }
+      } finally {
+        flushingAccessRef.current = false;
+      }
+    },
+    [quotaExceeded, firebaseUser, notifyQuotaExceeded]
+  );
+
+  // Track cumulative active visible app access duration (quota-friendly: flushes at 30s once, then every 2 minutes or on tab hide)
+  useEffect(() => {
+    if (quotaExceeded || !firebaseUser || !firebaseUser.emailVerified || !profile?.uid) {
+      return;
+    }
+
+    lastAccessTickMsRef.current = Date.now();
+
+    const accumulateDelta = () => {
+      const now = Date.now();
+      const rawDeltaSec = Math.floor((now - lastAccessTickMsRef.current) / 1000);
+      lastAccessTickMsRef.current = now;
+      if (rawDeltaSec > 0) {
+        // Clamp each interval step so sleep/hibernation doesn't inflate active duration
+        pendingAccessSecondsRef.current += Math.min(30, rawDeltaSec);
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        accumulateDelta();
+        const flushThreshold = hasFlushedAccessOnceRef.current ? 120 : 30;
+        if (pendingAccessSecondsRef.current >= flushThreshold) {
+          void flushAccessTime(flushThreshold);
+        }
+      } else {
+        lastAccessTickMsRef.current = Date.now();
+      }
+    }, 15_000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        accumulateDelta();
+        void flushAccessTime(15);
+      } else {
+        lastAccessTickMsRef.current = Date.now();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [quotaExceeded, firebaseUser, profile?.uid, flushAccessTime]);
+
   // Automatically sync verified learner's public completion stats to /leaderboard/{uid}
   useEffect(() => {
     if (
@@ -667,6 +796,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       quizResults.length > 0
         ? Math.round(quizResults.reduce((sum, r) => sum + r.score, 0) / quizResults.length)
         : 0;
+    const quizDurationFloor = quizResults.reduce(
+      (sum, r) => sum + (Number.isFinite(r.durationSeconds) ? Math.max(0, Math.floor(r.durationSeconds)) : 0),
+      0
+    );
+    const effectiveAccessSeconds = Math.max(
+      0,
+      Math.floor(profile.totalAccessSeconds ?? 0),
+      quizDurationFloor
+    );
+    const firstLoginAt =
+      profile.createdAt ??
+      (firebaseUser.metadata?.creationTime ? new Date(firebaseUser.metadata.creationTime) : undefined);
+    const firstLoginMs = toTimestampMillis(firstLoginAt) ?? '';
 
     const displayName = (profile.fullName || 'Phi công tập sự').trim();
     const sig = [
@@ -679,6 +821,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       learnedVocabCount,
       averageQuizScore,
       profile.streakDays ?? 1,
+      effectiveAccessSeconds,
+      firstLoginMs,
     ].join('|');
 
     if (lastLeaderboardSigRef.current === sig) {
@@ -696,6 +840,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       learnedVocabCount,
       averageQuizScore,
       streakDays: profile.streakDays ?? 1,
+      totalAccessSeconds: effectiveAccessSeconds,
+      firstLoginAt,
       isPublic: true,
     })
       .then(() => {
@@ -711,11 +857,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             learnedVocabCount,
             averageQuizScore,
             streakDays: profile.streakDays ?? 1,
+            totalAccessSeconds: effectiveAccessSeconds,
+            firstLoginAt,
             isPublic: true,
           };
           const exists = prev.some((e) => e.uid === profile.uid);
           const merged = exists
-            ? prev.map((e) => (e.uid === profile.uid ? { ...e, ...nextEntry } : e))
+            ? prev.map((e) =>
+                e.uid === profile.uid
+                  ? {
+                      ...e,
+                      ...nextEntry,
+                      totalAccessSeconds: Math.max(e.totalAccessSeconds ?? 0, effectiveAccessSeconds),
+                      firstLoginAt: e.firstLoginAt ?? firstLoginAt,
+                    }
+                  : e
+              )
             : [...prev, nextEntry];
           return merged.sort((a, b) => {
             if (b.completionPercent !== a.completionPercent) return b.completionPercent - a.completionPercent;
@@ -862,6 +1019,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOutUser = useCallback(async () => {
+    if (document.visibilityState === 'visible') {
+      const now = Date.now();
+      const rawDeltaSec = Math.floor((now - lastAccessTickMsRef.current) / 1000);
+      lastAccessTickMsRef.current = now;
+      if (rawDeltaSec > 0) {
+        pendingAccessSecondsRef.current += Math.min(30, rawDeltaSec);
+      }
+    }
+    await flushAccessTime(5).catch(() => undefined);
     try {
       window.sessionStorage.removeItem('pilot-admin-vault-session');
     } catch {
@@ -869,7 +1035,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     await signOut(auth);
     addToast('info', 'Đã đăng xuất khỏi tài khoản.');
-  }, [addToast]);
+  }, [addToast, flushAccessTime]);
 
   // --- Learner Mutations ---
 

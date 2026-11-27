@@ -62,7 +62,8 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'uid', 'fullName', 'email', 'currentLevel', 'streakDays',
-          'lastStudyDate', 'dailyGoalMinutes', 'reminderEnabled', 'createdAt', 'lastLogin'
+          'lastStudyDate', 'dailyGoalMinutes', 'reminderEnabled', 'createdAt', 'lastLogin',
+          'totalAccessSeconds'
         ])
         && isValidId(data.uid)
         && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 100
@@ -73,7 +74,8 @@ service cloud.firestore {
         && data.dailyGoalMinutes is number && data.dailyGoalMinutes >= 5 && data.dailyGoalMinutes <= 240
         && data.reminderEnabled is bool
         && data.createdAt is timestamp
-        && data.lastLogin is timestamp;
+        && data.lastLogin is timestamp
+        && (!('totalAccessSeconds' in data) || (data.totalAccessSeconds is number && data.totalAccessSeconds >= 0 && data.totalAccessSeconds <= 315360000));
     }
 
     function isValidAdminRecord(data) {
@@ -227,7 +229,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'uid', 'displayName', 'currentLevel', 'completedLessons', 'totalLessons',
           'completionPercent', 'learnedVocabCount', 'averageQuizScore', 'streakDays',
-          'isPublic', 'updatedAt'
+          'totalAccessSeconds', 'firstLoginAt', 'isPublic', 'updatedAt'
         ])
         && isValidId(data.uid)
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
@@ -238,6 +240,8 @@ service cloud.firestore {
         && data.learnedVocabCount is number && data.learnedVocabCount >= 0 && data.learnedVocabCount <= 5000
         && data.averageQuizScore is number && data.averageQuizScore >= 0 && data.averageQuizScore <= 100
         && data.streakDays is number && data.streakDays >= 0 && data.streakDays <= 10000
+        && (!('totalAccessSeconds' in data) || (data.totalAccessSeconds is number && data.totalAccessSeconds >= 0 && data.totalAccessSeconds <= 315360000))
+        && (!('firstLoginAt' in data) || data.firstLoginAt is timestamp)
         && data.isPublic is bool
         && data.updatedAt is timestamp;
     }
@@ -418,6 +422,11 @@ service cloud.firestore {
               || (
                 incoming().diff(existing()).affectedKeys().hasOnly(['streakDays', 'lastStudyDate', 'lastLogin'])
                 && incoming().lastLogin == request.time
+              )
+              || (
+                incoming().diff(existing()).affectedKeys().hasOnly(['totalAccessSeconds', 'lastLogin'])
+                && incoming().lastLogin == request.time
+                && (!('totalAccessSeconds' in existing()) || incoming().totalAccessSeconds >= existing().totalAccessSeconds)
               )
               || (
                 incoming().diff(existing()).affectedKeys().hasOnly(['lastLogin'])
@@ -635,6 +644,7 @@ service cloud.firestore {
         && isValidLeaderboardEntry(incoming())
         && incoming().uid == userId
         && (request.auth.uid == userId || isAdmin())
+        && (!('firstLoginAt' in incoming()) || incoming().firstLoginAt <= request.time)
         && incoming().updatedAt == request.time
         && exists(/databases/$(database)/documents/users/$(userId));
       allow update: if isVerifiedUser()
@@ -645,10 +655,13 @@ service cloud.firestore {
         && (
           (
             isOwner(userId)
+            && (!('firstLoginAt' in incoming()) || incoming().firstLoginAt <= request.time)
+            && (!('firstLoginAt' in existing()) || incoming().firstLoginAt == existing().firstLoginAt)
+            && (!('totalAccessSeconds' in existing()) || !('totalAccessSeconds' in incoming()) || incoming().totalAccessSeconds >= existing().totalAccessSeconds)
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'displayName', 'currentLevel', 'completedLessons', 'totalLessons',
               'completionPercent', 'learnedVocabCount', 'averageQuizScore',
-              'streakDays', 'isPublic', 'updatedAt'
+              'streakDays', 'totalAccessSeconds', 'firstLoginAt', 'isPublic', 'updatedAt'
             ])
           )
           || isAdmin()

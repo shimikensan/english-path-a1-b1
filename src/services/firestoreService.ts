@@ -9,6 +9,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
   where,
   writeBatch,
@@ -52,7 +53,7 @@ import type {
   UserVocabularyDoc,
   VocabularyItem,
 } from '../types';
-import { calculateUpdatedStreak, sanitizeId, truncate } from '../utils/helpers';
+import { calculateUpdatedStreak, sanitizeId, toTimestampMillis, truncate } from '../utils/helpers';
 
 // --- Lightweight Local TTL Cache (cuts repeat Firestore read units on reloads) ---
 
@@ -178,6 +179,7 @@ export async function ensureUserProfile(
       lastStudyDate: '',
       dailyGoalMinutes: 20,
       reminderEnabled: true,
+      totalAccessSeconds: 0,
       createdAt: serverTimestamp(),
       lastLogin: serverTimestamp(),
     };
@@ -190,6 +192,26 @@ export async function ensureUserProfile(
     };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function updateUserAccessTime(
+  uid: string,
+  totalAccessSeconds: number
+): Promise<void> {
+  const path = `users/${uid}`;
+  const ref = doc(db, 'users', uid);
+  const safeSeconds = Math.max(0, Math.min(315360000, Math.floor(totalAccessSeconds)));
+  try {
+    await updateDoc(ref, {
+      totalAccessSeconds: safeSeconds,
+      lastLogin: serverTimestamp(),
+    });
+  } catch (error) {
+    if (isFirestoreQuotaError(error)) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
 
@@ -1049,6 +1071,14 @@ export function subscribePublicLeaderboard(
   );
 }
 
+function toSafePastFirestoreTimestamp(value: unknown): Timestamp | null {
+  const ms = toTimestampMillis(value);
+  if (ms === null || !Number.isFinite(ms) || ms <= 0) return null;
+  // Clamp slightly below local clock if needed so firstLoginAt <= request.time never fails due to minor skew
+  const clampedMs = Math.min(ms, Date.now() - 1000);
+  return Timestamp.fromMillis(Math.max(0, clampedMs));
+}
+
 export async function syncUserLeaderboardEntry(entry: {
   uid: string;
   displayName: string;
@@ -1059,6 +1089,8 @@ export async function syncUserLeaderboardEntry(entry: {
   learnedVocabCount: number;
   averageQuizScore: number;
   streakDays: number;
+  totalAccessSeconds?: number;
+  firstLoginAt?: Timestamp | Date;
   isPublic?: boolean;
 }): Promise<void> {
   const path = `leaderboard/${entry.uid}`;
@@ -1072,7 +1104,13 @@ export async function syncUserLeaderboardEntry(entry: {
       ? entry.currentLevel
       : 'A1';
 
-  const mutableFields = {
+  const safeAccessSeconds = Math.max(
+    0,
+    Math.min(315360000, Math.floor(entry.totalAccessSeconds ?? 0))
+  );
+  const candidateFirstLogin = toSafePastFirestoreTimestamp(entry.firstLoginAt);
+
+  const baseMutableFields = {
     displayName: truncate(entry.displayName.trim() || 'Phi công tập sự', 100) || 'Phi công tập sự',
     currentLevel: safeLevel,
     completedLessons: Math.max(0, Math.min(500, Math.round(entry.completedLessons))),
@@ -1088,11 +1126,27 @@ export async function syncUserLeaderboardEntry(entry: {
   try {
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      await updateDoc(ref, mutableFields);
+      const existingData = snap.data() as Partial<LeaderboardEntryDoc>;
+      const existingAccess =
+        typeof existingData.totalAccessSeconds === 'number' &&
+        Number.isFinite(existingData.totalAccessSeconds)
+          ? Math.max(0, Math.floor(existingData.totalAccessSeconds))
+          : 0;
+      const updatePayload: Record<string, unknown> = {
+        ...baseMutableFields,
+        totalAccessSeconds: Math.max(existingAccess, safeAccessSeconds),
+      };
+      // Only backfill firstLoginAt if not already recorded (immutable once set)
+      if (!existingData.firstLoginAt && candidateFirstLogin) {
+        updatePayload.firstLoginAt = candidateFirstLogin;
+      }
+      await updateDoc(ref, updatePayload);
     } else {
       await setDoc(ref, {
         uid: entry.uid,
-        ...mutableFields,
+        ...baseMutableFields,
+        totalAccessSeconds: safeAccessSeconds,
+        firstLoginAt: candidateFirstLogin ?? serverTimestamp(),
       });
     }
     clearLeaderboardCache();
@@ -1150,13 +1204,16 @@ export async function adminSyncAllUsersLeaderboard(
       learnedVocabByUid.set(v.uid, (learnedVocabByUid.get(v.uid) ?? 0) + 1);
     });
 
-    const quizScoresByUid = new Map<string, { sum: number; count: number }>();
+    const quizScoresByUid = new Map<string, { sum: number; count: number; durationSeconds: number }>();
     quizSnap.docs.forEach((d) => {
       const q = d.data() as Partial<QuizResultDoc>;
       if (!q.uid || typeof q.score !== 'number' || !Number.isFinite(q.score)) return;
-      const cur = quizScoresByUid.get(q.uid) ?? { sum: 0, count: 0 };
+      const cur = quizScoresByUid.get(q.uid) ?? { sum: 0, count: 0, durationSeconds: 0 };
       cur.sum += q.score;
       cur.count += 1;
+      if (typeof q.durationSeconds === 'number' && Number.isFinite(q.durationSeconds) && q.durationSeconds > 0) {
+        cur.durationSeconds += Math.floor(q.durationSeconds);
+      }
       quizScoresByUid.set(q.uid, cur);
     });
 
@@ -1173,6 +1230,7 @@ export async function adminSyncAllUsersLeaderboard(
     let syncedUsers = 0;
 
     const buildEntryPayload = (uid: string, user: Partial<UserProfile>) => {
+      const existingEntry = existingLeaderboardMap.get(uid);
       const completedLessons = Math.min(500, completedLessonsByUid.get(uid)?.size ?? 0);
       const learnedVocabCount = Math.min(5000, learnedVocabByUid.get(uid) ?? 0);
       const quizAgg = quizScoresByUid.get(uid);
@@ -1207,7 +1265,26 @@ export async function adminSyncAllUsersLeaderboard(
         ? Math.max(0, Math.min(10000, Math.round(rawStreak)))
         : 1;
 
-      return {
+      const userTrackedSec =
+        typeof user.totalAccessSeconds === 'number' && Number.isFinite(user.totalAccessSeconds)
+          ? Math.floor(user.totalAccessSeconds)
+          : 0;
+      const existingLeaderboardSec =
+        typeof existingEntry?.totalAccessSeconds === 'number' &&
+        Number.isFinite(existingEntry.totalAccessSeconds)
+          ? Math.floor(existingEntry.totalAccessSeconds)
+          : 0;
+      const quizFloorSec = quizAgg?.durationSeconds ?? 0;
+      const totalAccessSeconds = Math.max(
+        0,
+        Math.min(315360000, Math.max(userTrackedSec, existingLeaderboardSec, quizFloorSec))
+      );
+
+      const firstLoginTs =
+        toSafePastFirestoreTimestamp(existingEntry?.firstLoginAt) ??
+        toSafePastFirestoreTimestamp(user.createdAt);
+
+      const payload: Record<string, unknown> = {
         displayName: safeName,
         currentLevel: safeLevel,
         completedLessons,
@@ -1216,9 +1293,14 @@ export async function adminSyncAllUsersLeaderboard(
         learnedVocabCount,
         averageQuizScore,
         streakDays: safeStreak,
+        totalAccessSeconds,
         isPublic: true,
         updatedAt: serverTimestamp(),
       };
+      if (firstLoginTs) {
+        payload.firstLoginAt = firstLoginTs;
+      }
+      return payload;
     };
 
     // Only upsert user accounts that are missing or whose fields actually changed
@@ -1226,6 +1308,8 @@ export async function adminSyncAllUsersLeaderboard(
       const existing = existingLeaderboardMap.get(uid);
       if (!existing || existing.uid !== uid) return true;
       const next = buildEntryPayload(uid, user);
+      const existingFirstMs = toTimestampMillis(existing.firstLoginAt);
+      const nextFirstMs = toTimestampMillis(next.firstLoginAt);
       return (
         existing.displayName !== next.displayName ||
         existing.currentLevel !== next.currentLevel ||
@@ -1235,6 +1319,8 @@ export async function adminSyncAllUsersLeaderboard(
         existing.learnedVocabCount !== next.learnedVocabCount ||
         existing.averageQuizScore !== next.averageQuizScore ||
         existing.streakDays !== next.streakDays ||
+        (existing.totalAccessSeconds ?? 0) !== (next.totalAccessSeconds as number) ||
+        (existingFirstMs === null && nextFirstMs !== null) ||
         existing.isPublic !== true
       );
     });

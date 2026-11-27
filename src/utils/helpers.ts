@@ -143,7 +143,12 @@ function toValidDate(value: unknown): Date | null {
     return Number.isNaN(value.getTime()) ? null : value;
   }
   if (typeof value === 'object') {
-    const record = value as { toDate?: () => Date; toMillis?: () => number; seconds?: number };
+    const record = value as {
+      toDate?: () => Date;
+      toMillis?: () => number;
+      seconds?: number;
+      _seconds?: number;
+    };
     if (typeof record.toDate === 'function') {
       const d = record.toDate();
       return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
@@ -156,12 +161,21 @@ function toValidDate(value: unknown): Date | null {
       const d = new Date(record.seconds * 1000);
       return Number.isNaN(d.getTime()) ? null : d;
     }
+    if (typeof record._seconds === 'number') {
+      const d = new Date(record._seconds * 1000);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
   }
   if (typeof value === 'string' || typeof value === 'number') {
     const d = new Date(value);
     return Number.isNaN(d.getTime()) ? null : d;
   }
   return null;
+}
+
+export function toTimestampMillis(value: unknown): number | null {
+  const date = toValidDate(value);
+  return date ? date.getTime() : null;
 }
 
 export function formatTimestampVi(value: unknown): string {
@@ -183,4 +197,24 @@ export function formatShortDateVi(value: unknown): string {
     day: '2-digit',
     month: '2-digit',
   }).format(date);
+}
+
+export function formatAccessDurationVi(totalSeconds?: number | null): string {
+  if (typeof totalSeconds !== 'number' || !Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    return '—';
+  }
+  const rounded = Math.floor(totalSeconds);
+  if (rounded < 60) {
+    return `${rounded} giây`;
+  }
+  const totalMinutes = Math.floor(rounded / 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes} phút`;
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (minutes === 0) {
+    return `${hours} giờ`;
+  }
+  return `${hours} giờ ${minutes} phút`;
 }

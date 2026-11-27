@@ -4,7 +4,9 @@ import {
   ArrowRight,
   Award,
   BookOpen,
+  CalendarClock,
   CheckCircle2,
+  Clock,
   ExternalLink,
   Flame,
   Medal,
@@ -18,6 +20,7 @@ import { useApp } from '../context/AppContext';
 import { PILOT_RANKS } from '../data';
 import { FIRESTORE_PRICING_URL, FIRESTORE_UPGRADE_URL } from '../firebase';
 import type { LeaderboardEntryDoc } from '../types';
+import { formatAccessDurationVi, formatTimestampVi } from '../utils/helpers';
 
 interface LeaderboardPanelProps {
   compact?: boolean;
@@ -463,19 +466,37 @@ export function LeaderboardPanel({
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300 tabular-nums">
-                  <span className="inline-flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    {entry.completedLessons}/{entry.totalLessons} bài
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    {entry.learnedVocabCount} từ
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <Flame className="w-3.5 h-3.5 text-amber-500" />
-                    {entry.streakDays} ngày
-                  </span>
+                <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 space-y-2 text-xs text-slate-600 dark:text-slate-300 tabular-nums">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      {entry.completedLessons}/{entry.totalLessons} bài
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      {entry.learnedVocabCount} từ
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Flame className="w-3.5 h-3.5 text-amber-500" />
+                      {entry.streakDays} ngày
+                    </span>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/70 flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span
+                      className="inline-flex items-center gap-1 truncate"
+                      title="Tổng thời gian đã truy cập ứng dụng"
+                    >
+                      <Clock className="w-3 h-3 text-sky-600 dark:text-sky-400 shrink-0" />
+                      <span>{formatAccessDurationVi(entry.totalAccessSeconds)}</span>
+                    </span>
+                    <span
+                      className="inline-flex items-center gap-1 truncate"
+                      title="Thời gian đăng nhập lần đầu tiên"
+                    >
+                      <CalendarClock className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
+                      <span>{formatTimestampVi(entry.firstLoginAt)}</span>
+                    </span>
+                  </div>
                 </div>
               </div>
             );
@@ -631,6 +652,8 @@ export function LeaderboardPanel({
                   <th className="py-3 px-4 whitespace-nowrap">Từ vựng</th>
                   <th className="py-3 px-4 whitespace-nowrap">Điểm TB</th>
                   <th className="py-3 px-4 whitespace-nowrap">Chuỗi bay</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Tổng thời gian truy cập</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Đăng nhập lần đầu</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-sm">
@@ -733,6 +756,28 @@ export function LeaderboardPanel({
                           <Flame className="w-3.5 h-3.5 text-amber-500" />
                           {entry.streakDays} ngày
                         </span>
+                      </td>
+
+                      <td className="py-3.5 px-4 tabular-nums whitespace-nowrap">
+                        {formatAccessDurationVi(entry.totalAccessSeconds) !== '—' ? (
+                          <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200 font-medium">
+                            <Clock className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                            {formatAccessDurationVi(entry.totalAccessSeconds)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+
+                      <td className="py-3.5 px-4 tabular-nums whitespace-nowrap">
+                        {formatTimestampVi(entry.firstLoginAt) !== '—' ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                            <CalendarClock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
+                            {formatTimestampVi(entry.firstLoginAt)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                     </tr>
                   );

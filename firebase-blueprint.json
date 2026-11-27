@@ -56,6 +56,10 @@
           "type": "string",
           "format": "date-time",
           "description": "Server timestamp of most recent sign-in."
+        },
+        "totalAccessSeconds": {
+          "type": "number",
+          "description": "Cumulative active seconds the learner has spent accessing the application (0 to 315360000)."
         }
       },
       "required": [
@@ -533,6 +537,15 @@
         },
         "streakDays": {
           "type": "number"
+        },
+        "totalAccessSeconds": {
+          "type": "number",
+          "description": "Cumulative active seconds the learner has spent accessing the application (0 to 315360000)."
+        },
+        "firstLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the learner's very first sign-in to the application (immutable once set)."
         },
         "isPublic": {
           "type": "boolean"
