@@ -31,6 +31,7 @@ import {
   isFirestoreQuotaError,
   OperationType,
 } from '../firebase';
+import { recordDailyQuizCompleted, recordDailyVocabLearned } from '../utils/dailyChallenges';
 import {
   checkIsAdmin,
   checkUserRevoked,
@@ -123,6 +124,13 @@ export interface ToastMessage {
   action?: ToastAction;
 }
 
+export interface GemFlightEvent {
+  key: number;
+  amount: number;
+  lessonCompleted: boolean;
+  label?: string;
+}
+
 interface AppContextValue {
   firebaseUser: User | null;
   authReady: boolean;
@@ -186,6 +194,9 @@ interface AppContextValue {
   }) => Promise<string>;
   hangarState: PilotHangarState;
   gemBreakdown: GemBreakdown;
+  gemFlightEvent: GemFlightEvent | null;
+  triggerGemFlight: (params: Omit<GemFlightEvent, 'key'>) => void;
+  clearGemFlight: () => void;
   purchasePilotGear: (itemId: string) => Promise<boolean>;
   equipPilotGear: (slot: PilotGearSlot, itemId: string) => Promise<void>;
   awardBonusGems: (amount: number, reason?: string) => void;
@@ -253,6 +264,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hangarState, setHangarState] = useState<PilotHangarState>(DEFAULT_HANGAR_STATE);
   const hangarStateRef = useRef<PilotHangarState>(DEFAULT_HANGAR_STATE);
   hangarStateRef.current = hangarState;
+  const [gemFlightEvent, setGemFlightEvent] = useState<GemFlightEvent | null>(null);
+
+  const triggerGemFlight = useCallback((params: Omit<GemFlightEvent, 'key'>) => {
+    const safeAmount = Math.max(0, Math.floor(params.amount));
+    if (safeAmount <= 0) return;
+    setGemFlightEvent({
+      ...params,
+      amount: safeAmount,
+      key: Date.now() + Math.floor(Math.random() * 1000),
+    });
+  }, []);
+
+  const clearGemFlight = useCallback(() => {
+    setGemFlightEvent(null);
+  }, []);
 
   const autoSeededRef = useRef(false);
   const quotaToastShownRef = useRef(false);
@@ -1268,6 +1294,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         progressMap[lesson.lessonId]
       );
       if (changes.isLearned && !wasLearned) {
+        recordDailyVocabLearned(profile.uid, vocab.id);
         addToast('success', `Đã thuộc "${vocab.word}" · +3 Ngọc kiến thức!`);
       }
     },
@@ -1298,12 +1325,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         durationSeconds: params.durationSeconds,
         existingProgress: progressMap[params.lesson.lessonId],
       });
+      recordDailyQuizCompleted(profile.uid);
       const quizGems =
         Math.round((Math.max(0, Math.min(100, params.score)) / 100) * 20) +
         (params.score >= 100 ? 8 : 0);
       const completedNow = !wasCompleted && params.score >= 60;
       const lessonBonus = completedNow ? getLessonGemReward(params.lesson) : 0;
       const totalGained = quizGems + lessonBonus;
+      if (totalGained > 0) {
+        triggerGemFlight({
+          amount: totalGained,
+          lessonCompleted: completedNow,
+          label: completedNow ? 'Hoàn thành bài học' : 'Thưởng kiểm tra',
+        });
+      }
       addToast(
         'success',
         completedNow
@@ -1312,7 +1347,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
       return id;
     },
-    [profile, progressMap, addToast, recordStudyActivity]
+    [profile, progressMap, addToast, recordStudyActivity, triggerGemFlight]
   );
 
   const persistHangar = useCallback(
@@ -1460,6 +1495,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         saveQuizAttempt,
         hangarState,
         gemBreakdown,
+        gemFlightEvent,
+        triggerGemFlight,
+        clearGemFlight,
         purchasePilotGear,
         equipPilotGear,
         awardBonusGems,

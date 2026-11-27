@@ -314,19 +314,32 @@ service cloud.firestore {
         && data.revokedAt is timestamp;
     }
 
+    function isValidClubPilotEquipped(gear) {
+      return gear is map
+        && gear.keys().hasAll(['helmet', 'goggles', 'suit', 'scarf', 'backpack', 'companion'])
+        && gear.keys().hasOnly(['helmet', 'goggles', 'suit', 'scarf', 'backpack', 'companion'])
+        && isValidId(gear.helmet)
+        && isValidId(gear.goggles)
+        && isValidId(gear.suit)
+        && isValidId(gear.scarf)
+        && isValidId(gear.backpack)
+        && isValidId(gear.companion);
+    }
+
     function isValidClubMember(data) {
       return data.keys().hasAll([
           'uid', 'displayName', 'currentLevel', 'avatarGender', 'statusText',
           'posX', 'posZ', 'rotationY', 'isOnline', 'joinedAt', 'lastActiveAt'
         ])
         && data.keys().hasOnly([
-          'uid', 'displayName', 'currentLevel', 'avatarGender', 'statusText',
-          'posX', 'posZ', 'rotationY', 'isOnline', 'joinedAt', 'lastActiveAt'
+          'uid', 'displayName', 'currentLevel', 'avatarGender', 'pilotEquipped',
+          'statusText', 'posX', 'posZ', 'rotationY', 'isOnline', 'joinedAt', 'lastActiveAt'
         ])
         && isValidId(data.uid)
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
         && data.currentLevel is string && data.currentLevel in ['A1', 'A2', 'B1', 'B2', 'C1']
         && data.avatarGender is string && data.avatarGender in ['male', 'female']
+        && (!('pilotEquipped' in data) || isValidClubPilotEquipped(data.pilotEquipped))
         && data.statusText is string && data.statusText.size() <= 120
         && data.posX is number && data.posX >= -20 && data.posX <= 20
         && data.posZ is number && data.posZ >= -20 && data.posZ <= 20
@@ -778,7 +791,7 @@ service cloud.firestore {
         && incoming().joinedAt == existing().joinedAt
         && incoming().lastActiveAt == request.time
         && incoming().diff(existing()).affectedKeys().hasOnly([
-          'displayName', 'currentLevel', 'avatarGender', 'statusText',
+          'displayName', 'currentLevel', 'avatarGender', 'pilotEquipped', 'statusText',
           'posX', 'posZ', 'rotationY', 'isOnline', 'lastActiveAt'
         ]);
       allow delete: if isValidId(userId) && ((isVerifiedUser() && isOwner(userId)) || isAdmin());

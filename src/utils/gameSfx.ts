@@ -94,3 +94,27 @@ export function playLevelFanfare(): void {
     playTone(n, 0.24, { type: 'triangle', gain: 0.13, delaySec: idx * 0.09 });
   });
 }
+
+export function playAircraftFlyby(): void {
+  // Jet/rotor Doppler sweep followed by celebratory triad
+  playTone(180, 0.55, { type: 'sawtooth', gain: 0.055, delaySec: 0, endFreq: 520 });
+  playTone(520, 0.65, { type: 'triangle', gain: 0.05, delaySec: 0.5, endFreq: 160 });
+  playTone(587.33, 0.22, { type: 'triangle', gain: 0.12, delaySec: 0.18 });
+  playTone(739.99, 0.22, { type: 'triangle', gain: 0.12, delaySec: 0.28 });
+  playTone(880.0, 0.28, { type: 'sine', gain: 0.14, delaySec: 0.38 });
+  playTone(1174.66, 0.38, { type: 'sine', gain: 0.14, delaySec: 0.48 });
+}
+
+export function playGemCascade(): void {
+  const sparkleNotes = [880, 1046.5, 1174.66, 1318.51, 1567.98, 1760];
+  sparkleNotes.forEach((freq, idx) => {
+    playTone(freq, 0.16, {
+      type: idx % 2 === 0 ? 'sine' : 'triangle',
+      gain: 0.075,
+      delaySec: 0.48 + idx * 0.065,
+      endFreq: freq * 1.04,
+    });
+  });
+}
+
+

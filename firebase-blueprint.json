@@ -787,7 +787,7 @@
     },
     "ClubMember": {
       "title": "ClubMember",
-      "description": "PII-free 3D English Club lounge presence and chosen chibi avatar state for an active learner.",
+      "description": "PII-free 3D English Club lounge presence and synced 3D Pilot avatar gear state for an active learner.",
       "type": "object",
       "properties": {
         "uid": {
@@ -808,6 +808,10 @@
         "avatarGender": {
           "type": "string",
           "enum": ["male", "female"]
+        },
+        "pilotEquipped": {
+          "type": "object",
+          "description": "Synced 3D Pilot personal gear IDs (helmet, goggles, suit, scarf, backpack, companion) from Pilot Hangar."
         },
         "statusText": {
           "type": "string",

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera,
-  Check,
   ChevronDown,
   ChevronUp,
   Hand,
@@ -10,23 +9,27 @@ import {
   MessageSquare,
   Music,
   Pause,
+  Pencil,
+  Plane,
   Play,
-  RefreshCw,
+  Smile,
   Sparkles,
-  UserCheck,
   Users,
   Volume2,
   VolumeX,
   X,
 } from 'lucide-react';
-import { ChibiAvatarThumb, ClubChatDrawer } from '../components/club/ClubChatDrawer';
+import { ClubChatDrawer, PilotAvatarThumb } from '../components/club/ClubChatDrawer';
 import {
   ClubScene3D,
   type ClubCameraCommand,
   type ClubCameraMode,
   type ClubChatBubbleData,
+  type ClubEmojiBurstData,
 } from '../components/club/ClubScene3D';
+import { CLUB_PILOT_EMOJIS } from '../components/club/pilotClubAvatarBuilder';
 import { useApp } from '../context/AppContext';
+import { DEFAULT_EQUIPPED_GEAR, PILOT_GEAR_CATALOG } from '../data/pilotGearCatalog';
 import {
   buildClubPairId,
   DEFAULT_CLUB_MUSIC_CONFIG,
@@ -43,12 +46,11 @@ import type {
   ClubMemberDoc,
   ClubMessageDoc,
   ClubMusicConfigDoc,
+  ClubPilotEquipped,
   LearnerCEFRLevel,
 } from '../types';
 import { ClubMusicEngine } from '../utils/clubMusicEngine';
 
-const AVATAR_SHEET_SRC = '/assets/aistudio/image_cacf8f7c.png';
-const STORAGE_AVATAR_KEY = 'pilot_club_avatar_gender_v1';
 const STORAGE_STATUS_KEY = 'pilot_club_status_text_v1';
 
 const PRESET_GREETINGS = [
@@ -57,6 +59,10 @@ const PRESET_GREETINGS = [
   'Ask me anything in English!',
   'Practicing daily small talk today ✈️',
 ];
+
+const SUIT_LABEL_BY_ID = new Map(
+  PILOT_GEAR_CATALOG.filter((i) => i.slot === 'suit').map((i) => [i.id, i.nameVi])
+);
 
 interface EnglishClubPageProps {
   onNavigate?: (route: AppRoute) => void;
@@ -67,6 +73,7 @@ interface WsLiveMember {
   displayName: string;
   currentLevel: LearnerCEFRLevel;
   avatarGender: ClubAvatarGender;
+  pilotEquipped?: ClubPilotEquipped;
   statusText: string;
   posX: number;
   posZ: number;
@@ -87,19 +94,33 @@ function getInitialSpawnPosition(uid: string): { posX: number; posZ: number; rot
 }
 
 export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
-  const { profile, firebaseUser, addToast, recordStudyActivity } = useApp();
+  const { profile, firebaseUser, hangarState, addToast, recordStudyActivity } = useApp();
   const currentUid = profile?.uid || firebaseUser?.uid || '';
   const currentDisplayName = profile?.fullName || firebaseUser?.displayName || 'Phi công tập sự';
   const currentLevel: LearnerCEFRLevel = profile?.currentLevel || 'A1';
 
-  // Stage 1 (Character Selection Lobby) vs Stage 2 (Live 3D English Club)
-  const [selectedGender, setSelectedGender] = useState<ClubAvatarGender>(() => {
-    try {
-      return window.localStorage.getItem(STORAGE_AVATAR_KEY) === 'female' ? 'female' : 'male';
-    } catch {
-      return 'male';
-    }
-  });
+  // Sync the learner's live 3D Pilot avatar outfit directly from Pilot Hangar
+  const localPilotEquipped = useMemo<ClubPilotEquipped>(
+    () => ({
+      helmet: hangarState.equipped.helmet || DEFAULT_EQUIPPED_GEAR.helmet,
+      goggles: hangarState.equipped.goggles || DEFAULT_EQUIPPED_GEAR.goggles,
+      suit: hangarState.equipped.suit || DEFAULT_EQUIPPED_GEAR.suit,
+      scarf: hangarState.equipped.scarf || DEFAULT_EQUIPPED_GEAR.scarf,
+      backpack: hangarState.equipped.backpack || DEFAULT_EQUIPPED_GEAR.backpack,
+      companion: hangarState.equipped.companion || DEFAULT_EQUIPPED_GEAR.companion,
+    }),
+    [
+      hangarState.equipped.helmet,
+      hangarState.equipped.goggles,
+      hangarState.equipped.suit,
+      hangarState.equipped.scarf,
+      hangarState.equipped.backpack,
+      hangarState.equipped.companion,
+    ]
+  );
+
+  const equippedSuitName = SUIT_LABEL_BY_ID.get(localPilotEquipped.suit) || 'Phi công 3D';
+
   const [statusText, setStatusText] = useState<string>(() => {
     try {
       return window.localStorage.getItem(STORAGE_STATUS_KEY) || PRESET_GREETINGS[0];
@@ -107,9 +128,8 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
       return PRESET_GREETINGS[0];
     }
   });
-  const [inClub, setInClub] = useState(false);
-  const [joining, setJoining] = useState(false);
-  const [sheetImgError, setSheetImgError] = useState(false);
+  const [statusDraft, setStatusDraft] = useState(statusText);
+  const [statusPopoverOpen, setStatusPopoverOpen] = useState(false);
 
   // Real-time club data (Firestore + WebSocket merged)
   const [firestoreMembers, setFirestoreMembers] = useState<ClubMemberDoc[]>([]);
@@ -120,6 +140,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   const [waveTimestamps, setWaveTimestamps] = useState<Record<string, number>>({});
   const [talkingUntilByUid, setTalkingUntilByUid] = useState<Record<string, number>>({});
   const [chatBubblesByUid, setChatBubblesByUid] = useState<Record<string, ClubChatBubbleData>>({});
+  const [emojiBurstsByUid, setEmojiBurstsByUid] = useState<Record<string, ClubEmojiBurstData>>({});
   const [localTyping, setLocalTyping] = useState(false);
   const [ttsSpeakerUid, setTtsSpeakerUid] = useState<string | null>(null);
 
@@ -136,6 +157,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   const [readCountsByPartner, setReadCountsByPartner] = useState<Record<string, number>>({});
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
+  const [emojiPopoverOpen, setEmojiPopoverOpen] = useState(false);
   const [soloTipDismissed, setSoloTipDismissed] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
   const [cameraCommand, setCameraCommand] = useState<ClubCameraCommand>({
@@ -146,10 +168,14 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   // Refs for WebSocket, chat bubble sequence, & throttled position sync
   const wsRef = useRef<WebSocket | null>(null);
   const localPosRef = useRef(getInitialSpawnPosition(currentUid || 'pilot'));
+  const hydratedInitialPosRef = useRef(false);
   const lastFirestorePosSyncRef = useRef<number>(0);
   const bubbleSeqRef = useRef<number>(0);
-  const clubEnteredAtRef = useRef<number>(0);
+  const emojiSeqRef = useRef<number>(0);
+  const clubEnteredAtRef = useRef<number>(Date.now());
   const shownFirestoreBubbleIdsRef = useRef<Set<string>>(new Set());
+  const initializedMsgHistoryRef = useRef(false);
+  const recordedEntryActivityRef = useRef(false);
 
   const showChatBubble = useCallback((uid: string, text: string, durationMs = 7500) => {
     const cleaned = text.trim();
@@ -168,6 +194,32 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     }));
   }, []);
 
+  const triggerEmojiBurst = useCallback(
+    (targetUid: string, emoji?: string, broadcast = true) => {
+      if (!targetUid) return;
+      const chosen =
+        emoji && emoji.trim().length > 0
+          ? emoji.trim()
+          : CLUB_PILOT_EMOJIS[Math.floor(Math.random() * CLUB_PILOT_EMOJIS.length)];
+      emojiSeqRef.current += 1;
+      const seq = emojiSeqRef.current;
+      setEmojiBurstsByUid((prev) => ({
+        ...prev,
+        [targetUid]: { emoji: chosen, seq },
+      }));
+      if (broadcast && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: 'club:emoji',
+            targetUid,
+            emoji: chosen,
+          })
+        );
+      }
+    },
+    []
+  );
+
   // Initialize & dispose 3D Club Background Music Engine
   useEffect(() => {
     const engine = new ClubMusicEngine({
@@ -184,15 +236,41 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   // Subscribe to Firestore club members, messages & live global background music settings
   useEffect(() => {
     if (!currentUid) return;
+    clubEnteredAtRef.current = Date.now();
+    initializedMsgHistoryRef.current = false;
+
     const unsubMembers = subscribeClubMembers(
-      (members) => setFirestoreMembers(members),
+      (members) => {
+        setFirestoreMembers(members);
+        if (!hydratedInitialPosRef.current) {
+          const existingMe = members.find((m) => m.uid === currentUid);
+          if (existingMe && Number.isFinite(existingMe.posX) && Number.isFinite(existingMe.posZ)) {
+            localPosRef.current = {
+              posX: existingMe.posX,
+              posZ: existingMe.posZ,
+              rotationY: existingMe.rotationY || 0,
+            };
+          } else {
+            localPosRef.current = getInitialSpawnPosition(currentUid);
+          }
+          hydratedInitialPosRef.current = true;
+        }
+      },
       () => {
         // Silently degrade to WebSocket-only if Firestore quota is temporarily hit
       }
     );
     const unsubMessages = subscribeUserClubMessages(
       currentUid,
-      (msgs) => setFirestoreMessages(msgs),
+      (msgs) => {
+        if (!initializedMsgHistoryRef.current) {
+          msgs.forEach((m) => {
+            if (m.id) shownFirestoreBubbleIdsRef.current.add(m.id);
+          });
+          initializedMsgHistoryRef.current = true;
+        }
+        setFirestoreMessages(msgs);
+      },
       () => {
         // Silently degrade to WebSocket-only messages
       }
@@ -212,9 +290,39 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     };
   }, [currentUid]);
 
+  // Auto-enter 3D Club immediately with the synced 3D Pilot character (no character selection lobby)
+  useEffect(() => {
+    if (!currentUid) return;
+
+    if (!recordedEntryActivityRef.current) {
+      recordedEntryActivityRef.current = true;
+      recordStudyActivity();
+    }
+
+    void upsertClubMemberPresence({
+      uid: currentUid,
+      displayName: currentDisplayName,
+      currentLevel,
+      avatarGender: 'male',
+      pilotEquipped: localPilotEquipped,
+      statusText: statusText.trim(),
+      posX: localPosRef.current.posX,
+      posZ: localPosRef.current.posZ,
+      rotationY: localPosRef.current.rotationY,
+      isOnline: true,
+    });
+  }, [
+    currentUid,
+    currentDisplayName,
+    currentLevel,
+    localPilotEquipped,
+    statusText,
+    recordStudyActivity,
+  ]);
+
   // Surface floating 3D chat bubbles for brand-new incoming Firestore messages while in club
   useEffect(() => {
-    if (!inClub || !currentUid) return;
+    if (!currentUid) return;
     const enteredAt = clubEnteredAtRef.current;
     firestoreMessages.forEach((m) => {
       if (!m.id || shownFirestoreBubbleIdsRef.current.has(m.id)) return;
@@ -228,11 +336,11 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         }));
       }
     });
-  }, [firestoreMessages, inClub, currentUid, showChatBubble]);
+  }, [firestoreMessages, currentUid, showChatBubble]);
 
-  // Connect WebSocket hub when the learner enters the 3D club
+  // Connect WebSocket hub immediately upon entering the 3D club & sync Pilot gear live
   useEffect(() => {
-    if (!inClub || !currentUid) return;
+    if (!currentUid) return;
 
     let cancelled = false;
     let reconnectTimer: number | null = null;
@@ -260,7 +368,8 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
             uid: currentUid,
             displayName: currentDisplayName,
             currentLevel,
-            avatarGender: selectedGender,
+            avatarGender: 'male',
+            pilotEquipped: localPilotEquipped,
             statusText: statusText.trim(),
             posX: localPosRef.current.posX,
             posZ: localPosRef.current.posZ,
@@ -343,6 +452,12 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
           return;
         }
 
+        if (data.type === 'club:member_emoji' && typeof data.uid === 'string') {
+          const emoji = typeof data.emoji === 'string' ? data.emoji : '😊';
+          triggerEmojiBurst(data.uid, emoji, false);
+          return;
+        }
+
         if (data.type === 'club:typing' && typeof data.senderUid === 'string') {
           const sUid = data.senderUid;
           setTypingUids((prev) => ({ ...prev, [sUid]: Boolean(data.isTyping) }));
@@ -352,7 +467,6 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         if (data.type === 'club:dm' && data.message) {
           const incoming = data.message as ClubMessageDoc;
           if (!incoming.id) return;
-          // Trigger lively 3D talk animation & floating chat speech bubble on the sender
           if (incoming.senderUid) {
             setTalkingUntilByUid((prev) => ({
               ...prev,
@@ -398,7 +512,15 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
       setWsLiveMap({});
       void setClubMemberOffline(currentUid);
     };
-  }, [inClub, currentUid, currentDisplayName, currentLevel, selectedGender, statusText, showChatBubble]);
+  }, [
+    currentUid,
+    currentDisplayName,
+    currentLevel,
+    localPilotEquipped,
+    statusText,
+    showChatBubble,
+    triggerEmojiBurst,
+  ]);
 
   // Merge Firestore persistent members + live WebSocket roster (zero fake bots!)
   const mergedMembers = useMemo<ClubMemberDoc[]>(() => {
@@ -409,7 +531,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
       map.set(m.uid, { ...m });
     });
 
-    // Overlay real-time WebSocket positions & live online presence
+    // Overlay real-time WebSocket positions, Pilot gear & live online presence
     Object.values(wsLiveMap).forEach((live) => {
       const existing = map.get(live.uid);
       map.set(live.uid, {
@@ -417,6 +539,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         displayName: live.displayName,
         currentLevel: live.currentLevel,
         avatarGender: live.avatarGender,
+        pilotEquipped: live.pilotEquipped ?? existing?.pilotEquipped,
         statusText: live.statusText,
         posX: live.posX,
         posZ: live.posZ,
@@ -427,13 +550,14 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
       });
     });
 
-    // Always guarantee local user appears immediately upon entering the room
-    if (inClub && currentUid) {
+    // Always guarantee local user appears immediately with their synced 3D Pilot gear
+    if (currentUid) {
       map.set(currentUid, {
         uid: currentUid,
         displayName: currentDisplayName,
         currentLevel,
-        avatarGender: selectedGender,
+        avatarGender: 'male',
+        pilotEquipped: localPilotEquipped,
         statusText: statusText.trim(),
         posX: localPosRef.current.posX,
         posZ: localPosRef.current.posZ,
@@ -451,11 +575,10 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   }, [
     firestoreMembers,
     wsLiveMap,
-    inClub,
     currentUid,
     currentDisplayName,
     currentLevel,
-    selectedGender,
+    localPilotEquipped,
     statusText,
   ]);
 
@@ -564,64 +687,20 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     [currentUid]
   );
 
-  // Enter 3D Club with chosen character
-  const handleEnterClub = async () => {
-    if (!currentUid) return;
-    setJoining(true);
+  const handleSaveStatusGreeting = (nextText: string) => {
+    const trimmed = nextText.trim().slice(0, 120);
+    setStatusText(trimmed);
+    setStatusDraft(trimmed);
+    setStatusPopoverOpen(false);
     try {
-      window.localStorage.setItem(STORAGE_AVATAR_KEY, selectedGender);
-      window.localStorage.setItem(STORAGE_STATUS_KEY, statusText.trim());
+      window.localStorage.setItem(STORAGE_STATUS_KEY, trimmed);
     } catch {
       // Ignore storage errors
     }
-
-    const existingMe = firestoreMembers.find((m) => m.uid === currentUid);
-    if (existingMe && Number.isFinite(existingMe.posX) && Number.isFinite(existingMe.posZ)) {
-      localPosRef.current = {
-        posX: existingMe.posX,
-        posZ: existingMe.posZ,
-        rotationY: existingMe.rotationY || 0,
-      };
-    } else {
-      localPosRef.current = getInitialSpawnPosition(currentUid);
+    if (trimmed && currentUid) {
+      showChatBubble(currentUid, trimmed, 4500);
     }
-
-    try {
-      await upsertClubMemberPresence({
-        uid: currentUid,
-        displayName: currentDisplayName,
-        currentLevel,
-        avatarGender: selectedGender,
-        statusText: statusText.trim(),
-        posX: localPosRef.current.posX,
-        posZ: localPosRef.current.posZ,
-        rotationY: localPosRef.current.rotationY,
-        isOnline: true,
-      });
-    } catch {
-      // Continue entering 3D club even if Firestore write hits temporary quota
-    }
-
-    recordStudyActivity();
-    clubEnteredAtRef.current = Date.now();
-    // Pre-mark existing historical messages so only newly exchanged chat messages pop bubbles
-    firestoreMessages.forEach((m) => {
-      if (m.id) shownFirestoreBubbleIdsRef.current.add(m.id);
-    });
-    setInClub(true);
-    setJoining(false);
-
-    // Start background music cleanly from the user's "Vào Câu lạc bộ 3D" click gesture
-    if (musicConfig.enabled && musicEngineRef.current) {
-      musicEngineRef.current.configure(musicConfig);
-      musicEngineRef.current.setVolume(musicVolume);
-      void musicEngineRef.current.play();
-    }
-
-    addToast(
-      'success',
-      `Chào mừng đến Câu lạc bộ 3D! Nhấn vào bất kỳ nhân vật nào để trò chuyện tiếng Anh.`
-    );
+    addToast('success', 'Đã cập nhật lời chào tiếng Anh trên đầu Phi công 3D.');
   };
 
   const handleToggleMusic = async () => {
@@ -645,24 +724,25 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     musicEngineRef.current?.setVolume(nextVol);
   };
 
-  const handleLeaveClub = async (openPicker = false) => {
+  const handleLeaveClub = async (targetRoute: AppRoute = 'dashboard') => {
     musicEngineRef.current?.pause();
     setMusicPopoverOpen(false);
+    setStatusPopoverOpen(false);
+    setEmojiPopoverOpen(false);
     setSelectedPartnerUid(null);
     setRosterOpen(false);
-    setInClub(false);
     if (currentUid) {
       await setClubMemberOffline(currentUid);
     }
-    if (!openPicker) {
-      addToast('info', 'Bạn đã rời Câu lạc bộ 3D.');
-    }
+    onNavigate?.(targetRoute);
   };
 
   const handleSelectMemberFrom3D = useCallback(
     (uid: string) => {
+      // Float joyful 3D emojis right above the clicked 3D Pilot's head
+      triggerEmojiBurst(uid, undefined, true);
+
       if (uid === currentUid) {
-        // Trigger a friendly self talk gesture & speech bubble when clicking own character
         triggerTalkAnimation(currentUid, 3400, true);
         showChatBubble(
           currentUid,
@@ -671,11 +751,10 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         );
         addToast(
           'info',
-          'Đây là nhân vật của bạn! Nhấn sàn hoặc phím WASD để di chuyển, hoặc nhấn nhân vật khác để trò chuyện tiếng Anh.'
+          'Đây là Phi công 3D của bạn! Nhấn sàn hoặc WASD để di chuyển, hoặc ghé Hangar 3D để thay trang bị.'
         );
         return;
       }
-      // Partner greets with a friendly talking animation upon selection
       triggerTalkAnimation(uid, 3200, false);
       const partnerMember = mergedMembers.find((m) => m.uid === uid);
       if (partnerMember?.statusText?.trim()) {
@@ -684,8 +763,18 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
       setSelectedPartnerUid(uid);
       setRosterOpen(false);
       setMusicPopoverOpen(false);
+      setStatusPopoverOpen(false);
+      setEmojiPopoverOpen(false);
     },
-    [currentUid, addToast, triggerTalkAnimation, showChatBubble, statusText, mergedMembers]
+    [
+      currentUid,
+      addToast,
+      triggerTalkAnimation,
+      triggerEmojiBurst,
+      showChatBubble,
+      statusText,
+      mergedMembers,
+    ]
   );
 
   const handleLocalMove = useCallback(
@@ -708,7 +797,8 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
           uid: currentUid,
           displayName: currentDisplayName,
           currentLevel,
-          avatarGender: selectedGender,
+          avatarGender: 'male',
+          pilotEquipped: localPilotEquipped,
           statusText: statusText.trim(),
           posX,
           posZ,
@@ -717,13 +807,14 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         });
       }
     },
-    [currentUid, currentDisplayName, currentLevel, selectedGender, statusText]
+    [currentUid, currentDisplayName, currentLevel, localPilotEquipped, statusText]
   );
 
   const handleWaveEmote = () => {
     if (!currentUid) return;
     const now = Date.now();
     setWaveTimestamps((prev) => ({ ...prev, [currentUid]: now }));
+    triggerEmojiBurst(currentUid, '👋', true);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'club:wave' }));
     }
@@ -763,19 +854,17 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     setSendingMsg(true);
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    // Animate local character speaking & show floating 3D chat speech bubble immediately
     triggerTalkAnimation(currentUid, 3400, true);
     showChatBubble(currentUid, text, 7500);
     shownFirestoreBubbleIdsRef.current.add(messageId);
 
-    // Optimistic local + WebSocket instant relay
     const optimisticMsg: ClubMessageDoc = {
       id: messageId,
       pairId: buildClubPairId(currentUid, selectedPartnerUid),
       participants: [currentUid, selectedPartnerUid],
       senderUid: currentUid,
       senderName: currentDisplayName,
-      senderAvatar: selectedGender,
+      senderAvatar: 'male',
       receiverUid: selectedPartnerUid,
       text,
       createdAtMs: Date.now(),
@@ -798,7 +887,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         messageId,
         senderUid: currentUid,
         senderName: currentDisplayName,
-        senderAvatar: selectedGender,
+        senderAvatar: 'male',
         receiverUid: selectedPartnerUid,
         text,
       });
@@ -813,220 +902,9 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     }
   };
 
-  // =========================================================================
-  // STAGE 1: CHARACTER SELECTION LOBBY (BEFORE ENTERING 3D ENGLISH CLUB)
-  // =========================================================================
-  if (!inClub) {
-    const lobbyOnlineCount = firestoreMembers.filter((m) => m.isOnline).length;
-    return (
-      <div className="max-w-5xl mx-auto space-y-6">
-        {/* Hero Intro */}
-        <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-xs">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#D94E00] dark:text-[#FF8524]">
-                <Users className="w-4 h-4" />
-                Không gian giao tiếp 3D · Three.js
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                Chọn nhân vật vào Câu lạc bộ Tiếng Anh 3D
-              </h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
-                Chọn một trong hai nhân vật đại diện của bạn trước khi bước vào phòng lounge 3D.
-                Trong phòng, bạn có thể di chuyển tự do và{' '}
-                <strong className="text-slate-900 dark:text-slate-100">
-                  nhấn trực tiếp vào nhân vật của người học khác
-                </strong>{' '}
-                để mở khung nhắn tin luyện tập tiếng Anh 1-1.
-              </p>
-            </div>
-
-            <div className="shrink-0 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-4 py-3 text-right space-y-1.5">
-              <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Thành viên trong phòng
-              </div>
-              <div className="flex items-center justify-end gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span className="text-xl font-extrabold text-slate-900 dark:text-white tabular-nums">
-                  {lobbyOnlineCount}
-                </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  đang hoạt động ({firestoreMembers.length} đã tham gia)
-                </span>
-              </div>
-              <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#D94E00] dark:text-[#FF8524]">
-                <Music className="w-3.5 h-3.5 shrink-0" />
-                <span className="max-w-[220px] truncate">
-                  Nhạc nền: {musicConfig.enabled ? musicConfig.title : 'Đang tắt'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* 2-Column Character Selector (Boy vs Girl matching reference image) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-7">
-            {/* BOY CARD */}
-            <button
-              type="button"
-              onClick={() => setSelectedGender('male')}
-              className={`group text-left rounded-2xl border-2 p-5 transition-all ${
-                selectedGender === 'male'
-                  ? 'border-[#FF6B00] bg-orange-50/40 dark:bg-[#FF6B00]/10 shadow-md'
-                  : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/60 hover:border-slate-300 dark:hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">
-                    Nhân vật 01 · Nam
-                  </span>
-                  <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mt-0.5">
-                    Cậu bạn Sơ mi Xanh
-                  </h3>
-                </div>
-                <div
-                  className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-colors ${
-                    selectedGender === 'male'
-                      ? 'bg-[#FF6B00] border-[#FF6B00] text-white'
-                      : 'border-slate-300 dark:border-slate-600'
-                  }`}
-                >
-                  {selectedGender === 'male' && <Check className="w-4 h-4 stroke-[3]" />}
-                </div>
-              </div>
-
-              {/* Clean Left-Half Frame of Reference Image */}
-              <div className="w-full h-64 rounded-xl bg-gradient-to-b from-sky-50 to-amber-50/60 dark:from-slate-800 dark:to-slate-900 border border-slate-200/80 dark:border-slate-700 overflow-hidden relative flex items-center justify-center">
-                {!sheetImgError ? (
-                  <img
-                    src={AVATAR_SHEET_SRC}
-                    alt="Nhân vật Nam Chibi"
-                    referrerPolicy="no-referrer"
-                    onError={() => setSheetImgError(true)}
-                    className="h-[112%] w-auto max-w-none object-contain translate-x-[24%] select-none transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="text-center p-4">
-                    <div className="text-3xl font-black text-sky-600">NAM</div>
-                    <p className="text-xs text-slate-500 mt-1">Sơ mi xanh · Quần kaki · Giày trắng</p>
-                  </div>
-                )}
-              </div>
-
-              <p className="text-xs text-slate-600 dark:text-slate-400 mt-4 leading-relaxed">
-                Tạo hình chibi 3D năng động với mái tóc nâu hạt dẻ, áo sơ mi xanh nhạt xắn tay,
-                quần kaki xắn gấu và giày sneaker trắng.
-              </p>
-            </button>
-
-            {/* GIRL CARD */}
-            <button
-              type="button"
-              onClick={() => setSelectedGender('female')}
-              className={`group text-left rounded-2xl border-2 p-5 transition-all ${
-                selectedGender === 'female'
-                  ? 'border-[#FF6B00] bg-orange-50/40 dark:bg-[#FF6B00]/10 shadow-md'
-                  : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/60 hover:border-slate-300 dark:hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-                    Nhân vật 02 · Nữ
-                  </span>
-                  <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mt-0.5">
-                    Cô bạn Áo Len Hồng
-                  </h3>
-                </div>
-                <div
-                  className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-colors ${
-                    selectedGender === 'female'
-                      ? 'bg-[#FF6B00] border-[#FF6B00] text-white'
-                      : 'border-slate-300 dark:border-slate-600'
-                  }`}
-                >
-                  {selectedGender === 'female' && <Check className="w-4 h-4 stroke-[3]" />}
-                </div>
-              </div>
-
-              {/* Clean Right-Half Frame of Reference Image */}
-              <div className="w-full h-64 rounded-xl bg-gradient-to-b from-rose-50 to-amber-50/60 dark:from-slate-800 dark:to-slate-900 border border-slate-200/80 dark:border-slate-700 overflow-hidden relative flex items-center justify-center">
-                {!sheetImgError ? (
-                  <img
-                    src={AVATAR_SHEET_SRC}
-                    alt="Nhân vật Nữ Chibi"
-                    referrerPolicy="no-referrer"
-                    onError={() => setSheetImgError(true)}
-                    className="h-[112%] w-auto max-w-none object-contain -translate-x-[24%] select-none transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="text-center p-4">
-                    <div className="text-3xl font-black text-rose-600">NỮ</div>
-                    <p className="text-xs text-slate-500 mt-1">Áo len hồng · Chân váy kem · Giày nơ</p>
-                  </div>
-                )}
-              </div>
-
-              <p className="text-xs text-slate-600 dark:text-slate-400 mt-4 leading-relaxed">
-                Tạo hình chibi 3D dễ thương với mái tóc xoăn nâu caramel cài nơ nhỏ, áo len trễ vai
-                hồng phấn, chân váy xếp ly kem và sneaker nơ.
-              </p>
-            </button>
-          </div>
-
-          {/* English Status Greeting & Enter Button */}
-          <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-            <div className="flex-1 space-y-2">
-              <label
-                htmlFor="club-status-input"
-                className="block text-xs font-bold text-slate-700 dark:text-slate-300"
-              >
-                Lời chào tiếng Anh hiển thị trên đầu nhân vật (tùy chọn)
-              </label>
-              <input
-                id="club-status-input"
-                type="text"
-                maxLength={120}
-                value={statusText}
-                onChange={(e) => setStatusText(e.target.value)}
-                placeholder="VD: Hi! Let's practice English together!"
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]"
-              />
-              <div className="flex flex-wrap gap-1.5 pt-0.5">
-                {PRESET_GREETINGS.map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setStatusText(g)}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#FF6B00]/12 hover:text-[#D94E00] dark:hover:text-[#FF8524] text-[11px] font-medium text-slate-600 dark:text-slate-300 transition-colors"
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              disabled={joining || !currentUid}
-              onClick={() => void handleEnterClub()}
-              className="px-7 py-3.5 rounded-xl bg-[#FF6B00] hover:bg-[#E55E00] disabled:opacity-50 text-white font-bold text-sm shadow-md shadow-[#FF6B00]/20 flex items-center justify-center gap-2 transition-colors shrink-0"
-            >
-              <UserCheck className="w-4 h-4" />
-              {joining ? 'Đang vào phòng 3D...' : 'Vào Câu lạc bộ 3D'}
-            </button>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  // =========================================================================
-  // STAGE 2: LIVE THREE.JS 3D ENGLISH CLUB ROOM
-  // =========================================================================
   return (
     <div className="relative w-full h-[calc(100vh-10.5rem)] min-h-[540px] max-h-[840px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-[#EFE6DB] shadow-lg select-none">
-      {/* Interactive Three.js 3D Scene */}
+      {/* Interactive Three.js 3D Scene (Synced with Pilot Hangar 3D Avatar) */}
       <ClubScene3D
         members={mergedMembers}
         currentUserUid={currentUid}
@@ -1036,6 +914,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         talkingUntilByUid={talkingUntilByUid}
         activeTalkingUids={activeTalkingUids}
         chatBubblesByUid={chatBubblesByUid}
+        emojiBurstsByUid={emojiBurstsByUid}
         cameraCommand={cameraCommand}
         onSelectMember={handleSelectMemberFrom3D}
         onLocalMove={handleLocalMove}
@@ -1043,10 +922,13 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
 
       {/* Minimal Top-Left Club Header (No backdrop-blur over WebGL!) */}
       <div className="absolute top-3 left-3 z-10 pointer-events-auto bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 shadow-md flex items-center gap-3">
-        <ChibiAvatarThumb gender={selectedGender} size="sm" />
+        <PilotAvatarThumb pilotEquipped={localPilotEquipped} size="sm" />
         <div>
-          <div className="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">
-            Câu lạc bộ Tiếng Anh 3D
+          <div className="text-xs font-extrabold text-slate-900 dark:text-white leading-tight flex items-center gap-1.5">
+            <span>Câu lạc bộ Tiếng Anh 3D</span>
+            <span className="text-[10px] font-bold text-[#D94E00] dark:text-[#FF8524]">
+              · {equippedSuitName}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
@@ -1063,7 +945,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300">
               <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              <span>Hiện chỉ có bạn trong phòng</span>
+              <span>Hiện chỉ có Phi công của bạn trong phòng</span>
             </div>
             <button
               type="button"
@@ -1075,20 +957,119 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
             </button>
           </div>
           <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
-            Câu lạc bộ 3D hiển thị người dùng thật theo thời gian thực. Bạn có thể mời bạn bè đăng
-            nhập cùng tài khoản khác để trò chuyện tiếng Anh, hoặc ghé mục Nhắn tin AI để luyện
-            riêng.
+            Nhân vật Phi công 3D của bạn đã được đồng bộ tự động từ Hangar 3D. Mời bạn bè đăng nhập
+            để cùng trò chuyện tiếng Anh trực tiếp hoặc ghé Nhắn tin AI luyện tập.
           </p>
-          {onNavigate && (
+          <div className="mt-2.5 flex items-center gap-2">
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => void handleLeaveClub('pilot-hangar')}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-200 text-white dark:text-slate-900 text-[11px] font-bold transition-colors"
+              >
+                <Plane className="w-3.5 h-3.5" />
+                Hangar 3D
+              </button>
+            )}
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => void handleLeaveClub('ai-tutor')}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#FF6B00]/12 hover:bg-[#FF6B00]/20 text-[#D94E00] dark:text-[#FF8524] text-[11px] font-bold transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                Nhắn tin AI
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Upward Emoji Reaction Picker Popover */}
+      {emojiPopoverOpen && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 w-[min(320px,calc(100%-1.5rem))] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+              Thả cảm xúc lên đầu Phi công 3D
+            </span>
             <button
               type="button"
-              onClick={() => onNavigate('ai-tutor')}
-              className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#FF6B00]/12 hover:bg-[#FF6B00]/20 text-[#D94E00] dark:text-[#FF8524] text-[11px] font-bold transition-colors"
+              onClick={() => setEmojiPopoverOpen(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              aria-label="Đóng bảng cảm xúc"
             >
-              <MessageSquare className="w-3.5 h-3.5" />
-              Mở Nhắn tin AI
+              <X className="w-4 h-4" />
             </button>
-          )}
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {CLUB_PILOT_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => {
+                  triggerEmojiBurst(currentUid, emoji, true);
+                  setEmojiPopoverOpen(false);
+                }}
+                className="h-11 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-[#FF6B00]/12 border border-slate-200 dark:border-slate-700 hover:border-[#FF6B00] text-2xl flex items-center justify-center transition-transform active:scale-90"
+                title={`Thả cảm xúc ${emoji}`}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Upward English Greeting Status Editor Popover */}
+      {statusPopoverOpen && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 w-[min(360px,calc(100%-1.5rem))] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+              Lời chào tiếng Anh trên đầu Phi công 3D
+            </span>
+            <button
+              type="button"
+              onClick={() => setStatusPopoverOpen(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              aria-label="Đóng chỉnh lời chào"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSaveStatusGreeting(statusDraft);
+            }}
+            className="flex items-center gap-2"
+          >
+            <input
+              type="text"
+              maxLength={120}
+              value={statusDraft}
+              onChange={(e) => setStatusDraft(e.target.value)}
+              placeholder="VD: Hi! Let's practice English together!"
+              className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]"
+            />
+            <button
+              type="submit"
+              className="px-3.5 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#E55E00] text-white text-xs font-bold shrink-0 transition-colors"
+            >
+              Lưu
+            </button>
+          </form>
+          <div className="flex flex-wrap gap-1.5">
+            {PRESET_GREETINGS.map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => handleSaveStatusGreeting(g)}
+                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#FF6B00]/12 hover:text-[#D94E00] dark:hover:text-[#FF8524] text-[11px] font-medium text-slate-600 dark:text-slate-300 transition-colors"
+              >
+                {g}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1130,7 +1111,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
                   className="w-full px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/70 text-left transition-colors"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <ChibiAvatarThumb gender={member.avatarGender} size="sm" />
+                    <PilotAvatarThumb pilotEquipped={member.pilotEquipped} size="sm" />
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
                         {member.displayName} {isSelf ? '(Bạn)' : ''}
@@ -1265,7 +1246,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
               type="button"
               onClick={() => handleCameraPreset('follow-self')}
               className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap shrink-0 transition-colors"
-              title="Camera đi theo nhân vật của bạn"
+              title="Camera đi theo Phi công 3D của bạn"
             >
               Theo tôi
             </button>
@@ -1286,7 +1267,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
               type="button"
               onClick={handleTalkEmote}
               className="px-2.5 py-1.5 rounded-lg bg-sky-500/12 hover:bg-sky-500/20 text-sky-700 dark:text-sky-300 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors"
-              title="Kích hoạt hoạt ảnh đang nói chuyện (Talk) và bong bóng lời thoại"
+              title="Kích hoạt hoạt ảnh đang nói chuyện và bong bóng lời thoại"
             >
               <MessageCircle className="w-3.5 h-3.5" />
               <span>Nói chuyện</span>
@@ -1295,8 +1276,49 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
             <button
               type="button"
               onClick={() => {
+                setEmojiPopoverOpen((v) => !v);
+                setStatusPopoverOpen(false);
+                setRosterOpen(false);
+                setMusicPopoverOpen(false);
+              }}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
+                emojiPopoverOpen
+                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                  : 'bg-amber-500/12 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300'
+              }`}
+              title="Chọn biểu tượng cảm xúc nổi lên đầu Phi công 3D"
+            >
+              <Smile className="w-3.5 h-3.5" />
+              <span>Cảm xúc</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStatusDraft(statusText);
+                setStatusPopoverOpen((v) => !v);
+                setEmojiPopoverOpen(false);
+                setRosterOpen(false);
+                setMusicPopoverOpen(false);
+              }}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
+                statusPopoverOpen
+                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              title="Đổi lời chào tiếng Anh trên đầu Phi công 3D"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span>Lời chào</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
                 setMusicPopoverOpen((v) => !v);
                 setRosterOpen(false);
+                setStatusPopoverOpen(false);
+                setEmojiPopoverOpen(false);
               }}
               className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
                 musicPopoverOpen
@@ -1320,6 +1342,8 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
               onClick={() => {
                 setRosterOpen((v) => !v);
                 setMusicPopoverOpen(false);
+                setStatusPopoverOpen(false);
+                setEmojiPopoverOpen(false);
               }}
               className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
                 rosterOpen
@@ -1333,25 +1357,29 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
 
             <span className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5 shrink-0" />
 
-            <button
-              type="button"
-              onClick={() => void handleLeaveClub(true)}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors"
-              title="Đổi giữa nhân vật Nam và Nữ"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Đổi nhân vật</span>
-            </button>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => void handleLeaveClub('pilot-hangar')}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors"
+                title="Mở Hangar 3D để tùy biến trang bị Phi công"
+              >
+                <Plane className="w-3.5 h-3.5 text-[#FF6B00]" />
+                <span>Hangar 3D</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => void handleLeaveClub(false)}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors"
-              title="Rời khỏi phòng 3D"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Rời phòng</span>
-            </button>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => void handleLeaveClub('dashboard')}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors"
+                title="Rời khỏi phòng 3D"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Rời phòng</span>
+              </button>
+            )}
 
             <button
               type="button"

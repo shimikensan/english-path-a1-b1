@@ -45,6 +45,7 @@ import type {
   ClubMemberDoc,
   ClubMessageDoc,
   ClubMusicConfigDoc,
+  ClubPilotEquipped,
   FeedbackCategory,
   FeedbackStatus,
   LeaderboardEntryDoc,
@@ -1983,11 +1984,25 @@ function clampClubNumber(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(val * 100) / 100));
 }
 
+function sanitizeClubPilotEquipped(raw?: Partial<ClubPilotEquipped> | null): ClubPilotEquipped {
+  const pick = (val: unknown, fallback: string): string =>
+    typeof val === 'string' && VALID_GEAR_ID_SET.has(val) ? val : fallback;
+  return {
+    helmet: pick(raw?.helmet, DEFAULT_EQUIPPED_GEAR.helmet),
+    goggles: pick(raw?.goggles, DEFAULT_EQUIPPED_GEAR.goggles),
+    suit: pick(raw?.suit, DEFAULT_EQUIPPED_GEAR.suit),
+    scarf: pick(raw?.scarf, DEFAULT_EQUIPPED_GEAR.scarf),
+    backpack: pick(raw?.backpack, DEFAULT_EQUIPPED_GEAR.backpack),
+    companion: pick(raw?.companion, DEFAULT_EQUIPPED_GEAR.companion),
+  };
+}
+
 export async function upsertClubMemberPresence(params: {
   uid: string;
   displayName: string;
   currentLevel: LearnerCEFRLevel;
-  avatarGender: ClubAvatarGender;
+  avatarGender?: ClubAvatarGender;
+  pilotEquipped?: Partial<ClubPilotEquipped>;
   statusText: string;
   posX: number;
   posZ: number;
@@ -2005,6 +2020,7 @@ export async function upsertClubMemberPresence(params: {
       ? params.currentLevel
       : 'A1';
   const safeGender: ClubAvatarGender = params.avatarGender === 'female' ? 'female' : 'male';
+  const safePilotEquipped = sanitizeClubPilotEquipped(params.pilotEquipped);
   const safeName = truncate(params.displayName.trim() || 'Phi công tập sự', 100) || 'Phi công tập sự';
   const safeStatus = truncate(params.statusText.trim(), 120);
   const safePosX = clampClubNumber(params.posX, -20, 20);
@@ -2018,6 +2034,7 @@ export async function upsertClubMemberPresence(params: {
         displayName: safeName,
         currentLevel: safeLevel,
         avatarGender: safeGender,
+        pilotEquipped: safePilotEquipped,
         statusText: safeStatus,
         posX: safePosX,
         posZ: safePosZ,
@@ -2031,6 +2048,7 @@ export async function upsertClubMemberPresence(params: {
         displayName: safeName,
         currentLevel: safeLevel,
         avatarGender: safeGender,
+        pilotEquipped: safePilotEquipped,
         statusText: safeStatus,
         posX: safePosX,
         posZ: safePosZ,

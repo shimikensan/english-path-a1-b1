@@ -6,12 +6,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Gem,
   RotateCcw,
   Send,
   Target,
   XCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { getLessonGemReward } from '../../data/pilotGearCatalog';
 import { isFirestoreQuotaError } from '../../firebase';
 import type { LessonDoc, QuizRating } from '../../types';
 import { ConfettiCelebration } from '../ConfettiCelebration';
@@ -36,7 +38,7 @@ interface QuizSectionProps {
 type ReviewFilterMode = 'all' | 'mistakes';
 
 export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
-  const { saveQuizAttempt, addToast } = useApp();
+  const { saveQuizAttempt, addToast, progressMap, triggerGemFlight } = useApp();
 
   const [questions, setQuestions] = useState<ShuffledQuizQuestion[]>(() =>
     prepareShuffledQuiz(lesson.quiz)
@@ -47,6 +49,8 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
   const [submitting, setSubmitting] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [confettiKey, setConfettiKey] = useState(0);
+  const [earnedGems, setEarnedGems] = useState(0);
+  const [completedLessonNow, setCompletedLessonNow] = useState(false);
   const [reviewFilter, setReviewFilter] = useState<ReviewFilterMode>('all');
 
   // Focused reinforcement drill state for re-answering only missed questions
@@ -64,6 +68,8 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
     setSubmitted(false);
     setElapsedSeconds(0);
     setConfettiKey(0);
+    setEarnedGems(0);
+    setCompletedLessonNow(false);
     setReviewFilter('all');
     setDrillQuestions(null);
     setDrillAnswers({});
@@ -134,6 +140,13 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
       return;
     }
 
+    const wasCompleted = Boolean(progressMap[lesson.lessonId]?.lessonCompleted);
+    const quizGems =
+      Math.round((Math.max(0, Math.min(100, summary.score)) / 100) * 20) +
+      (summary.score >= 100 ? 8 : 0);
+    const completedNow = !wasCompleted && summary.score >= 60;
+    const totalGained = quizGems + (completedNow ? getLessonGemReward(lesson) : 0);
+
     setSubmitting(true);
     try {
       const duration = Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000));
@@ -146,6 +159,8 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
         rating: summary.rating,
         durationSeconds: duration,
       });
+      setEarnedGems(totalGained);
+      setCompletedLessonNow(completedNow);
       setElapsedSeconds(duration);
       setSubmitted(true);
       setReviewFilter('all');
@@ -156,12 +171,21 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
     } catch (err) {
       if (isFirestoreQuotaError(err)) {
         const duration = Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000));
+        setEarnedGems(totalGained);
+        setCompletedLessonNow(completedNow);
         setElapsedSeconds(duration);
         setSubmitted(true);
         setReviewFilter('all');
         setDrillQuestions(null);
         setDrillAnswers({});
         setConfettiKey((k) => k + 1);
+        if (totalGained > 0) {
+          triggerGemFlight({
+            amount: totalGained,
+            lessonCompleted: completedNow,
+            label: completedNow ? 'Hoàn thành bài học' : 'Thưởng kiểm tra',
+          });
+        }
         playMissionCompleteChime();
         addToast(
           'info',
@@ -280,6 +304,23 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
             <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
               {ratingInfo.descriptionVi}
             </p>
+            {earnedGems > 0 && (
+              <div
+                data-gem-origin="lesson-reward"
+                className="pt-1.5 inline-flex flex-wrap items-center justify-center gap-1.5 text-sm font-extrabold text-sky-600 dark:text-sky-400 tabular-nums"
+              >
+                <Gem className="w-4 h-4 shrink-0" />
+                <span>+{earnedGems.toLocaleString('vi-VN')} Ngọc kiến thức</span>
+                <span className="text-slate-300 dark:text-slate-700 font-normal" aria-hidden="true">
+                  ·
+                </span>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {completedLessonNow
+                    ? 'Đã hoàn thành bài học & cộng vào Bảng xếp hạng'
+                    : 'Đã cộng vào Bảng xếp hạng'}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-4 max-w-lg mx-auto pt-4 border-t border-slate-100 dark:border-slate-800 tabular-nums">

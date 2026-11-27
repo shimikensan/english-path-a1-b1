@@ -7,6 +7,8 @@ export interface PilotRigHandles {
   headGroup: THREE.Group;
   leftArm: THREE.Group;
   rightArm: THREE.Group;
+  leftLeg: THREE.Group;
+  rightLeg: THREE.Group;
   scarfTail: THREE.Object3D | null;
   companionOrbit: THREE.Group | null;
   companionSpinner: THREE.Object3D | null;
@@ -248,39 +250,43 @@ export function buildPilotAvatar(equipped: EquippedPilotGear, isSoftwareGl: bool
   const legGeo = trackGeo(new THREE.CylinderGeometry(0.115, 0.1, 0.58, 16));
   const kneePadGeo = trackGeo(new THREE.BoxGeometry(0.16, 0.12, 0.06));
 
-  for (const side of [-1, 1]) {
-    const legGroup = new THREE.Group();
-    legGroup.position.set(side * 0.2, 0, 0);
+  const HIP_PIVOT_Y = 0.92;
+  const leftLeg = new THREE.Group();
+  const rightLeg = new THREE.Group();
 
-    // Boot sole sits flush at y = 0 -> y = 0.07
+  for (const side of [-1, 1]) {
+    const legGroup = side === -1 ? leftLeg : rightLeg;
+    legGroup.position.set(side * 0.2, HIP_PIVOT_Y, 0);
+
+    // Boot sole sits flush at world y = 0 -> y = 0.07
     const sole = makeMesh(soleGeo, bootSoleMat);
-    sole.position.set(0, 0.035, 0.04);
+    sole.position.set(0, 0.035 - HIP_PIVOT_Y, 0.04);
     legGroup.add(sole);
 
     // Rounded boot toe
     const toe = makeMesh(bootToeGeo, bootLeatherMat);
     toe.scale.set(1.0, 0.72, 1.3);
-    toe.position.set(0, 0.11, 0.11);
+    toe.position.set(0, 0.11 - HIP_PIVOT_Y, 0.11);
     legGroup.add(toe);
 
     // Boot shaft
     const shaft = makeMesh(bootUpperGeo, bootLeatherMat);
-    shaft.position.set(0, 0.21, 0);
+    shaft.position.set(0, 0.21 - HIP_PIVOT_Y, 0);
     legGroup.add(shaft);
 
     // Metallic boot buckle strap
     const buckle = makeMesh(trackGeo(new THREE.BoxGeometry(0.15, 0.045, 0.05)), goldMat);
-    buckle.position.set(0, 0.29, 0.1);
+    buckle.position.set(0, 0.29 - HIP_PIVOT_Y, 0.1);
     legGroup.add(buckle);
 
     // Flight trouser leg
     const leg = makeMesh(legGeo, pantsMat);
-    leg.position.set(0, 0.62, 0);
+    leg.position.set(0, 0.62 - HIP_PIVOT_Y, 0);
     legGroup.add(leg);
 
     // Knee pad accent
     const knee = makeMesh(kneePadGeo, darkMetalMat);
-    knee.position.set(0, 0.56, 0.095);
+    knee.position.set(0, 0.56 - HIP_PIVOT_Y, 0.095);
     legGroup.add(knee);
 
     bodyGroup.add(legGroup);
@@ -1039,6 +1045,8 @@ export function buildPilotAvatar(equipped: EquippedPilotGear, isSoftwareGl: bool
     headGroup,
     leftArm,
     rightArm,
+    leftLeg,
+    rightLeg,
     scarfTail,
     companionOrbit,
     companionSpinner,

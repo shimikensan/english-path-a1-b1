@@ -25,6 +25,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { DailyChallengesWidget } from '../components/DailyChallengesWidget';
 import { LeaderboardPanel } from '../components/LeaderboardPanel';
 import { calculateLessonCompletion, LessonMiniProgress } from '../components/LessonMiniProgress';
 import { StudyStreakWidget } from '../components/StudyStreakWidget';
@@ -337,6 +338,9 @@ export function DashboardPage({
           }
         }}
       />
+
+      {/* Daily Challenges Widget (3 Daily Missions with Gem Rewards) */}
+      <DailyChallengesWidget onNavigate={onNavigate} />
 
       {/* Word of the Day (Level-Matched Passive Vocabulary Booster) */}
       <WordOfTheDayCard onOpenLesson={onOpenLesson} />

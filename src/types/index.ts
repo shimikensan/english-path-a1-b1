@@ -274,11 +274,21 @@ export interface ReadingPassageDoc {
 
 export type ClubAvatarGender = 'male' | 'female';
 
+export interface ClubPilotEquipped {
+  helmet: string;
+  goggles: string;
+  suit: string;
+  scarf: string;
+  backpack: string;
+  companion: string;
+}
+
 export interface ClubMemberDoc {
   uid: string;
   displayName: string;
   currentLevel: LearnerCEFRLevel;
   avatarGender: ClubAvatarGender;
+  pilotEquipped?: ClubPilotEquipped;
   statusText: string;
   posX: number;
   posZ: number;

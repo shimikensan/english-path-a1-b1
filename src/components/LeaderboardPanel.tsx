@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
-  Award,
   BookOpen,
   CalendarClock,
   CheckCircle2,
@@ -701,8 +700,6 @@ export function LeaderboardPanel({
                   <th className="py-3 px-4 whitespace-nowrap">Số Ngọc</th>
                   <th className="py-3 px-4 whitespace-nowrap">Bài hoàn thành</th>
                   <th className="py-3 px-4 whitespace-nowrap">Từ vựng</th>
-                  <th className="py-3 px-4 whitespace-nowrap">Điểm TB</th>
-                  <th className="py-3 px-4 whitespace-nowrap">Chuỗi bay</th>
                   <th className="py-3 px-4 whitespace-nowrap">Tổng thời gian truy cập</th>
                   <th className="py-3 px-4 whitespace-nowrap">Đăng nhập lần đầu</th>
                 </tr>
@@ -796,24 +793,6 @@ export function LeaderboardPanel({
 
                       <td className="py-3.5 px-4 tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
                         {entry.learnedVocabCount} từ
-                      </td>
-
-                      <td className="py-3.5 px-4 tabular-nums whitespace-nowrap">
-                        {entry.averageQuizScore > 0 ? (
-                          <span className="inline-flex items-center gap-1 font-semibold text-slate-800 dark:text-slate-100">
-                            <Award className="w-3.5 h-3.5 text-amber-500" />
-                            {entry.averageQuizScore}%
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-
-                      <td className="py-3.5 px-4 tabular-nums whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-200">
-                          <Flame className="w-3.5 h-3.5 text-amber-500" />
-                          {entry.streakDays} ngày
-                        </span>
                       </td>
 
                       <td className="py-3.5 px-4 tabular-nums whitespace-nowrap">

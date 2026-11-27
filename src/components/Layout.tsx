@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   BarChart3,
   BookMarked,
@@ -34,6 +35,7 @@ import {
   X,
 } from 'lucide-react';
 import { FocusStudyTimer } from './FocusStudyTimer';
+import { LEADERBOARD_GEM_IMPACT_EVENT } from './GemLeaderboardFlight';
 import { HudOverlay } from './HudOverlay';
 import { PWAInstallButton } from './PWAInstallButton';
 import { useApp } from '../context/AppContext';
@@ -94,12 +96,35 @@ export function Layout({
   const { theme, toggleTheme } = useTheme();
   const { audioEnabled, toggleAudio } = useCockpitAudio();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [leaderboardImpact, setLeaderboardImpact] = useState<{
+    key: number;
+    amount: number;
+  } | null>(null);
 
   useEffect(() => {
     if (focusMode) {
       setMobileMenuOpen(false);
     }
   }, [focusMode]);
+
+  useEffect(() => {
+    let resetTimer: number | undefined;
+    const handleImpact = (event: Event) => {
+      const custom = event as CustomEvent<{ amount?: number; key?: number }>;
+      const amount = custom.detail?.amount ?? 0;
+      const key = custom.detail?.key ?? Date.now();
+      setLeaderboardImpact({ key, amount });
+      if (resetTimer !== undefined) window.clearTimeout(resetTimer);
+      resetTimer = window.setTimeout(() => {
+        setLeaderboardImpact(null);
+      }, 1500);
+    };
+    window.addEventListener(LEADERBOARD_GEM_IMPACT_EVENT, handleImpact);
+    return () => {
+      window.removeEventListener(LEADERBOARD_GEM_IMPACT_EVENT, handleImpact);
+      if (resetTimer !== undefined) window.clearTimeout(resetTimer);
+    };
+  }, []);
 
   const handleSelectRoute = (route: AppRoute) => {
     onNavigate(route);
@@ -146,20 +171,56 @@ export function Layout({
             (currentRoute === 'lesson' &&
               ((activeLessonLevelId === 'ESP' && item.id === 'specialized') ||
                 (activeLessonLevelId !== 'ESP' && item.id === 'roadmap')));
+          const isLeaderboardItem = item.id === 'leaderboard';
+          const isImpacted = isLeaderboardItem && Boolean(leaderboardImpact);
           return (
-            <button
+            <motion.button
               key={item.id}
               type="button"
+              data-gem-target={isLeaderboardItem ? 'leaderboard' : undefined}
               onClick={() => handleSelectRoute(item.id)}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                active
-                  ? 'bg-[#FF6B00]/12 dark:bg-[#FF6B00]/15 text-[#D94E00] dark:text-[#FF8524] font-semibold ring-1 ring-[#FF6B00]/30'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
+              animate={
+                isImpacted
+                  ? { scale: [1, 1.045, 0.99, 1.02, 1] }
+                  : { scale: 1 }
+              }
+              transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+              className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                isImpacted
+                  ? 'bg-sky-500/15 dark:bg-sky-400/20 text-sky-700 dark:text-sky-300 font-bold ring-2 ring-sky-400/70 shadow-[0_0_18px_rgba(56,189,248,0.35)]'
+                  : active
+                    ? 'bg-[#FF6B00]/12 dark:bg-[#FF6B00]/15 text-[#D94E00] dark:text-[#FF8524] font-semibold ring-1 ring-[#FF6B00]/30'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-[#FF6B00] dark:text-[#FF8524]' : 'text-slate-400 dark:text-slate-500'}`} />
-              <span className="truncate">{item.label}</span>
-            </button>
+              <span className="flex items-center gap-3 min-w-0">
+                <motion.span
+                  animate={
+                    isImpacted
+                      ? { rotate: [0, -14, 14, -8, 0], scale: [1, 1.28, 1] }
+                      : { rotate: 0, scale: 1 }
+                  }
+                  transition={{ duration: 0.55 }}
+                  className="inline-flex shrink-0"
+                >
+                  <Icon
+                    className={`w-4 h-4 shrink-0 ${
+                      isImpacted
+                        ? 'text-amber-500 dark:text-amber-300'
+                        : active
+                          ? 'text-[#FF6B00] dark:text-[#FF8524]'
+                          : 'text-slate-400 dark:text-slate-500'
+                    }`}
+                  />
+                </motion.span>
+                <span className="truncate">{item.label}</span>
+              </span>
+              {isImpacted && leaderboardImpact && leaderboardImpact.amount > 0 && (
+                <span className="text-[11px] font-extrabold text-sky-600 dark:text-sky-300 tabular-nums shrink-0">
+                  +{leaderboardImpact.amount}
+                </span>
+              )}
+            </motion.button>
           );
         })}
 
@@ -341,16 +402,22 @@ export function Layout({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <button
+              <motion.button
                 type="button"
                 onClick={() => handleSelectRoute('pilot-hangar')}
                 title="Mở Hangar Phi công 3D & Đổi Ngọc lấy trang bị"
+                animate={
+                  leaderboardImpact
+                    ? { scale: [1, 1.12, 1] }
+                    : { scale: 1 }
+                }
+                transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
                 className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/15 text-xs font-extrabold tabular-nums transition-colors whitespace-nowrap cursor-pointer"
               >
                 <Gem className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400 shrink-0" />
                 <span>{gemBreakdown.availableGems.toLocaleString('vi-VN')}</span>
                 <span className="hidden sm:inline font-semibold">Ngọc</span>
-              </button>
+              </motion.button>
 
               <div className="hidden md:flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 tabular-nums mr-1">
                 <Flame className="w-4 h-4 text-[#FF6B00] dark:text-[#FF8524]" />

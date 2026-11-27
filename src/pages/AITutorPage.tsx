@@ -16,6 +16,7 @@ import {
 import { useApp } from '../context/AppContext';
 import type { VocabularyItem } from '../types';
 import { playCorrectBeep } from '../utils/cockpitAudio';
+import { recordDailyAiMessage } from '../utils/dailyChallenges';
 import { speakEnglish } from '../utils/speech';
 
 type CEFROption = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'ESP';
@@ -253,6 +254,7 @@ export function AITutorPage() {
       const updatedHistory = [...baseMessages, userMsg];
       setMessages(updatedHistory);
       saveStoredChat(scenario, updatedHistory);
+      recordDailyAiMessage(profile?.uid);
       if (!overrideText) {
         setChatInput('');
       }

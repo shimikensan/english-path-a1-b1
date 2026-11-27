@@ -6,7 +6,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BookMarked, Plane, Volume2, WifiOff, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { DailyChallengesCelebration } from './components/DailyChallengesCelebration';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { GemLeaderboardFlight } from './components/GemLeaderboardFlight';
 import { Layout } from './components/Layout';
 import { LeaderboardPanel } from './components/LeaderboardPanel';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -476,6 +478,8 @@ function AppShell() {
           </motion.div>
         </AnimatePresence>
       </Layout>
+      <DailyChallengesCelebration />
+      <GemLeaderboardFlight onOpenLeaderboard={() => handleNavigate('leaderboard')} />
       <OfflineIndicator
         showSavedShortcut={route !== 'saved'}
         onOpenSavedWords={() => handleNavigate('saved')}

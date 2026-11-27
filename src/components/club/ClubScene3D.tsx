@@ -4,10 +4,11 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { ClubMemberDoc } from '../../types';
 import {
-  createChibiAvatar,
-  type ChibiAnimationState,
-  type ChibiAvatarRig,
-} from './chibiAvatarBuilder';
+  computePilotGearSignature,
+  createClubPilotAvatar,
+  type ClubPilotAnimationState,
+  type ClubPilotAvatarRig,
+} from './pilotClubAvatarBuilder';
 import { createClubRoom } from './clubRoomBuilder';
 
 export type ClubCameraMode = 'overview' | 'closeup' | 'follow-self' | 'focus-uid';
@@ -25,6 +26,11 @@ export interface ClubChatBubbleData {
   seq: number;
 }
 
+export interface ClubEmojiBurstData {
+  emoji: string;
+  seq: number;
+}
+
 interface ClubScene3DProps {
   members: ClubMemberDoc[];
   currentUserUid: string;
@@ -34,13 +40,14 @@ interface ClubScene3DProps {
   talkingUntilByUid: Record<string, number>;
   activeTalkingUids: Record<string, boolean>;
   chatBubblesByUid: Record<string, ClubChatBubbleData>;
+  emojiBurstsByUid?: Record<string, ClubEmojiBurstData>;
   cameraCommand: ClubCameraCommand;
   onSelectMember: (uid: string) => void;
   onLocalMove: (posX: number, posZ: number, rotationY: number, isFinal: boolean) => void;
 }
 
 interface AvatarRuntimeState {
-  rig: ChibiAvatarRig;
+  rig: ClubPilotAvatarRig;
   currentX: number;
   currentZ: number;
   targetX: number;
@@ -50,6 +57,7 @@ interface AvatarRuntimeState {
   walkPhase: number;
   idleSeed: number;
   lastBubbleSeq: number;
+  lastEmojiSeq: number;
 }
 
 // Pre-allocated scratch objects to guarantee zero GC allocations inside the render loop
@@ -101,6 +109,7 @@ export function ClubScene3D({
   talkingUntilByUid,
   activeTalkingUids,
   chatBubblesByUid,
+  emojiBurstsByUid,
   cameraCommand,
   onSelectMember,
   onLocalMove,
@@ -116,6 +125,7 @@ export function ClubScene3D({
   const talkingUntilRef = useRef<Record<string, number>>(talkingUntilByUid);
   const activeTalkingRef = useRef<Record<string, boolean>>(activeTalkingUids);
   const chatBubblesRef = useRef<Record<string, ClubChatBubbleData>>(chatBubblesByUid);
+  const emojiBurstsRef = useRef<Record<string, ClubEmojiBurstData>>(emojiBurstsByUid ?? {});
   const onSelectMemberRef = useRef(onSelectMember);
   const onLocalMoveRef = useRef(onLocalMove);
   const cameraCommandRef = useRef<ClubCameraCommand>(cameraCommand);
@@ -127,6 +137,7 @@ export function ClubScene3D({
   talkingUntilRef.current = talkingUntilByUid;
   activeTalkingRef.current = activeTalkingUids;
   chatBubblesRef.current = chatBubblesByUid;
+  emojiBurstsRef.current = emojiBurstsByUid ?? {};
   onSelectMemberRef.current = onSelectMember;
   onLocalMoveRef.current = onLocalMove;
 
@@ -310,8 +321,10 @@ export function ClubScene3D({
           statusText: member.statusText,
         };
 
-        // Recreate rig if avatar gender changed
-        if (existing && existing.rig.gender !== member.avatarGender) {
+        const nextGearSig = computePilotGearSignature(member.pilotEquipped);
+
+        // Recreate 3D Pilot rig if equipped Hangar gear changed
+        if (existing && existing.rig.gearSignature !== nextGearSig) {
           avatarsGroup.remove(existing.rig.root);
           existing.rig.dispose();
           avatarStates.delete(member.uid);
@@ -319,10 +332,11 @@ export function ClubScene3D({
 
         const current = avatarStates.get(member.uid);
         if (!current) {
-          const rig = createChibiAvatar({
+          const rig = createClubPilotAvatar({
             uid: member.uid,
-            gender: member.avatarGender,
+            pilotEquipped: member.pilotEquipped,
             label: labelOpts,
+            isSoftwareGl,
             initialTimeOffset: index * 0.91 + 0.25,
           });
           rig.root.position.set(clamped.x, 0, clamped.z);
@@ -340,6 +354,7 @@ export function ClubScene3D({
             walkPhase: 0,
             idleSeed: index * 1.37 + 0.4,
             lastBubbleSeq: 0,
+            lastEmojiSeq: emojiBurstsRef.current[member.uid]?.seq ?? 0,
           });
         } else {
           current.rig.updateLabel(labelOpts);
@@ -589,6 +604,7 @@ export function ClubScene3D({
       const talkingUntilMap = talkingUntilRef.current;
       const activeTalkingMap = activeTalkingRef.current;
       const chatBubblesMap = chatBubblesRef.current;
+      const emojiBurstsMap = emojiBurstsRef.current;
       const selectedPartnerId = selectedUidRef.current;
       const selfAvatarState = avatarStates.get(currentUserUid);
       const partnerAvatarState = selectedPartnerId ? avatarStates.get(selectedPartnerId) : undefined;
@@ -636,7 +652,7 @@ export function ClubScene3D({
         const talkUntil = talkingUntilMap[uid] ?? 0;
         const isTalking = Boolean(activeTalkingMap[uid]) || talkUntil > nowEpoch;
 
-        let desiredState: ChibiAnimationState = 'idle';
+        let desiredState: ClubPilotAnimationState = 'idle';
         if (isWalking) {
           desiredState = 'walk';
         } else if (isWaving) {
@@ -680,6 +696,13 @@ export function ClubScene3D({
           state.rig.setChatBubbleVisual(scaleFactor, opacity, floatOffset);
         } else if (state.rig.chatBubbleSprite.visible) {
           state.rig.setChatBubbleVisual(0.01, 0, 0);
+        }
+
+        // Trigger floating 3D emoji burst above character's head when clicked or reacted
+        const emojiBurst = emojiBurstsMap[uid];
+        if (emojiBurst && emojiBurst.seq > state.lastEmojiSeq) {
+          state.lastEmojiSeq = emojiBurst.seq;
+          state.rig.spawnEmojiBurst(emojiBurst.emoji);
         }
       });
 

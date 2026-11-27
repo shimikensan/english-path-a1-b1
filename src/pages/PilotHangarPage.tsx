@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   ArrowRight,
   Award,
@@ -19,6 +20,8 @@ import {
   Sparkles,
   Timer,
 } from 'lucide-react';
+import { AircraftPurchaseAnimation } from '../components/pilot3d/AircraftPurchaseAnimation';
+import { HangarLofiPlayer } from '../components/pilot3d/HangarLofiPlayer';
 import {
   Pilot3DCanvas,
   type HangarCameraPresetId,
@@ -38,7 +41,12 @@ import {
   type PilotGearSlot,
 } from '../data/pilotGearCatalog';
 import type { AppRoute } from '../types';
-import { playCorrectChime, playLevelFanfare, playTileClick } from '../utils/gameSfx';
+import {
+  playAircraftFlyby,
+  playCorrectChime,
+  playLevelFanfare,
+  playTileClick,
+} from '../utils/gameSfx';
 import { formatAccessDurationVi } from '../utils/helpers';
 
 interface PilotHangarPageProps {
@@ -85,7 +93,15 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
   const [celebrateCounter, setCelebrateCounter] = useState(0);
   const [requestedPreset, setRequestedPreset] = useState<HangarCameraPresetId | undefined>(undefined);
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
+  const [purchasedAircraftEvent, setPurchasedAircraftEvent] = useState<{
+    item: PilotGearItem;
+    key: number;
+  } | null>(null);
   const [questLevelFilter, setQuestLevelFilter] = useState<string>('ALL');
+
+  const clearPurchaseAnimation = useCallback(() => {
+    setPurchasedAircraftEvent(null);
+  }, []);
 
   const ownedSet = useMemo(() => new Set(hangarState.ownedItemIds), [hangarState.ownedItemIds]);
 
@@ -197,14 +213,17 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
     try {
       const ok = await purchasePilotGear(item.id);
       if (ok) {
-        playLevelFanfare();
         setPreviewGear((prev) => {
           const next = { ...prev };
           delete next[item.slot];
           return next;
         });
         if (item.slot === 'aircraft' && item.id !== 'aircraft_none') {
+          playAircraftFlyby();
           setRequestedPreset('aircraft');
+          setPurchasedAircraftEvent({ item, key: Date.now() });
+        } else {
+          playLevelFanfare();
         }
         setCelebrateCounter((c) => c + 1);
       }
@@ -416,8 +435,9 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
                     {isPreviewing ? 'Đang xem 3D' : isAircraft ? 'Xem thử 3D' : 'Thử 3D'}
                   </button>
 
-                  <button
+                  <motion.button
                     type="button"
+                    whileTap={canAfford ? { scale: 0.96 } : undefined}
                     disabled={!canAfford || purchasingId === item.id}
                     onClick={() => void handlePurchase(item)}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
@@ -439,7 +459,7 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
                         Thiếu {missingGems.toLocaleString('vi-VN')} Ngọc
                       </>
                     )}
-                  </button>
+                  </motion.button>
                 </>
               )}
             </div>
@@ -451,6 +471,11 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
 
   return (
     <div className="space-y-8">
+      <AircraftPurchaseAnimation
+        purchaseEvent={purchasedAircraftEvent}
+        onComplete={clearPurchaseAnimation}
+      />
+
       {/* Top Gem Vault Header */}
       <section className="rounded-2xl bg-gradient-to-br from-[#07111F] via-[#0D1F38] to-[#132B4D] border border-slate-700/80 p-5 sm:p-7 text-white">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -657,6 +682,9 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
               </div>
             </div>
           )}
+
+          {/* Ambient Lo-Fi Study Beats Player */}
+          <HangarLofiPlayer />
         </div>
 
         {/* Right: Dual Store (Pilot Wardrobe + Aircraft Fleet Showroom) */}

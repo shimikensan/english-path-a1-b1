@@ -769,12 +769,22 @@ async function startServer() {
   const server = http.createServer(app);
 
   // --- Real-Time 3D English Club WebSocket Hub (/ws/club) ---
+  interface ClubPilotGearState {
+    helmet: string;
+    goggles: string;
+    suit: string;
+    scarf: string;
+    backpack: string;
+    companion: string;
+  }
+
   interface ClubClientState {
     ws: WebSocket;
     uid: string;
     displayName: string;
     currentLevel: string;
     avatarGender: 'male' | 'female';
+    pilotEquipped?: ClubPilotGearState;
     statusText: string;
     posX: number;
     posZ: number;
@@ -784,6 +794,23 @@ async function startServer() {
   const CLUB_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
   const CLUB_LEVELS = new Set(['A1', 'A2', 'B1', 'B2', 'C1']);
   const clubSockets = new Map<WebSocket, ClubClientState>();
+
+  const sanitizeClubPilotGear = (raw: unknown): ClubPilotGearState | undefined => {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const obj = raw as Record<string, unknown>;
+    const pick = (key: string, fallback: string): string => {
+      const val = obj[key];
+      return typeof val === 'string' && CLUB_ID_REGEX.test(val) ? val : fallback;
+    };
+    return {
+      helmet: pick('helmet', 'helmet_cadet'),
+      goggles: pick('goggles', 'goggles_classic'),
+      suit: pick('suit', 'suit_bomber'),
+      scarf: pick('scarf', 'scarf_white'),
+      backpack: pick('backpack', 'backpack_none'),
+      companion: pick('companion', 'companion_none'),
+    };
+  };
 
   const clampClubCoord = (v: unknown, fallback = 0): number => {
     const n = Number(v);
@@ -820,6 +847,7 @@ async function startServer() {
         displayName: state.displayName,
         currentLevel: state.currentLevel,
         avatarGender: state.avatarGender,
+        pilotEquipped: state.pilotEquipped,
         statusText: state.statusText,
         posX: state.posX,
         posZ: state.posZ,
@@ -868,6 +896,7 @@ async function startServer() {
             ? msg.currentLevel
             : 'A1';
         const avatarGender: 'male' | 'female' = msg.avatarGender === 'female' ? 'female' : 'male';
+        const pilotEquipped = sanitizeClubPilotGear(msg.pilotEquipped);
         const statusText =
           typeof msg.statusText === 'string' ? msg.statusText.trim().slice(0, 120) : '';
         const posX = clampClubCoord(msg.posX, 0);
@@ -880,6 +909,7 @@ async function startServer() {
           displayName,
           currentLevel,
           avatarGender,
+          pilotEquipped,
           statusText,
           posX,
           posZ,
@@ -902,6 +932,7 @@ async function startServer() {
               displayName,
               currentLevel,
               avatarGender,
+              pilotEquipped,
               statusText,
               posX,
               posZ,
@@ -952,6 +983,26 @@ async function startServer() {
           uid: sender.uid,
           until: Date.now() + durationMs,
         });
+        return;
+      }
+
+      if (msg.type === 'club:emoji') {
+        const ALLOWED_EMOJIS = new Set(['😊', '👋', '✈️', '⭐', '❤️', '🎉', '🔥', '👏']);
+        const emoji =
+          typeof msg.emoji === 'string' && ALLOWED_EMOJIS.has(msg.emoji) ? msg.emoji : '😊';
+        const targetUid =
+          typeof msg.targetUid === 'string' && CLUB_ID_REGEX.test(msg.targetUid)
+            ? msg.targetUid
+            : sender.uid;
+        broadcastClub(
+          {
+            type: 'club:member_emoji',
+            uid: targetUid,
+            emoji,
+            at: Date.now(),
+          },
+          ws
+        );
         return;
       }
 

@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MessageSquare, Send, Sparkles, Volume2, X } from 'lucide-react';
-import type { ClubAvatarGender, ClubMemberDoc, ClubMessageDoc, LearnerCEFRLevel } from '../../types';
+import { MessageSquare, Plane, Send, Sparkles, Volume2, X } from 'lucide-react';
+import { DEFAULT_EQUIPPED_GEAR, PILOT_GEAR_CATALOG } from '../../data/pilotGearCatalog';
+import type { ClubMemberDoc, ClubMessageDoc, ClubPilotEquipped, LearnerCEFRLevel } from '../../types';
 import { speakEnglish } from '../../utils/speech';
-
-const AVATAR_SHEET_SRC = '/assets/aistudio/image_cacf8f7c.png';
 
 interface ClubChatDrawerProps {
   partner: ClubMemberDoc;
@@ -56,45 +55,36 @@ function formatMessageTime(ms?: number): string {
   }
 }
 
-export function ChibiAvatarThumb({
-  gender,
+const GEAR_BY_ID = new Map(PILOT_GEAR_CATALOG.map((item) => [item.id, item]));
+
+export function PilotAvatarThumb({
+  pilotEquipped,
   size = 'md',
 }: {
-  gender: ClubAvatarGender;
+  pilotEquipped?: Partial<ClubPilotEquipped>;
   size?: 'sm' | 'md' | 'lg';
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
   const dimClass =
-    size === 'sm' ? 'w-8 h-8' : size === 'lg' ? 'w-12 h-12' : 'w-10 h-10';
-  const bgTone =
-    gender === 'male'
-      ? 'bg-sky-50 border-sky-200 dark:bg-sky-950/50 dark:border-sky-800'
-      : 'bg-rose-50 border-rose-200 dark:bg-rose-950/50 dark:border-rose-800';
+    size === 'sm' ? 'w-8 h-8 rounded-lg' : size === 'lg' ? 'w-12 h-12 rounded-2xl' : 'w-10 h-10 rounded-xl';
+  const iconClass = size === 'sm' ? 'w-4 h-4' : size === 'lg' ? 'w-6 h-6' : 'w-5 h-5';
 
-  if (imgFailed) {
-    return (
-      <div
-        className={`${dimClass} rounded-xl border ${bgTone} flex items-center justify-center text-xs font-extrabold shrink-0 ${
-          gender === 'male' ? 'text-sky-700 dark:text-sky-300' : 'text-rose-700 dark:text-rose-300'
-        }`}
-      >
-        {gender === 'male' ? 'NAM' : 'NỮ'}
-      </div>
-    );
-  }
+  const suitItem = GEAR_BY_ID.get(pilotEquipped?.suit || DEFAULT_EQUIPPED_GEAR.suit);
+  const helmetItem = GEAR_BY_ID.get(pilotEquipped?.helmet || DEFAULT_EQUIPPED_GEAR.helmet);
+  const primaryHex = suitItem?.swatchHex || '#5E3822';
+  const accentHex = helmetItem?.accentHex || suitItem?.accentHex || '#FF6B00';
 
   return (
-    <div className={`${dimClass} rounded-xl border ${bgTone} overflow-hidden relative shrink-0`}>
-      <img
-        src={AVATAR_SHEET_SRC}
-        alt={gender === 'male' ? 'Nhân vật Nam' : 'Nhân vật Nữ'}
-        referrerPolicy="no-referrer"
-        onError={() => setImgFailed(true)}
-        className={`w-[215%] h-[185%] max-w-none object-cover select-none pointer-events-none ${
-          gender === 'male'
-            ? '-translate-x-[6%] -translate-y-[4%]'
-            : '-translate-x-[51%] -translate-y-[4%]'
-        }`}
+    <div
+      className={`${dimClass} relative overflow-hidden shrink-0 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center shadow-xs`}
+      style={{
+        background: `linear-gradient(135deg, ${primaryHex} 0%, ${primaryHex} 58%, ${accentHex} 100%)`,
+      }}
+      title={suitItem ? `Phi công 3D · ${suitItem.nameVi}` : 'Nhân vật Phi công 3D'}
+    >
+      <Plane className={`${iconClass} text-white drop-shadow-xs -rotate-12`} />
+      <span
+        className="absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full border border-white/80"
+        style={{ backgroundColor: accentHex }}
       />
     </div>
   );
@@ -179,7 +169,7 @@ export function ClubChatDrawer({
       {/* Partner Header */}
       <div className="px-4 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <ChibiAvatarThumb gender={partner.avatarGender} size="md" />
+          <PilotAvatarThumb pilotEquipped={partner.pilotEquipped} size="md" />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
