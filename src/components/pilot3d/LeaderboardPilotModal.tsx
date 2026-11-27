@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { PILOT_RANKS } from '../../data';
+import { resolveLeaderboardBadges } from '../../data/levelBadges';
 import {
   DEFAULT_EQUIPPED_GEAR,
   PILOT_GEAR_CATALOG,
@@ -19,6 +20,7 @@ import {
   type PilotGearSlot,
 } from '../../data/pilotGearCatalog';
 import type { LeaderboardEntryDoc } from '../../types';
+import { LevelBadgeStrip } from '../LevelBadgeEmblem';
 import { Pilot3DCanvas, type HangarCameraPresetId } from './Pilot3DCanvas';
 
 export type RankedLeaderboardEntry = LeaderboardEntryDoc & {
@@ -108,6 +110,11 @@ export function LeaderboardPilotModal({
       };
     });
   }, [resolvedEquipped, gearById]);
+
+  const earnedBadges = useMemo(
+    () => (entry ? resolveLeaderboardBadges(entry) : []),
+    [entry]
+  );
 
   if (!entry || typeof document === 'undefined') return null;
 
@@ -239,6 +246,24 @@ export function LeaderboardPilotModal({
                 <BookOpen className="w-3.5 h-3.5 text-sky-500" />
                 Cấp độ CEFR {entry.currentLevel}
               </span>
+            </div>
+
+            {/* Earned CEFR Level Badges */}
+            <div className="pt-2.5 border-t border-slate-200 dark:border-slate-800 space-y-1.5 shrink-0">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Huy hiệu cấp độ
+                </h4>
+                <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tabular-nums">
+                  {earnedBadges.length}/5
+                </span>
+              </div>
+              <LevelBadgeStrip
+                badges={earnedBadges}
+                size="sm"
+                showHighestTitle
+                emptyLabel="Chưa mở khóa huy hiệu cấp độ"
+              />
             </div>
 
             {/* Equipped Gear Inventory */}

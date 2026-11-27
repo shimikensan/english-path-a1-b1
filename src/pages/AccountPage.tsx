@@ -15,7 +15,9 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
+import { LevelBadgeShowcase, LevelBadgeStrip } from '../components/LevelBadgeEmblem';
 import { PILOT_RANKS } from '../data';
+import { computeLevelBadgeProgress } from '../data/levelBadges';
 import type { LearnerCEFRLevel } from '../types';
 import {
   buildStudyReportSummary,
@@ -27,9 +29,10 @@ import { buildStudyReminderCopy, STUDY_INACTIVITY_THRESHOLD_MS } from '../utils/
 
 interface AccountPageProps {
   onStartPractice?: () => void;
+  onOpenRoadmap?: () => void;
 }
 
-export function AccountPage({ onStartPractice }: AccountPageProps) {
+export function AccountPage({ onStartPractice, onOpenRoadmap }: AccountPageProps) {
   const {
     firebaseUser,
     profile,
@@ -76,6 +79,16 @@ export function AccountPage({ onStartPractice }: AccountPageProps) {
         quizResults,
       }),
     [profile, lessons, progressMap, vocabMap, quizResults]
+  );
+
+  const badgeProgressItems = useMemo(
+    () => computeLevelBadgeProgress({ lessons, progressMap }),
+    [lessons, progressMap]
+  );
+
+  const earnedBadges = useMemo(
+    () => badgeProgressItems.filter((item) => item.earned).map((item) => item.badge),
+    [badgeProgressItems]
   );
 
   useEffect(() => {
@@ -177,21 +190,29 @@ export function AccountPage({ onStartPractice }: AccountPageProps) {
   };
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-5xl space-y-6">
+      {/* CEFR Milestone Badges Showcase */}
+      <LevelBadgeShowcase items={badgeProgressItems} onStartRoadmap={onOpenRoadmap} />
+
       {/* Profile Info Card */}
       <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100 dark:border-slate-800">
-          <div>
+          <div className="space-y-1.5">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">
               Thông tin tài khoản học tập
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               {profile?.email} · Đăng ký: {formatTimestampVi(profile?.createdAt)} · Lần đăng nhập gần nhất:{' '}
               {formatTimestampVi(profile?.lastLogin)}
             </p>
+            {earnedBadges.length > 0 && (
+              <div className="pt-1">
+                <LevelBadgeStrip badges={earnedBadges} size="sm" showHighestTitle />
+              </div>
+            )}
           </div>
           {isAdmin && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 shrink-0">
               <ShieldCheck className="w-4 h-4" />
               Quản trị viên
             </span>

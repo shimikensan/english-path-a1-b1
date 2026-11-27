@@ -2,9 +2,14 @@ import { useMemo, useState } from 'react';
 import { ArrowRight, Award, Crown, Eye, Gem, Medal, RefreshCw, Trophy } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PILOT_RANKS } from '../data';
-import { calculateWeeklyActivityGems, resolveLeaderboardCurrentGems } from '../data/pilotGearCatalog';
+import {
+  computeEarnedLevelBadgeIds,
+  resolveLeaderboardBadges,
+  type LevelBadgeDefinition,
+} from '../data/levelBadges';
+import { resolveLeaderboardCurrentGems } from '../data/pilotGearCatalog';
 import type { AppRoute, LeaderboardEntryDoc } from '../types';
-import { getCurrentIsoWeekInfo, toTimestampMillis } from '../utils/helpers';
+import { LevelBadgeStrip } from './LevelBadgeEmblem';
 import {
   LeaderboardPilotModal,
   type RankedLeaderboardEntry,
@@ -14,10 +19,9 @@ interface PilotHallOfFameProps {
   onNavigate: (route: AppRoute) => void;
 }
 
-interface WeeklyRankedPilot extends RankedLeaderboardEntry {
-  weeklyRank: number;
-  displayGems: number;
-  isExactWeekly: boolean;
+interface HallOfFamePilot extends RankedLeaderboardEntry {
+  rank: number;
+  badges: LevelBadgeDefinition[];
 }
 
 function getInitials(name: string): string {
@@ -46,7 +50,7 @@ interface TierVisualConfig {
 
 const TIER_VISUALS: Record<1 | 2 | 3, TierVisualConfig> = {
   1: {
-    rankTitle: 'Hạng 1 · Quán quân tuần',
+    rankTitle: 'Hạng 1 · Quán quân Ngọc',
     medalIcon: Crown,
     orderClass: 'order-1 lg:order-2',
     elevationClass: 'lg:-mt-3 lg:pb-6',
@@ -66,7 +70,7 @@ const TIER_VISUALS: Record<1 | 2 | 3, TierVisualConfig> = {
     pedestalBarClass: 'from-amber-400 via-[#FF6B00] to-amber-300',
   },
   2: {
-    rankTitle: 'Hạng 2 · Á quân tuần',
+    rankTitle: 'Hạng 2 · Á quân Ngọc',
     medalIcon: Medal,
     orderClass: 'order-2 lg:order-1',
     elevationClass: 'lg:mt-4',
@@ -115,8 +119,6 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
     profile,
     lessons,
     progressMap,
-    vocabMap,
-    quizResults,
     gemBreakdown,
     hangarState,
   } = useApp();
@@ -124,23 +126,12 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
   const [selectedPilot, setSelectedPilot] = useState<RankedLeaderboardEntry | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const weekInfo = useMemo(() => getCurrentIsoWeekInfo(), []);
+  const currentUserEarnedBadgeIds = useMemo(
+    () => computeEarnedLevelBadgeIds({ lessons, progressMap }),
+    [lessons, progressMap]
+  );
 
-  const currentUserActivityWeeklyGems = useMemo(() => {
-    if (!profile?.uid) return 0;
-    const publishedLessons = lessons.filter((l) => l.isPublished !== false);
-    return calculateWeeklyActivityGems({
-      lessons: publishedLessons,
-      progressMap,
-      vocabMap,
-      quizResults,
-      weekStartMs: weekInfo.weekStartMs,
-      weekEndMs: weekInfo.weekEndMs,
-      toMillis: toTimestampMillis,
-    });
-  }, [profile?.uid, lessons, progressMap, vocabMap, quizResults, weekInfo.weekStartMs, weekInfo.weekEndMs]);
-
-  const { topThree, currentUserRankInfo, usingCumulativeFallback } = useMemo(() => {
+  const { topThree, currentUserRankInfo } = useMemo(() => {
     const publishedLessons = lessons.filter((l) => l.isPublished !== false);
     const canonicalTotalLessons = Math.max(1, publishedLessons.length);
     const canonicalTotalVocab = Math.max(
@@ -160,61 +151,46 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
       const gemsCount = isCurrentUser
         ? Math.max(0, Math.floor(gemBreakdown.availableGems))
         : resolveLeaderboardCurrentGems(entry);
-
-      const hasSyncedThisWeek =
-        entry.weeklyGemsWeekKey === weekInfo.weekKey &&
-        typeof entry.weeklyGems === 'number' &&
-        Number.isFinite(entry.weeklyGems);
-
-      let exactWeeklyGems = hasSyncedThisWeek ? Math.max(0, Math.floor(entry.weeklyGems!)) : 0;
-      if (isCurrentUser) {
-        exactWeeklyGems = Math.max(exactWeeklyGems, currentUserActivityWeeklyGems);
-      }
-
-      const isExactWeekly = (hasSyncedThisWeek || isCurrentUser) && exactWeeklyGems > 0;
-      const updatedMs = toTimestampMillis(entry.updatedAt);
-      const activeThisWeek =
-        isExactWeekly || (updatedMs !== null && updatedMs >= weekInfo.weekStartMs);
+      const effectiveEarnedBadges = isCurrentUser
+        ? currentUserEarnedBadgeIds
+        : entry.earnedBadges;
+      const badges = resolveLeaderboardBadges({
+        earnedBadges: effectiveEarnedBadges,
+        currentLevel: entry.currentLevel,
+        completedLessons: entry.completedLessons,
+      });
 
       return {
         ...entry,
+        earnedBadges: effectiveEarnedBadges,
+        badges,
         totalLessons,
         completionPercent,
         gemsCount,
-        exactWeeklyGems,
-        isExactWeekly,
-        activeThisWeek,
       };
     });
 
-    const exactWeeklyCount = enriched.filter((e) => e.isExactWeekly).length;
-    const fallbackNeeded = exactWeeklyCount < 3;
-
-    // Sort: pilots with verified weekly gems come first; remaining podium slots rank by total gems
+    // Rank strictly by current available Gems (tie-break by completion, lessons, vocab, streak)
     const sorted = [...enriched].sort((a, b) => {
-      if (a.isExactWeekly !== b.isExactWeekly) {
-        return a.isExactWeekly ? -1 : 1;
-      }
-      if (a.isExactWeekly && b.isExactWeekly && b.exactWeeklyGems !== a.exactWeeklyGems) {
-        return b.exactWeeklyGems - a.exactWeeklyGems;
-      }
-      if (a.activeThisWeek !== b.activeThisWeek) {
-        return a.activeThisWeek ? -1 : 1;
-      }
       if (b.gemsCount !== a.gemsCount) {
         return b.gemsCount - a.gemsCount;
       }
       if (b.completionPercent !== a.completionPercent) {
         return b.completionPercent - a.completionPercent;
       }
+      if (b.completedLessons !== a.completedLessons) {
+        return b.completedLessons - a.completedLessons;
+      }
+      if (b.learnedVocabCount !== a.learnedVocabCount) {
+        return b.learnedVocabCount - a.learnedVocabCount;
+      }
       return b.streakDays - a.streakDays;
     });
 
-    const ranked: WeeklyRankedPilot[] = sorted.map((item, idx) => ({
+    const ranked: HallOfFamePilot[] = sorted.map((item, idx) => ({
       ...item,
       globalRank: idx + 1,
-      weeklyRank: idx + 1,
-      displayGems: item.isExactWeekly ? item.exactWeeklyGems : item.gemsCount,
+      rank: idx + 1,
     }));
 
     const me = profile?.uid ? ranked.find((r) => r.uid === profile.uid) ?? null : null;
@@ -222,16 +198,13 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
     return {
       topThree: ranked.slice(0, 3),
       currentUserRankInfo: me,
-      usingCumulativeFallback: fallbackNeeded,
     };
   }, [
     leaderboard,
     lessons,
     profile?.uid,
     gemBreakdown.availableGems,
-    weekInfo.weekKey,
-    weekInfo.weekStartMs,
-    currentUserActivityWeeklyGems,
+    currentUserEarnedBadgeIds,
   ]);
 
   const handleRefresh = async () => {
@@ -243,10 +216,10 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
     }
   };
 
-  const thirdPlaceGems = topThree[2]?.displayGems ?? 0;
+  const thirdPlaceGems = topThree[2]?.gemsCount ?? 0;
   const gemsGapToPodium =
-    currentUserRankInfo && currentUserRankInfo.weeklyRank > 3
-      ? Math.max(1, thirdPlaceGems - currentUserRankInfo.displayGems + 1)
+    currentUserRankInfo && currentUserRankInfo.rank > 3
+      ? Math.max(1, thirdPlaceGems - currentUserRankInfo.gemsCount + 1)
       : 0;
 
   return (
@@ -263,8 +236,8 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
             <span className="text-slate-400 dark:text-slate-600" aria-hidden="true">
               ·
             </span>
-            <span className="text-slate-500 dark:text-slate-400 font-medium tabular-nums">
-              Tuần {weekInfo.weekNumber} ({weekInfo.rangeLabelVi})
+            <span className="text-slate-500 dark:text-slate-400 font-medium">
+              Theo tổng số Ngọc hiện có
             </span>
           </div>
           <h3
@@ -274,7 +247,7 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
             Bảng vàng phi công
           </h3>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-            Top 3 học viên sở hữu tổng số Ngọc cao nhất tuần này. Nhấn vào từng phi công để ngắm mô hình 3D.
+            Top 3 học viên sở hữu tổng số Ngọc hiện có cao nhất. Nhấn vào từng phi công để ngắm mô hình 3D.
           </p>
         </div>
 
@@ -319,10 +292,10 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
         <div className="mt-6 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-6 py-10 text-center">
           <Trophy className="w-8 h-8 text-amber-500 mx-auto mb-3" />
           <p className="text-sm font-bold text-slate-900 dark:text-white">
-            Chưa có phi công nào ghi danh Bảng vàng tuần này
+            Chưa có phi công nào ghi danh Bảng vàng
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 mb-4 max-w-md mx-auto">
-            Hãy học từ vựng, hoàn thành bài kiểm tra hoặc chinh phục chặng TOEIC để trở thành Quán quân đầu tiên của tuần!
+            Hãy học từ vựng, hoàn thành bài kiểm tra hoặc chinh phục chặng TOEIC để tích lũy Ngọc và trở thành Quán quân đầu tiên!
           </p>
           <button
             type="button"
@@ -337,7 +310,7 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
         /* Podium Showcase with Radiant Position Auras */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 pt-7 items-end">
           {topThree.map((pilot) => {
-            const rankPos = (pilot.weeklyRank <= 3 ? pilot.weeklyRank : 3) as 1 | 2 | 3;
+            const rankPos = (pilot.rank <= 3 ? pilot.rank : 3) as 1 | 2 | 3;
             const visual = TIER_VISUALS[rankPos];
             const MedalIcon = visual.medalIcon;
             const pilotRankMeta = PILOT_RANKS[pilot.currentLevel] || PILOT_RANKS.A1;
@@ -433,7 +406,13 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
                     <span className="tabular-nums">{pilot.streakDays} ngày bay</span>
                   </div>
 
-                  {/* Weekly Gems Counter */}
+                  {pilot.badges.length > 0 && (
+                    <div className="mt-2.5 flex justify-center max-w-full">
+                      <LevelBadgeStrip badges={pilot.badges} size="xs" showHighestTitle />
+                    </div>
+                  )}
+
+                  {/* Total Current Gems Counter */}
                   <div className="mt-4 pt-4 w-full border-t border-slate-200/70 dark:border-slate-700/60 flex flex-col items-center">
                     <div
                       className={`inline-flex items-center gap-1.5 font-extrabold tabular-nums ${
@@ -441,10 +420,10 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
                       } ${visual.gemTextClass}`}
                     >
                       <Gem className={rankPos === 1 ? 'w-5 h-5 shrink-0' : 'w-4 h-4 shrink-0'} />
-                      <span>{pilot.displayGems.toLocaleString('vi-VN')}</span>
+                      <span>{pilot.gemsCount.toLocaleString('vi-VN')}</span>
                     </div>
                     <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                      {pilot.isExactWeekly ? 'Ngọc tích lũy tuần này' : 'Ngọc hiện có'}
+                      Ngọc hiện có
                     </span>
 
                     <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300 group-hover:text-[#D94E00] dark:group-hover:text-[#FF8524] transition-colors">
@@ -459,28 +438,26 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
         </div>
       )}
 
-      {/* Personal Weekly Standing Footer Strip */}
+      {/* Personal Standing Footer Strip */}
       {currentUserRankInfo && (
         <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs sm:text-sm">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-600 dark:text-slate-300 tabular-nums">
             <span className="font-bold text-slate-900 dark:text-white">
-              Vị trí của bạn: #{currentUserRankInfo.weeklyRank}
+              Vị trí của bạn: #{currentUserRankInfo.rank}
             </span>
             <span className="text-slate-400 dark:text-slate-600" aria-hidden="true">
               ·
             </span>
             <span>
-              {currentUserRankInfo.isExactWeekly
-                ? `${currentUserRankInfo.displayGems.toLocaleString('vi-VN')} Ngọc tuần này`
-                : `${currentUserRankInfo.gemsCount.toLocaleString('vi-VN')} Ngọc hiện có`}
+              {currentUserRankInfo.gemsCount.toLocaleString('vi-VN')} Ngọc hiện có
             </span>
-            {currentUserRankInfo.weeklyRank <= 3 ? (
+            {currentUserRankInfo.rank <= 3 ? (
               <>
                 <span className="text-slate-400 dark:text-slate-600" aria-hidden="true">
                   ·
                 </span>
                 <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                  Bạn đang tỏa sáng trên Bảng vàng tuần này!
+                  Bạn đang tỏa sáng trên Bảng vàng phi công!
                 </span>
               </>
             ) : (
@@ -500,11 +477,6 @@ export function PilotHallOfFame({ onNavigate }: PilotHallOfFameProps) {
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            {usingCumulativeFallback && (
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                Tự động cập nhật khi học viên hoàn thành bài trong tuần
-              </span>
-            )}
             <button
               type="button"
               onClick={() => onNavigate('pilot-hangar')}

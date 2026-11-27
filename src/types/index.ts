@@ -223,6 +223,13 @@ export interface LeaderboardPilotEquipped {
   aircraft?: string;
 }
 
+export type LevelBadgeId =
+  | 'level_a1_pioneer'
+  | 'level_a2_specialist'
+  | 'level_b1_captain'
+  | 'level_b2_strategist'
+  | 'level_c1_commander';
+
 export interface LeaderboardEntryDoc {
   uid: string;
   displayName: string;
@@ -241,6 +248,7 @@ export interface LeaderboardEntryDoc {
   totalAccessSeconds?: number;
   firstLoginAt?: Timestamp | Date;
   pilotEquipped?: LeaderboardPilotEquipped;
+  earnedBadges?: LevelBadgeId[];
   isPublic: boolean;
   updatedAt?: Timestamp | Date;
 }

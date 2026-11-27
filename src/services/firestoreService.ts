@@ -23,6 +23,10 @@ import {
   getDefaultLessonsByLevel,
 } from '../data';
 import {
+  computeEarnedLevelBadgeIds,
+  sanitizeEarnedLevelBadges,
+} from '../data/levelBadges';
+import {
   computeGemBreakdown,
   DEFAULT_EQUIPPED_GEAR,
   DEFAULT_HANGAR_STATE,
@@ -63,6 +67,7 @@ import type {
   LeaderboardPilotEquipped,
   LearnerCEFRLevel,
   LessonDoc,
+  LevelBadgeId,
   LevelDoc,
   PilotHangarDoc,
   QuizRating,
@@ -1137,6 +1142,7 @@ export async function syncUserLeaderboardEntry(entry: {
   totalAccessSeconds?: number;
   firstLoginAt?: Timestamp | Date;
   pilotEquipped?: LeaderboardPilotEquipped;
+  earnedBadges?: LevelBadgeId[];
   isPublic?: boolean;
 }): Promise<{ weeklyGems: number; weeklyGemsWeekKey: string; weeklyGemsBaseline: number } | void> {
   const path = `leaderboard/${entry.uid}`;
@@ -1178,6 +1184,8 @@ export async function syncUserLeaderboardEntry(entry: {
     /^[0-9]{4}-W[0-5][0-9]$/.test(entry.weeklyGemsWeekKey);
   const candidateFirstLogin = toSafePastFirestoreTimestamp(entry.firstLoginAt);
   const safePilotEquipped = sanitizeLeaderboardPilotEquipped(entry.pilotEquipped);
+  const safeEarnedBadges =
+    entry.earnedBadges !== undefined ? sanitizeEarnedLevelBadges(entry.earnedBadges) : undefined;
 
   const baseMutableFields: Record<string, unknown> = {
     displayName: truncate(entry.displayName.trim() || 'Phi công tập sự', 100) || 'Phi công tập sự',
@@ -1196,6 +1204,9 @@ export async function syncUserLeaderboardEntry(entry: {
 
   if (safePilotEquipped) {
     baseMutableFields.pilotEquipped = safePilotEquipped;
+  }
+  if (safeEarnedBadges !== undefined) {
+    baseMutableFields.earnedBadges = safeEarnedBadges;
   }
 
   try {
@@ -1506,6 +1517,11 @@ export async function adminSyncAllUsersLeaderboard(
       const gemsEarned = Math.max(0, Math.min(10000000, Math.floor(exactBreakdown.totalEarned)));
       const availableGems = Math.max(0, Math.min(10000000, Math.floor(exactBreakdown.availableGems)));
 
+      const earnedBadges = computeEarnedLevelBadgeIds({
+        lessons: effectiveLessons,
+        progressMap: progressMapByUid.get(uid) ?? {},
+      });
+
       const syncedPilotEquipped =
         hangarInfo?.equipped ??
         sanitizeLeaderboardPilotEquipped(existingEntry?.pilotEquipped);
@@ -1522,6 +1538,7 @@ export async function adminSyncAllUsersLeaderboard(
         totalAccessSeconds,
         gemsEarned,
         availableGems,
+        earnedBadges,
         isPublic: true,
         updatedAt: serverTimestamp(),
       };
@@ -1565,6 +1582,12 @@ export async function adminSyncAllUsersLeaderboard(
       const nextPilotKey = next.pilotEquipped
         ? JSON.stringify(next.pilotEquipped)
         : '';
+      const existingBadgesKey = Array.isArray(existing.earnedBadges)
+        ? existing.earnedBadges.join(',')
+        : '__UNSET__';
+      const nextBadgesKey = Array.isArray(next.earnedBadges)
+        ? (next.earnedBadges as string[]).join(',')
+        : '';
       return (
         existing.displayName !== next.displayName ||
         existing.currentLevel !== next.currentLevel ||
@@ -1577,6 +1600,7 @@ export async function adminSyncAllUsersLeaderboard(
         (existing.totalAccessSeconds ?? 0) !== (next.totalAccessSeconds as number) ||
         (existing.gemsEarned ?? -1) !== (next.gemsEarned as number) ||
         (existing.availableGems ?? -1) !== (next.availableGems as number) ||
+        existingBadgesKey !== nextBadgesKey ||
         (existingFirstMs === null && nextFirstMs !== null) ||
         existingPilotKey !== nextPilotKey ||
         existing.isPublic !== true

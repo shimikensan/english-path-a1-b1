@@ -474,7 +474,12 @@ function AppShell() {
             )}
             {route === 'leaderboard' && <LeaderboardPanel />}
             {route === 'feedback' && <FeedbackPage />}
-            {route === 'account' && <AccountPage onStartPractice={handleJumpToPractice} />}
+            {route === 'account' && (
+              <AccountPage
+                onStartPractice={handleJumpToPractice}
+                onOpenRoadmap={() => handleNavigate('roadmap')}
+              />
+            )}
             {route === 'lesson' && (
               <LessonDetailPage
                 key={`${effectiveLessonId}-${initialLessonTab}`}

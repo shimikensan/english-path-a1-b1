@@ -19,10 +19,14 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PILOT_RANKS } from '../data';
+import {
+  computeEarnedLevelBadgeIds,
+  resolveLeaderboardBadges,
+} from '../data/levelBadges';
 import { resolveLeaderboardCurrentGems } from '../data/pilotGearCatalog';
 import { FIRESTORE_PRICING_URL, FIRESTORE_UPGRADE_URL } from '../firebase';
-import type { LeaderboardEntryDoc } from '../types';
 import { formatAccessDurationVi, formatTimestampVi } from '../utils/helpers';
+import { LevelBadgeStrip } from './LevelBadgeEmblem';
 import {
   LeaderboardPilotModal,
   type RankedLeaderboardEntry,
@@ -105,6 +109,7 @@ export function LeaderboardPanel({
     isAdmin,
     profile,
     lessons,
+    progressMap,
     gemBreakdown,
     hangarState,
   } = useApp();
@@ -112,6 +117,11 @@ export function LeaderboardPanel({
   const [sortBy, setSortBy] = useState<LeaderboardSortBy>('completion');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPilotEntry, setSelectedPilotEntry] = useState<RankedLeaderboardEntry | null>(null);
+
+  const currentUserEarnedBadgeIds = useMemo(
+    () => computeEarnedLevelBadgeIds({ lessons, progressMap }),
+    [lessons, progressMap]
+  );
 
   // Normalize all learners against the same canonical published curriculum (e.g. 51 lessons / 765 vocab)
   const normalizedEntries = useMemo(() => {
@@ -135,8 +145,18 @@ export function LeaderboardPanel({
         const gemsCount = isCurrentUser
           ? Math.max(0, Math.floor(gemBreakdown.availableGems))
           : resolveLeaderboardCurrentGems(entry);
+        const effectiveEarnedBadges = isCurrentUser
+          ? currentUserEarnedBadgeIds
+          : entry.earnedBadges;
+        const badges = resolveLeaderboardBadges({
+          earnedBadges: effectiveEarnedBadges,
+          currentLevel: entry.currentLevel,
+          completedLessons: entry.completedLessons,
+        });
         return {
           ...entry,
+          earnedBadges: effectiveEarnedBadges,
+          badges,
           totalLessons,
           completionPercent,
           gemsCount,
@@ -163,7 +183,14 @@ export function LeaderboardPanel({
         }
         return b.streakDays - a.streakDays;
       });
-  }, [leaderboard, lessons, profile?.uid, gemBreakdown.availableGems, sortBy]);
+  }, [
+    leaderboard,
+    lessons,
+    profile?.uid,
+    gemBreakdown.availableGems,
+    currentUserEarnedBadgeIds,
+    sortBy,
+  ]);
 
   // Assign global rank (1-based) to every entry in the full sorted leaderboard
   const rankedAll = useMemo(() => {
@@ -337,6 +364,9 @@ export function LeaderboardPanel({
                           (Bạn)
                         </span>
                       )}
+                      {entry.badges.length > 0 && (
+                        <LevelBadgeStrip badges={entry.badges} size="xs" className="shrink-0" />
+                      )}
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 truncate tabular-nums flex flex-wrap items-center gap-x-1.5">
                       <span>
@@ -460,7 +490,7 @@ export function LeaderboardPanel({
       {/* Top 3 Podium Cards */}
       {!leaderboardLoading && topThree.length > 0 && (
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {topThree.map((entry: LeaderboardEntryDoc & { globalRank: number; gemsCount: number }, idx) => {
+          {topThree.map((entry, idx) => {
             const rankInView = levelFilter === 'ALL' ? entry.globalRank : idx + 1;
             const visual = getRankVisual(rankInView);
             const RankIcon = visual.icon;
@@ -471,29 +501,37 @@ export function LeaderboardPanel({
                 key={entry.uid}
                 className={`rounded-2xl border p-5 flex flex-col justify-between gap-4 ${visual.cardAccent}`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-11 h-11 rounded-full border flex items-center justify-center text-sm font-extrabold shrink-0 ${visual.avatarBg}`}
-                    >
-                      {getInitials(entry.displayName)}
+                <div className="space-y-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-11 h-11 rounded-full border flex items-center justify-center text-sm font-extrabold shrink-0 ${visual.avatarBg}`}
+                      >
+                        {getInitials(entry.displayName)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className={`text-xs font-bold ${visual.numberColor}`}>{visual.label}</p>
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                          {entry.displayName}
+                          {isMe && (
+                            <span className="ml-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400">
+                              (Bạn)
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                          {pilotRank.rankVi} · CEFR {entry.currentLevel}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className={`text-xs font-bold ${visual.numberColor}`}>{visual.label}</p>
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
-                        {entry.displayName}
-                        {isMe && (
-                          <span className="ml-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400">
-                            (Bạn)
-                          </span>
-                        )}
-                      </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                        {pilotRank.rankVi} · CEFR {entry.currentLevel}
-                      </p>
-                    </div>
+                    {RankIcon && <RankIcon className={`w-5 h-5 shrink-0 ${visual.iconColor}`} />}
                   </div>
-                  {RankIcon && <RankIcon className={`w-5 h-5 shrink-0 ${visual.iconColor}`} />}
+
+                  {entry.badges.length > 0 && (
+                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/70">
+                      <LevelBadgeStrip badges={entry.badges} size="xs" showHighestTitle />
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -729,6 +767,7 @@ export function LeaderboardPanel({
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-xs font-semibold text-slate-500 dark:text-slate-400">
                   <th className="py-3 px-4 w-16">Hạng</th>
                   <th className="py-3 px-4 min-w-[200px]">Học viên</th>
+                  <th className="py-3 px-4 min-w-[165px]">Huy hiệu</th>
                   <th className="py-3 px-4 min-w-[190px]">Phần trăm hoàn thiện</th>
                   <th className="py-3 px-4 whitespace-nowrap">Số Ngọc</th>
                   <th className="py-3 px-4 whitespace-nowrap">Bài hoàn thành</th>
@@ -787,6 +826,15 @@ export function LeaderboardPanel({
                             </div>
                           </div>
                         </div>
+                      </td>
+
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <LevelBadgeStrip
+                          badges={entry.badges}
+                          size="xs"
+                          showHighestTitle
+                          emptyLabel="—"
+                        />
                       </td>
 
                       <td className="py-3.5 px-4">

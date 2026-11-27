@@ -230,7 +230,7 @@ service cloud.firestore {
           'uid', 'displayName', 'currentLevel', 'completedLessons', 'totalLessons',
           'completionPercent', 'learnedVocabCount', 'averageQuizScore', 'streakDays',
           'gemsEarned', 'availableGems', 'weeklyGems', 'weeklyGemsWeekKey', 'weeklyGemsBaseline',
-          'totalAccessSeconds', 'firstLoginAt', 'pilotEquipped', 'isPublic', 'updatedAt'
+          'totalAccessSeconds', 'firstLoginAt', 'pilotEquipped', 'earnedBadges', 'isPublic', 'updatedAt'
         ])
         && isValidId(data.uid)
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
@@ -259,6 +259,17 @@ service cloud.firestore {
           && isValidId(data.pilotEquipped.backpack)
           && isValidId(data.pilotEquipped.companion)
           && (!('aircraft' in data.pilotEquipped) || isValidId(data.pilotEquipped.aircraft))
+        ))
+        && (!('earnedBadges' in data) || (
+          data.earnedBadges is list
+          && data.earnedBadges.size() <= 5
+          && data.earnedBadges.hasOnly([
+            'level_a1_pioneer',
+            'level_a2_specialist',
+            'level_b1_captain',
+            'level_b2_strategist',
+            'level_c1_commander'
+          ])
         ))
         && data.isPublic is bool
         && data.updatedAt is timestamp;
@@ -878,7 +889,7 @@ service cloud.firestore {
               'displayName', 'currentLevel', 'completedLessons', 'totalLessons',
               'completionPercent', 'learnedVocabCount', 'averageQuizScore',
               'streakDays', 'gemsEarned', 'availableGems', 'weeklyGems', 'weeklyGemsWeekKey', 'weeklyGemsBaseline',
-              'totalAccessSeconds', 'firstLoginAt', 'pilotEquipped', 'isPublic', 'updatedAt'
+              'totalAccessSeconds', 'firstLoginAt', 'pilotEquipped', 'earnedBadges', 'isPublic', 'updatedAt'
             ])
           )
           || isAdmin()

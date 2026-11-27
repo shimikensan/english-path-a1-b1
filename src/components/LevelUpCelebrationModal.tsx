@@ -15,8 +15,10 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useApp } from '../context/AppContext';
+import { getLevelBadgeForLevel } from '../data/levelBadges';
 import { PILOT_RANKS } from '../data/levels';
 import type { LearnerCEFRLevel } from '../types';
+import { LevelBadgeEmblem } from './LevelBadgeEmblem';
 import {
   playFireworkSalvoSfx,
   playLevelUpFanfare,
@@ -610,6 +612,10 @@ export function LevelUpCelebrationModal({
     celebration && celebration.promotedToLevel
       ? PILOT_RANKS[celebration.promotedToLevel]
       : null;
+  const unlockedBadge =
+    celebration && celebration.triggerKind === 'level_completed'
+      ? getLevelBadgeForLevel(celebration.completedLevel)
+      : null;
 
   const handleExtraFireworks = () => {
     setSalvoCounter((c) => c + 1);
@@ -847,6 +853,24 @@ export function LevelUpCelebrationModal({
                   )}
                 </div>
               </div>
+
+              {/* Unlocked Level Milestone Badge */}
+              {unlockedBadge && (
+                <div className="mt-3.5 rounded-xl bg-white/[0.06] border border-white/15 px-4 py-3 flex items-center gap-3.5 text-left">
+                  <LevelBadgeEmblem badge={unlockedBadge} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                      {celebration.isReplay ? 'Huy hiệu đã mở khóa' : 'Mở khóa huy hiệu mới'}
+                    </div>
+                    <div className="text-sm sm:text-base font-extrabold text-white truncate">
+                      {unlockedBadge.titleVi}
+                    </div>
+                    <div className="text-[11px] text-slate-300">
+                      Đã tự động hiển thị trên Hồ sơ cá nhân &amp; Bảng xếp hạng
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Action Controls */}
               <div className="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5">

@@ -14,6 +14,7 @@ import {
   type User,
 } from 'firebase/auth';
 import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS, DEFAULT_READING_PASSAGES } from '../data';
+import { computeEarnedLevelBadgeIds } from '../data/levelBadges';
 import {
   calculateWeeklyActivityGems,
   computeGemBreakdown,
@@ -1022,6 +1023,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const firstLoginMs = toTimestampMillis(firstLoginAt) ?? '';
     const gemsEarned = Math.max(0, Math.floor(gemBreakdown.totalEarned));
     const availableGems = Math.max(0, Math.floor(gemBreakdown.availableGems));
+    const earnedBadges = computeEarnedLevelBadgeIds({
+      lessons: publishedLessons,
+      progressMap,
+    });
+    const badgesSig = earnedBadges.join(',');
     const weekInfo = getCurrentIsoWeekInfo();
     const weeklyActivityGems = calculateWeeklyActivityGems({
       lessons: publishedLessons,
@@ -1065,6 +1071,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       effectiveAccessSeconds,
       gemsEarned,
       availableGems,
+      badgesSig,
       weeklyActivityGems,
       weekInfo.weekKey,
       firstLoginMs,
@@ -1089,6 +1096,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       totalAccessSeconds: effectiveAccessSeconds,
       gemsEarned,
       availableGems,
+      earnedBadges,
       weeklyActivityGems,
       weeklyGemsWeekKey: weekInfo.weekKey,
       firstLoginAt,
@@ -1111,6 +1119,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             totalAccessSeconds: effectiveAccessSeconds,
             gemsEarned,
             availableGems,
+            earnedBadges,
             weeklyGems: resolvedWeekly?.weeklyGems ?? weeklyActivityGems,
             weeklyGemsWeekKey: resolvedWeekly?.weeklyGemsWeekKey ?? weekInfo.weekKey,
             weeklyGemsBaseline: resolvedWeekly?.weeklyGemsBaseline,
@@ -1128,6 +1137,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                       totalAccessSeconds: Math.max(e.totalAccessSeconds ?? 0, effectiveAccessSeconds),
                       gemsEarned,
                       availableGems,
+                      earnedBadges,
                       weeklyGems: resolvedWeekly?.weeklyGems ?? Math.max(e.weeklyGems ?? 0, weeklyActivityGems),
                       weeklyGemsWeekKey: resolvedWeekly?.weeklyGemsWeekKey ?? weekInfo.weekKey,
                       weeklyGemsBaseline: resolvedWeekly?.weeklyGemsBaseline ?? e.weeklyGemsBaseline,
