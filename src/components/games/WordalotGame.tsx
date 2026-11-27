@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Delete,
+  Grid3x3,
   Image as ImageIcon,
   Lightbulb,
   RotateCcw,
   Trophy,
   Volume2,
+  X,
 } from 'lucide-react';
 import { WORDALOT_PUZZLES, type WordalotClueWord, type WordalotPuzzle } from '../../data/wordalotPuzzles';
+import type { LearnerCEFRLevel } from '../../types';
 import {
   playCorrectChime,
   playLevelFanfare,
@@ -89,8 +94,26 @@ function buildLetterRack(word: WordalotClueWord, seedOffset: number): string[] {
   return copy;
 }
 
+const COMPLETED_STORAGE_KEY = 'pilot_wordalot_completed_v1';
+
+function readCompletedPuzzleIds(): string[] {
+  try {
+    const raw = window.localStorage.getItem(COMPLETED_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export function WordalotGame({ onScoreUpdate, onWordMastered }: WordalotGameProps) {
   const [puzzleIdx, setPuzzleIdx] = useState(0);
+  const [showLevelPicker, setShowLevelPicker] = useState(false);
+  const [levelFilter, setLevelFilter] = useState<'ALL' | LearnerCEFRLevel>('ALL');
+  const [completedPuzzleIds, setCompletedPuzzleIds] = useState<string[]>(() =>
+    readCompletedPuzzleIds()
+  );
   const puzzle = WORDALOT_PUZZLES[puzzleIdx];
 
   const cellMap = useMemo(() => buildPuzzleCells(puzzle), [puzzle]);
@@ -104,6 +127,22 @@ export function WordalotGame({ onScoreUpdate, onWordMastered }: WordalotGameProp
   const [score, setScore] = useState(0);
   const [wrongFlashKey, setWrongFlashKey] = useState<string | null>(null);
   const [imgFailed, setImgFailed] = useState(false);
+
+  const filteredLevels = useMemo(
+    () =>
+      WORDALOT_PUZZLES.map((p, idx) => ({ puzzle: p, idx })).filter(
+        ({ puzzle: p }) => levelFilter === 'ALL' || p.levelId === levelFilter
+      ),
+    [levelFilter]
+  );
+
+  const levelCounts = useMemo(() => {
+    const counts: Record<string, number> = { ALL: WORDALOT_PUZZLES.length };
+    for (const p of WORDALOT_PUZZLES) {
+      counts[p.levelId] = (counts[p.levelId] || 0) + 1;
+    }
+    return counts;
+  }, []);
 
   const activeWord = useMemo(
     () => puzzle.words.find((w) => w.id === activeWordId) || puzzle.words[0],
@@ -157,6 +196,16 @@ export function WordalotGame({ onScoreUpdate, onWordMastered }: WordalotGameProp
 
         if (updatedSolved.length === puzzle.words.length) {
           playLevelFanfare();
+          setCompletedPuzzleIds((prev) => {
+            if (prev.includes(puzzle.id)) return prev;
+            const next = [...prev, puzzle.id];
+            try {
+              window.localStorage.setItem(COMPLETED_STORAGE_KEY, JSON.stringify(next));
+            } catch {
+              // Ignore storage quota errors
+            }
+            return next;
+          });
         } else {
           playCorrectChime();
           // Auto-select next unsolved word cleanly
@@ -328,23 +377,51 @@ export function WordalotGame({ onScoreUpdate, onWordMastered }: WordalotGameProp
 
   return (
     <div className="space-y-5">
-      {/* Scene Level Switcher & HUD */}
+      {/* Compact 50-Level Navigator Bar & HUD */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Chọn màn chơi Wordalot">
-          {WORDALOT_PUZZLES.map((p, idx) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
             <button
-              key={p.id}
               type="button"
-              onClick={() => resetPuzzleState(idx)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                idx === puzzleIdx
-                  ? 'bg-[#FF6B00] text-white'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}
+              onClick={() =>
+                resetPuzzleState((puzzleIdx - 1 + WORDALOT_PUZZLES.length) % WORDALOT_PUZZLES.length)
+              }
+              aria-label="Màn trước"
+              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
-              Màn {idx + 1}: {p.titleVi}
+              <ChevronLeft className="w-4 h-4" />
             </button>
-          ))}
+            <div className="px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white border-x border-slate-200 dark:border-slate-700 tabular-nums whitespace-nowrap">
+              Màn {puzzleIdx + 1}/{WORDALOT_PUZZLES.length}: {puzzle.titleVi}
+              <span className="ml-1.5 font-semibold text-[#D94E00] dark:text-[#FF8C2E]">
+                ({puzzle.levelId})
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => resetPuzzleState((puzzleIdx + 1) % WORDALOT_PUZZLES.length)}
+              aria-label="Màn tiếp theo"
+              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowLevelPicker((v) => !v)}
+            aria-expanded={showLevelPicker}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+              showLevelPicker
+                ? 'border-[#FF6B00] bg-[#FF6B00] text-white'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-[#FF6B00]/60'
+            }`}
+          >
+            <Grid3x3 className="w-3.5 h-3.5" />
+            <span>
+              Chọn màn ({completedPuzzleIds.length}/{WORDALOT_PUZZLES.length})
+            </span>
+          </button>
         </div>
 
         <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300 tabular-nums">
@@ -359,6 +436,75 @@ export function WordalotGame({ onScoreUpdate, onWordMastered }: WordalotGameProp
           <span>Gợi ý: {hintsUsed}</span>
         </div>
       </div>
+
+      {/* Collapsible 50-Level Browser Panel */}
+      {showLevelPicker && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Lọc màn chơi theo cấp độ CEFR">
+              {(['ALL', 'A1', 'A2', 'B1', 'B2', 'C1'] as const).map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => setLevelFilter(lvl)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    levelFilter === lvl
+                      ? 'bg-[#FF6B00] text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {lvl === 'ALL' ? 'Tất cả' : lvl} ({levelCounts[lvl] || 0})
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowLevelPicker(false)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              aria-label="Đóng danh sách màn chơi"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 max-h-72 overflow-y-auto pr-1">
+            {filteredLevels.map(({ puzzle: p, idx }) => {
+              const isCurrent = idx === puzzleIdx;
+              const isDone = completedPuzzleIds.includes(p.id);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    resetPuzzleState(idx);
+                    setShowLevelPicker(false);
+                  }}
+                  className={`text-left rounded-xl border p-2.5 transition-colors cursor-pointer ${
+                    isCurrent
+                      ? 'border-[#FF6B00] bg-[#FF6B00]/10 dark:bg-[#FF6B00]/15'
+                      : isDone
+                        ? 'border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/50 dark:bg-emerald-950/20 hover:border-emerald-400'
+                        : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 text-[11px] tabular-nums">
+                    <span className="font-bold text-slate-500 dark:text-slate-400">
+                      Màn {String(idx + 1).padStart(2, '0')} · {p.levelId}
+                    </span>
+                    {isDone && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    )}
+                  </div>
+                  <div className="text-xs font-bold text-slate-900 dark:text-white truncate mt-0.5">
+                    {p.titleVi}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Main Split Wordalot Stage: Picture + Clue List (Left) | Interactive Crossword + Rack (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -491,9 +637,11 @@ export function WordalotGame({ onScoreUpdate, onWordMastered }: WordalotGameProp
           {/* Interlocking Crossword Board */}
           <div className="overflow-x-auto pb-1">
             <div
-              className="mx-auto grid gap-1.5 w-fit"
+              className="mx-auto grid gap-1 sm:gap-1.5 w-fit"
               style={{
-                gridTemplateColumns: `repeat(${puzzle.cols}, minmax(34px, 44px))`,
+                gridTemplateColumns: `repeat(${puzzle.cols}, ${
+                  puzzle.cols >= 10 ? 'minmax(30px, 38px)' : 'minmax(34px, 44px)'
+                })`,
               }}
             >
               {Array.from({ length: puzzle.rows * puzzle.cols }).map((_, flatIdx) => {
@@ -501,9 +649,13 @@ export function WordalotGame({ onScoreUpdate, onWordMastered }: WordalotGameProp
                 const c = flatIdx % puzzle.cols;
                 const k = cellKey(r, c);
                 const meta = cellMap.get(k);
+                const cellSizeClass =
+                  puzzle.cols >= 10
+                    ? 'w-8 h-8 sm:w-9.5 sm:h-9.5 text-sm sm:text-base'
+                    : 'w-9 h-9 sm:w-11 sm:h-11 text-base sm:text-lg';
 
                 if (!meta) {
-                  return <div key={k} className="w-9 h-9 sm:w-11 sm:h-11" aria-hidden="true" />;
+                  return <div key={k} className={cellSizeClass} aria-hidden="true" />;
                 }
 
                 const inActiveWord = activeWordKeys.includes(k);
@@ -518,7 +670,7 @@ export function WordalotGame({ onScoreUpdate, onWordMastered }: WordalotGameProp
                     type="button"
                     onClick={() => handleSelectCell(k)}
                     aria-label={`Ô hàng ${r + 1} cột ${c + 1}${val ? `, chữ ${val}` : ', trống'}`}
-                    className={`relative w-9 h-9 sm:w-11 sm:h-11 rounded-lg border-2 font-extrabold text-base sm:text-lg flex items-center justify-center transition-colors cursor-pointer select-none ${
+                    className={`relative ${cellSizeClass} rounded-lg border-2 font-extrabold flex items-center justify-center transition-colors cursor-pointer select-none ${
                       solved
                         ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
                         : isWrong

@@ -1,4 +1,5 @@
 import type { LearnerCEFRLevel } from '../types';
+import { EXTRA_WORDALOT_PUZZLES } from './wordalotExtraPuzzles';
 
 export interface WordalotClueWord {
   id: string;
@@ -23,7 +24,7 @@ export interface WordalotPuzzle {
   words: WordalotClueWord[];
 }
 
-export const WORDALOT_PUZZLES: WordalotPuzzle[] = [
+const CORE_WORDALOT_PUZZLES: WordalotPuzzle[] = [
   {
     id: 'airport-scene',
     titleVi: 'Sân bay & Đường băng',
@@ -410,3 +411,9 @@ export const WORDALOT_PUZZLES: WordalotPuzzle[] = [
     ],
   },
 ];
+
+export const WORDALOT_PUZZLES: WordalotPuzzle[] = [
+  ...CORE_WORDALOT_PUZZLES,
+  ...EXTRA_WORDALOT_PUZZLES,
+];
+

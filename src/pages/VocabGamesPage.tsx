@@ -141,8 +141,8 @@ export function VocabGamesPage() {
     {
       id: 'wordalot' as const,
       title: 'Wordalot',
-      subtitle: 'Ô chữ ghép hình theo tranh',
-      description: 'Quan sát tranh minh họa trực quan, ghép chữ cái điền kín bảng ô chữ đan xen.',
+      subtitle: '50 màn ô chữ ghép hình A1–C1',
+      description: 'Quan sát tranh minh họa trực quan, ghép chữ cái điền kín 50 màn ô chữ đan xen.',
       bestScore: scores.wordalot,
       icon: Grid3x3,
       accentActive:
