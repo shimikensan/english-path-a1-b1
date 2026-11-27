@@ -694,3 +694,81 @@ export function estimateLeaderboardGems(entry: {
       : 0;
   return welcome + fromLessons + fromVocab + fromTime + fromMilestones + fromStreak + fromQuizEst;
 }
+
+/**
+ * Resolves the learner's current available (spendable) Knowledge Gems for leaderboard display.
+ * Prefers the exact synced `availableGems` balance (totalEarned - spentGems); falls back to
+ * `estimateLeaderboardGems` only for legacy leaderboard documents not yet synced.
+ */
+export function resolveLeaderboardCurrentGems(entry: {
+  availableGems?: number;
+  gemsEarned?: number;
+  completedLessons: number;
+  learnedVocabCount: number;
+  averageQuizScore: number;
+  streakDays: number;
+  totalAccessSeconds?: number;
+}): number {
+  if (
+    typeof entry.availableGems === 'number' &&
+    Number.isFinite(entry.availableGems) &&
+    entry.availableGems >= 0
+  ) {
+    return Math.floor(entry.availableGems);
+  }
+  return estimateLeaderboardGems(entry);
+}
+
+/**
+ * Computes real Knowledge Gems earned from timestamped learning activities
+ * (quizzes, learned vocabulary, and studied/completed lessons) within [weekStartMs, weekEndMs].
+ */
+export function calculateWeeklyActivityGems(params: {
+  lessons: LessonDoc[];
+  progressMap: Record<string, UserProgressDoc>;
+  vocabMap: Record<string, UserVocabularyDoc>;
+  quizResults: QuizResultDoc[];
+  weekStartMs: number;
+  weekEndMs: number;
+  toMillis: (value: unknown) => number | null;
+}): number {
+  const { lessons, progressMap, vocabMap, quizResults, weekStartMs, weekEndMs, toMillis } = params;
+  const inWeek = (ts: unknown): boolean => {
+    const ms = toMillis(ts);
+    return ms !== null && ms >= weekStartMs && ms <= weekEndMs;
+  };
+
+  const lessonById = new Map<string, LessonDoc>();
+  for (const l of lessons) {
+    lessonById.set(l.lessonId, l);
+  }
+
+  let weeklyGems = 0;
+
+  for (const prog of Object.values(progressMap)) {
+    if (!inWeek(prog.lastStudyAt)) continue;
+    const lesson = lessonById.get(prog.lessonId);
+    if (prog.lessonCompleted) {
+      weeklyGems += lesson
+        ? getLessonGemReward(lesson)
+        : (LEVEL_BASE_GEMS[prog.levelId] ?? 25) + 15;
+    } else if ((prog.vocabularyLearned?.length ?? 0) >= 3) {
+      weeklyGems += 6;
+    }
+  }
+
+  for (const v of Object.values(vocabMap)) {
+    if (v.isLearned && inWeek(v.updatedAt)) {
+      weeklyGems += 3;
+    }
+  }
+
+  for (const r of quizResults) {
+    if (!inWeek(r.completedAt)) continue;
+    const scoreGems = Math.round((Math.max(0, Math.min(100, r.score)) / 100) * 20);
+    const perfectBonus = r.score >= 100 ? 8 : 0;
+    weeklyGems += scoreGems + perfectBonus;
+  }
+
+  return Math.max(0, Math.floor(weeklyGems));
+}

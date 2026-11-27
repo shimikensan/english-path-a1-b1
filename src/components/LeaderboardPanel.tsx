@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PILOT_RANKS } from '../data';
-import { estimateLeaderboardGems } from '../data/pilotGearCatalog';
+import { resolveLeaderboardCurrentGems } from '../data/pilotGearCatalog';
 import { FIRESTORE_PRICING_URL, FIRESTORE_UPGRADE_URL } from '../firebase';
 import type { LeaderboardEntryDoc } from '../types';
 import { formatAccessDurationVi, formatTimestampVi } from '../utils/helpers';
@@ -133,8 +133,8 @@ export function LeaderboardPanel({
         );
         const isCurrentUser = Boolean(profile?.uid && entry.uid === profile.uid);
         const gemsCount = isCurrentUser
-          ? Math.max(gemBreakdown.totalEarned, estimateLeaderboardGems(entry))
-          : estimateLeaderboardGems(entry);
+          ? Math.max(0, Math.floor(gemBreakdown.availableGems))
+          : resolveLeaderboardCurrentGems(entry);
         return {
           ...entry,
           totalLessons,
@@ -163,7 +163,7 @@ export function LeaderboardPanel({
         }
         return b.streakDays - a.streakDays;
       });
-  }, [leaderboard, lessons, profile?.uid, gemBreakdown.totalEarned, sortBy]);
+  }, [leaderboard, lessons, profile?.uid, gemBreakdown.availableGems, sortBy]);
 
   // Assign global rank (1-based) to every entry in the full sorted leaderboard
   const rankedAll = useMemo(() => {

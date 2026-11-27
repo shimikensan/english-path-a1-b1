@@ -542,6 +542,25 @@
           "type": "number",
           "description": "Cumulative Knowledge Gems earned by the learner across lessons, study time, vocabulary, quizzes, streaks, and games."
         },
+        "availableGems": {
+          "type": "number",
+          "description": "Current spendable Knowledge Gems balance held by the learner (totalEarned minus spentGems in Hangar), synced to match the top-bar and Hangar gem counter."
+        },
+        "weeklyGems": {
+          "type": "number",
+          "description": "Knowledge Gems earned by the learner during the ISO week specified by weeklyGemsWeekKey."
+        },
+        "weeklyGemsWeekKey": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 12,
+          "pattern": "^[0-9]{4}-W[0-5][0-9]$",
+          "description": "ISO week identifier (YYYY-Www) corresponding to weeklyGems and weeklyGemsBaseline."
+        },
+        "weeklyGemsBaseline": {
+          "type": "number",
+          "description": "Snapshot of cumulative gemsEarned at the start of weeklyGemsWeekKey to track incremental weekly gem gains accurately."
+        },
         "totalAccessSeconds": {
           "type": "number",
           "description": "Cumulative active seconds the learner has spent accessing the application (0 to 315360000)."
@@ -993,6 +1012,63 @@
         "updatedAt"
       ]
     },
+    "ClubMusicChunk": {
+      "title": "ClubMusicChunk",
+      "description": "Immutable base64-encoded binary audio chunk for persistent 3D English Club background music.",
+      "type": "object",
+      "properties": {
+        "trackId": {
+          "type": "string",
+          "pattern": "^club_bgm_[0-9]+_[a-f0-9]{12}$"
+        },
+        "chunkIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 39
+        },
+        "totalChunks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40
+        },
+        "mimeType": {
+          "type": "string",
+          "enum": [
+            "audio/mpeg",
+            "audio/wav",
+            "audio/ogg",
+            "audio/mp4",
+            "audio/webm",
+            "audio/aac",
+            "audio/flac"
+          ]
+        },
+        "dataBase64": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 680000
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "trackId",
+        "chunkIndex",
+        "totalChunks",
+        "mimeType",
+        "dataBase64",
+        "updatedBy",
+        "updatedAt"
+      ]
+    },
     "PilotHangar": {
       "title": "PilotHangar",
       "description": "Per-user 3D Pilot avatar wardrobe, owned gear items, spent gems, and bonus mini-game gems.",
@@ -1386,6 +1462,10 @@
     "/club_settings/{configId}": {
       "schema": { "$ref": "#/entities/ClubMusicConfig" },
       "description": "3D English Club global background music settings managed by administrators."
+    },
+    "/club_music_chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/ClubMusicChunk" },
+      "description": "Persistent base64-encoded binary chunks for Admin-uploaded 3D English Club background music."
     },
     "/pilot_hangar/{userId}": {
       "schema": { "$ref": "#/entities/PilotHangar" },

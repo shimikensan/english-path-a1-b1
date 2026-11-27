@@ -103,6 +103,54 @@ export function getLocalDateString(date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+export interface IsoWeekInfo {
+  weekKey: string;
+  weekNumber: number;
+  weekStartMs: number;
+  weekEndMs: number;
+  rangeLabelVi: string;
+}
+
+/**
+ * Returns local calendar ISO-8601 week window (Monday 00:00:00 -> Sunday 23:59:59.999)
+ * along with its canonical key (e.g. "2026-W48") and Vietnamese range label ("23/11 – 29/11").
+ */
+export function getCurrentIsoWeekInfo(now = new Date()): IsoWeekInfo {
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayOfWeek = startOfDay.getDay(); // 0 (Sun) .. 6 (Sat)
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+
+  const monday = new Date(startOfDay);
+  monday.setDate(startOfDay.getDate() + diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  // ISO-8601 week number is determined by the Thursday of that week
+  const thursday = new Date(monday);
+  thursday.setDate(monday.getDate() + 3);
+  const isoYear = thursday.getFullYear();
+  const jan4 = new Date(isoYear, 0, 4);
+  const jan4Day = jan4.getDay() === 0 ? 7 : jan4.getDay();
+  const week1Monday = new Date(isoYear, 0, 4 - (jan4Day - 1));
+  const diffDays = Math.round((monday.getTime() - week1Monday.getTime()) / 86_400_000);
+  const weekNumber = Math.max(1, Math.min(53, Math.floor(diffDays / 7) + 1));
+  const weekKey = `${isoYear}-W${String(weekNumber).padStart(2, '0')}`;
+
+  const fmt = (d: Date) =>
+    `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+  return {
+    weekKey,
+    weekNumber,
+    weekStartMs: monday.getTime(),
+    weekEndMs: sunday.getTime(),
+    rangeLabelVi: `${fmt(monday)} – ${fmt(sunday)}`,
+  };
+}
+
 export function calculateUpdatedStreak(
   currentStreak: number,
   lastStudyDate: string

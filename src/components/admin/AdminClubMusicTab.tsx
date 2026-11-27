@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  AlertCircle,
   CheckCircle2,
   FileAudio,
   Music,
@@ -15,14 +16,18 @@ import { useApp } from '../../context/AppContext';
 import {
   adminSaveClubMusicConfig,
   DEFAULT_CLUB_MUSIC_CONFIG,
+  deleteFirestoreClubMusicTrack,
   subscribeClubMusicConfig,
+  uploadClubMusicToFirestore,
 } from '../../services/firestoreService';
 import type { ClubMusicConfigDoc } from '../../types';
-import { ClubMusicEngine } from '../../utils/clubMusicEngine';
+import {
+  ALLOWED_CLUB_AUDIO_EXTENSIONS,
+  FIRESTORE_AUDIO_URL_REGEX,
+  MAX_CLUB_AUDIO_UPLOAD_BYTES,
+} from '../../utils/audioFormat';
+import { ClubMusicEngine, primeClubMusicBlobCache } from '../../utils/clubMusicEngine';
 import { formatTimestampVi } from '../../utils/helpers';
-
-const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.m4a', '.webm'];
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes <= 0) return 'Nhạc tích hợp sẵn';
@@ -54,6 +59,13 @@ export function AdminClubMusicTab() {
   // File upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    percent: number;
+    doneChunks: number;
+    totalChunks: number;
+  } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
@@ -81,15 +93,21 @@ export function AdminClubMusicTab() {
       setTitle(next.title || DEFAULT_CLUB_MUSIC_CONFIG.title);
       setArtist(next.artist || '');
       setDefaultVolume(
-        typeof next.defaultVolume === 'number' ? next.defaultVolume : DEFAULT_CLUB_MUSIC_CONFIG.defaultVolume
+        typeof next.defaultVolume === 'number'
+          ? next.defaultVolume
+          : DEFAULT_CLUB_MUSIC_CONFIG.defaultVolume
       );
       setEnabled(next.enabled !== false);
       setPreviewVolume(
-        typeof next.defaultVolume === 'number' ? next.defaultVolume : DEFAULT_CLUB_MUSIC_CONFIG.defaultVolume
+        typeof next.defaultVolume === 'number'
+          ? next.defaultVolume
+          : DEFAULT_CLUB_MUSIC_CONFIG.defaultVolume
       );
       engineRef.current?.configure(next);
       engineRef.current?.setVolume(
-        typeof next.defaultVolume === 'number' ? next.defaultVolume : DEFAULT_CLUB_MUSIC_CONFIG.defaultVolume
+        typeof next.defaultVolume === 'number'
+          ? next.defaultVolume
+          : DEFAULT_CLUB_MUSIC_CONFIG.defaultVolume
       );
       setLoadingConfig(false);
     });
@@ -117,18 +135,31 @@ export function AdminClubMusicTab() {
   };
 
   const handleFileSelected = (file: File | null) => {
+    setUploadError(null);
     if (!file) {
       setSelectedFile(null);
       return;
     }
     const lowerName = file.name.toLowerCase();
-    const hasAllowedExt = ALLOWED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
-    if (!hasAllowedExt) {
-      addToast('error', 'Chỉ hỗ trợ tệp âm thanh định dạng MP3, WAV, OGG, M4A hoặc WebM.');
+    const hasAllowedExt = ALLOWED_CLUB_AUDIO_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+    const hasAudioMime = typeof file.type === 'string' && file.type.startsWith('audio/');
+    if (!hasAllowedExt && !hasAudioMime) {
+      const msg =
+        'Chỉ hỗ trợ tệp âm thanh định dạng MP3, WAV, OGG, M4A, WebM, AAC hoặc FLAC.';
+      setUploadError(msg);
+      addToast('error', msg);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       return;
     }
-    if (file.size <= 0 || file.size > MAX_UPLOAD_BYTES) {
-      addToast('error', 'Kích thước tệp nhạc phải nhỏ hơn 15 MB.');
+    if (file.size <= 0 || file.size > MAX_CLUB_AUDIO_UPLOAD_BYTES) {
+      const msg = 'Kích thước tệp nhạc phải lớn hơn 0 byte và nhỏ hơn 15 MB.';
+      setUploadError(msg);
+      addToast('error', msg);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       return;
     }
     setSelectedFile(file);
@@ -141,17 +172,23 @@ export function AdminClubMusicTab() {
     }
   };
 
-  const deleteOldUploadedFile = async (storedFileName: string, token: string) => {
-    if (!storedFileName || !storedFileName.startsWith('club_bgm_')) return;
-    try {
-      await fetch(`/api/club/music/files/${encodeURIComponent(storedFileName)}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch {
-      // Non-blocking cleanup
+  const cleanupOldUploadedTrack = async (prevAudioUrl: string, prevStoredFileName: string) => {
+    if (prevAudioUrl && FIRESTORE_AUDIO_URL_REGEX.test(prevAudioUrl)) {
+      await deleteFirestoreClubMusicTrack(prevAudioUrl);
+      return;
+    }
+    if (prevStoredFileName && prevStoredFileName.startsWith('club_bgm_') && firebaseUser) {
+      try {
+        const token = await firebaseUser.getIdToken();
+        await fetch(`/api/club/music/files/${encodeURIComponent(prevStoredFileName)}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      } catch {
+        // Non-blocking cleanup for legacy server-hosted files
+      }
     }
   };
 
@@ -160,39 +197,42 @@ export function AdminClubMusicTab() {
     if (!firebaseUser || !selectedFile) return;
 
     setUploading(true);
+    setUploadError(null);
+    setUploadProgress({ percent: 3, doneChunks: 0, totalChunks: 1 });
+
+    let newlyUploadedAudioUrl = '';
     try {
-      const token = await firebaseUser.getIdToken();
-      const uploadRes = await fetch('/api/club/music/upload', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': selectedFile.type || 'application/octet-stream',
+      const uploaded = await uploadClubMusicToFirestore({
+        file: selectedFile,
+        adminUid: firebaseUser.uid,
+        onProgress: (percent, doneChunks, totalChunks) => {
+          setUploadProgress({ percent, doneChunks, totalChunks });
         },
-        body: selectedFile,
+      });
+      newlyUploadedAudioUrl = uploaded.audioUrl;
+
+      setUploadProgress({
+        percent: 98,
+        doneChunks: uploaded.totalChunks,
+        totalChunks: uploaded.totalChunks,
       });
 
-      const payload = (await uploadRes.json().catch(() => ({}))) as {
-        error?: string;
-        audioUrl?: string;
-        storedFileName?: string;
-        mimeType?: string;
-        fileSizeBytes?: number;
-      };
-
-      if (!uploadRes.ok || !payload.audioUrl || !payload.storedFileName) {
-        throw new Error(payload.error || 'Không thể tải tệp âm thanh lên máy chủ.');
-      }
-
+      const previousAudioUrl = config.audioUrl;
       const previousStoredFile = config.storedFileName;
+
+      // Prime local Blob cache immediately so Admin can preview with 0ms delay
+      primeClubMusicBlobCache(uploaded.audioUrl, uploaded.blob);
+
       const saved = await adminSaveClubMusicConfig({
         mode: 'uploaded',
-        title: title.trim() || deriveTitleFromFileName(selectedFile.name) || 'Nhạc nền Câu lạc bộ 3D',
+        title:
+          title.trim() || deriveTitleFromFileName(selectedFile.name) || 'Nhạc nền Câu lạc bộ 3D',
         artist: artist.trim(),
-        audioUrl: payload.audioUrl,
+        audioUrl: uploaded.audioUrl,
         fileName: selectedFile.name,
-        storedFileName: payload.storedFileName,
-        mimeType: payload.mimeType || selectedFile.type || 'audio/mpeg',
-        fileSizeBytes: payload.fileSizeBytes || selectedFile.size,
+        storedFileName: uploaded.storedFileName,
+        mimeType: uploaded.mimeType,
+        fileSizeBytes: uploaded.fileSizeBytes,
         defaultVolume,
         enabled,
         adminUid: firebaseUser.uid,
@@ -200,29 +240,38 @@ export function AdminClubMusicTab() {
       });
 
       setConfig(saved);
+      engineRef.current?.configure(saved);
       setSelectedFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
 
-      if (previousStoredFile && previousStoredFile !== payload.storedFileName) {
-        await deleteOldUploadedFile(previousStoredFile, token);
+      if (previousAudioUrl && previousAudioUrl !== uploaded.audioUrl) {
+        void cleanupOldUploadedTrack(previousAudioUrl, previousStoredFile);
       }
 
       addToast('success', `Đã áp dụng nhạc nền mới "${saved.title}" cho toàn bộ Câu lạc bộ 3D!`);
     } catch (error) {
-      addToast(
-        'error',
-        error instanceof Error ? error.message : 'Lỗi khi tải lên tệp nhạc nền.'
-      );
+      // Clean up newly written chunks if saving the config document failed
+      if (newlyUploadedAudioUrl) {
+        void deleteFirestoreClubMusicTrack(newlyUploadedAudioUrl);
+      }
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Lỗi khi tải lên tệp nhạc nền. Vui lòng thử lại.';
+      setUploadError(message);
+      addToast('error', message);
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   };
 
   const handleSaveSettingsOnly = async () => {
     if (!firebaseUser) return;
     setSavingMeta(true);
+    setUploadError(null);
     try {
       const saved = await adminSaveClubMusicConfig({
         mode: config.mode,
@@ -241,10 +290,10 @@ export function AdminClubMusicTab() {
       setConfig(saved);
       addToast('success', 'Đã lưu cài đặt nhạc nền Câu lạc bộ 3D.');
     } catch (error) {
-      addToast(
-        'error',
-        error instanceof Error ? error.message : 'Không thể lưu cài đặt nhạc nền.'
-      );
+      const msg =
+        error instanceof Error ? error.message : 'Không thể lưu cài đặt nhạc nền.';
+      setUploadError(msg);
+      addToast('error', msg);
     } finally {
       setSavingMeta(false);
     }
@@ -253,7 +302,9 @@ export function AdminClubMusicTab() {
   const handleRestoreDefault = async () => {
     if (!firebaseUser) return;
     setRestoring(true);
+    setUploadError(null);
     try {
+      const previousAudioUrl = config.audioUrl;
       const previousStoredFile = config.storedFileName;
       const saved = await adminSaveClubMusicConfig({
         mode: 'builtin_see_you_again',
@@ -274,16 +325,15 @@ export function AdminClubMusicTab() {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      if (previousStoredFile) {
-        const token = await firebaseUser.getIdToken();
-        await deleteOldUploadedFile(previousStoredFile, token);
+      if (previousAudioUrl || previousStoredFile) {
+        void cleanupOldUploadedTrack(previousAudioUrl, previousStoredFile);
       }
       addToast('success', 'Đã khôi phục bài nhạc nền mặc định "See You Again (Piano Lounge)".');
     } catch (error) {
-      addToast(
-        'error',
-        error instanceof Error ? error.message : 'Không thể khôi phục bài nhạc mặc định.'
-      );
+      const msg =
+        error instanceof Error ? error.message : 'Không thể khôi phục bài nhạc mặc định.';
+      setUploadError(msg);
+      addToast('error', msg);
     } finally {
       setRestoring(false);
     }
@@ -387,8 +437,8 @@ export function AdminClubMusicTab() {
               Tải lên bài nhạc mới để thay đổi nhạc nền CLB 3D
             </h4>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Hỗ trợ MP3, WAV, OGG, M4A, WebM (tối đa 15 MB). Khi áp dụng, tất cả học viên đang ở
-              trong Câu lạc bộ 3D sẽ tự động cập nhật bài nhạc mới.
+              Hỗ trợ MP3, WAV, OGG, M4A, WebM, AAC, FLAC (tối đa 15 MB). Khi áp dụng, bài nhạc được
+              lưu trữ đám mây bền vững và đồng bộ tức thì tới tất cả học viên trong Câu lạc bộ 3D.
             </p>
           </div>
           {config.mode === 'uploaded' && (
@@ -404,8 +454,26 @@ export function AdminClubMusicTab() {
           )}
         </div>
 
-        {/* File Picker Zone */}
-        <div className="rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-950/60 p-5">
+        {/* File Picker & Drop Zone */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!uploading) setIsDragOver(true);
+          }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragOver(false);
+            if (uploading) return;
+            const dropped = e.dataTransfer.files?.[0] ?? null;
+            handleFileSelected(dropped);
+          }}
+          className={`rounded-xl border-2 border-dashed p-5 transition-colors ${
+            isDragOver
+              ? 'border-[#FF6B00] bg-[#FF6B00]/5'
+              : 'border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-950/60'
+          }`}
+        >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5 min-w-0">
               <div className="w-11 h-11 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
@@ -418,7 +486,7 @@ export function AdminClubMusicTab() {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   {selectedFile
                     ? `Dung lượng: ${formatFileSize(selectedFile.size)} · Sẵn sàng tải lên`
-                    : 'Chọn tệp .mp3, .wav, .ogg, .m4a hoặc .webm từ máy tính (≤ 15 MB)'}
+                    : 'Kéo thả hoặc chọn tệp .mp3, .wav, .ogg, .m4a, .webm, .aac, .flac (≤ 15 MB)'}
                 </p>
               </div>
             </div>
@@ -427,21 +495,52 @@ export function AdminClubMusicTab() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".mp3,.wav,.ogg,.m4a,.webm,audio/*"
+                accept=".mp3,.wav,.ogg,.m4a,.webm,.aac,.flac,audio/*"
+                disabled={uploading}
                 onChange={(e) => handleFileSelected(e.target.files?.[0] ?? null)}
                 className="hidden"
                 id="club-music-file-input"
               />
               <label
                 htmlFor="club-music-file-input"
-                className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:border-[#FF6B00] text-xs font-bold text-slate-800 dark:text-slate-100 transition-colors"
+                className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:border-[#FF6B00] text-xs font-bold text-slate-800 dark:text-slate-100 transition-colors ${
+                  uploading ? 'opacity-50 pointer-events-none' : ''
+                }`}
               >
                 <Upload className="w-3.5 h-3.5 text-[#FF6B00]" />
                 Chọn tệp nhạc
               </label>
             </div>
           </div>
+
+          {uploadProgress && (
+            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200">
+                <span>
+                  Đang tải tệp nhạc lên đám mây ({uploadProgress.doneChunks}/
+                  {uploadProgress.totalChunks} phần)...
+                </span>
+                <span className="tabular-nums text-[#FF6B00]">{uploadProgress.percent}%</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full bg-[#FF6B00] rounded-full transition-all duration-200"
+                  style={{ width: `${uploadProgress.percent}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
+
+        {uploadError && (
+          <div
+            role="alert"
+            className="flex items-start gap-2.5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-xs sm:text-sm text-red-700 dark:text-red-300"
+          >
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{uploadError}</span>
+          </div>
+        )}
 
         {/* Track Metadata & Playback Preferences */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -531,7 +630,7 @@ export function AdminClubMusicTab() {
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>Tệp tải lên được kiểm tra định dạng nhị phân an toàn trên máy chủ.</span>
+            <span>Tệp tải lên được kiểm tra chữ ký nhị phân âm thanh và lưu trữ bền vững.</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">

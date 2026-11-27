@@ -355,9 +355,157 @@
     inset 0 0 28px -14px rgba(255, 107, 0, 0.2);
 }
 
+/* Pilot Hall of Fame (Bảng vàng phi công) Radiant Aura Effects — Compositor-only (transform + opacity) */
+@keyframes hof-aura-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes hof-aura-breathe {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.96;
+    transform: scale(1.07);
+  }
+}
+
+.hof-aura-spin-gold {
+  animation: hof-aura-spin 14s linear infinite;
+}
+
+.hof-aura-spin-silver {
+  animation: hof-aura-spin 18s linear infinite reverse;
+}
+
+.hof-aura-spin-bronze {
+  animation: hof-aura-spin 22s linear infinite;
+}
+
+.hof-aura-breathe-gold {
+  animation: hof-aura-breathe 3.4s ease-in-out infinite;
+}
+
+.hof-aura-breathe-silver {
+  animation: hof-aura-breathe 4.1s ease-in-out infinite;
+}
+
+.hof-aura-breathe-bronze {
+  animation: hof-aura-breathe 4.6s ease-in-out infinite;
+}
+
+.hof-card-gold {
+  box-shadow:
+    0 0 0 1px rgba(245, 158, 11, 0.42),
+    0 14px 36px -14px rgba(245, 158, 11, 0.4),
+    0 0 28px -8px rgba(255, 107, 0, 0.25);
+}
+
+.dark .hof-card-gold {
+  box-shadow:
+    0 0 0 1px rgba(251, 191, 36, 0.55),
+    0 18px 42px -14px rgba(245, 158, 11, 0.45),
+    0 0 36px -8px rgba(251, 191, 36, 0.28);
+}
+
+.hof-card-silver {
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.34),
+    0 12px 30px -14px rgba(56, 189, 248, 0.3),
+    0 0 22px -8px rgba(148, 163, 184, 0.25);
+}
+
+.dark .hof-card-silver {
+  box-shadow:
+    0 0 0 1px rgba(125, 211, 252, 0.42),
+    0 14px 34px -14px rgba(56, 189, 248, 0.36),
+    0 0 28px -8px rgba(148, 163, 184, 0.22);
+}
+
+.hof-card-bronze {
+  box-shadow:
+    0 0 0 1px rgba(234, 88, 12, 0.34),
+    0 12px 30px -14px rgba(217, 119, 6, 0.28),
+    0 0 22px -8px rgba(234, 88, 12, 0.22);
+}
+
+.dark .hof-card-bronze {
+  box-shadow:
+    0 0 0 1px rgba(251, 146, 60, 0.42),
+    0 14px 34px -14px rgba(234, 88, 12, 0.34),
+    0 0 28px -8px rgba(217, 119, 6, 0.22);
+}
+
+@keyframes levelup-sunburst-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes levelup-shockwave {
+  0% {
+    opacity: 0.82;
+    transform: scale(0.55);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes levelup-halo-pulse {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.levelup-sunburst-spin {
+  animation: levelup-sunburst-spin 20s linear infinite;
+}
+
+.levelup-shockwave-1 {
+  animation: levelup-shockwave 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.levelup-shockwave-2 {
+  animation: levelup-shockwave 2.4s cubic-bezier(0.16, 1, 0.3, 1) 1.2s infinite;
+}
+
+.levelup-halo-pulse {
+  animation: levelup-halo-pulse 3s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .flashcard-inner,
   .cockpit-radar-panel-interactive {
     transition: none;
+  }
+  .hof-aura-spin-gold,
+  .hof-aura-spin-silver,
+  .hof-aura-spin-bronze,
+  .hof-aura-breathe-gold,
+  .hof-aura-breathe-silver,
+  .hof-aura-breathe-bronze,
+  .levelup-sunburst-spin,
+  .levelup-shockwave-1,
+  .levelup-shockwave-2,
+  .levelup-halo-pulse {
+    animation: none;
   }
 }

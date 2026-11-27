@@ -28,6 +28,7 @@ import {
 import { DailyChallengesWidget } from '../components/DailyChallengesWidget';
 import { LeaderboardPanel } from '../components/LeaderboardPanel';
 import { calculateLessonCompletion, LessonMiniProgress } from '../components/LessonMiniProgress';
+import { PilotHallOfFame } from '../components/PilotHallOfFame';
 import { StudyStreakWidget } from '../components/StudyStreakWidget';
 import { WordOfTheDayCard } from '../components/WordOfTheDayCard';
 import { useApp } from '../context/AppContext';
@@ -323,6 +324,9 @@ export function DashboardPage({
           </p>
         </div>
       </section>
+
+      {/* Bảng vàng phi công — Top 3 Weekly Gems Hall of Fame with Radiant Auras */}
+      <PilotHallOfFame onNavigate={onNavigate} />
 
       {/* Dedicated Study Streak Widget with Flame Icon & 7-Day Milestone Celebration */}
       <StudyStreakWidget

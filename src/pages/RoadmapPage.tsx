@@ -1,9 +1,14 @@
 import { useMemo, useState } from 'react';
-import { ArrowRight, CheckCircle2, Clock, Gem, Search } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock, Gem, Search, Sparkles } from 'lucide-react';
 import { LessonMiniProgress } from '../components/LessonMiniProgress';
 import { useApp } from '../context/AppContext';
 import { LEVEL_BANNERS, PILOT_RANKS } from '../data';
 import { getLessonGemReward } from '../data/pilotGearCatalog';
+import {
+  dispatchLevelUpCelebration,
+  getNextCefrLevel,
+  isCefrProgressionLevel,
+} from '../utils/levelCelebration';
 
 interface RoadmapPageProps {
   onOpenLesson: (lessonId: string) => void;
@@ -117,11 +122,36 @@ export function RoadmapPage({ onOpenLesson }: RoadmapPageProps) {
                     <h2 className="text-xl sm:text-2xl font-extrabold">{lvl.name}</h2>
                     <p className="text-sm text-slate-200 leading-relaxed">{lvl.description}</p>
                   </div>
-                  <div className="md:text-right shrink-0 tabular-nums">
-                    <div className="text-2xl font-extrabold">{pct}%</div>
-                    <div className="text-xs text-slate-300">
-                      Hoàn thành {completedForLevel}/{totalForLevel} bài học
+                  <div className="md:text-right shrink-0 tabular-nums flex flex-col md:items-end gap-2">
+                    <div>
+                      <div className="text-2xl font-extrabold">{pct}%</div>
+                      <div className="text-xs text-slate-300">
+                        Hoàn thành {completedForLevel}/{totalForLevel} bài học
+                      </div>
                     </div>
+                    {pct === 100 &&
+                      totalForLevel > 0 &&
+                      isCefrProgressionLevel(lvl.levelId) && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            dispatchLevelUpCelebration({
+                              completedLevel: lvl.levelId as 'A1' | 'A2' | 'B1' | 'B2' | 'C1',
+                              promotedToLevel: getNextCefrLevel(
+                                lvl.levelId as 'A1' | 'A2' | 'B1' | 'B2' | 'C1'
+                              ),
+                              totalLessonsInLevel: totalForLevel,
+                              bonusGems: 0,
+                              isReplay: true,
+                              triggerKind: 'level_completed',
+                            })
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 border border-amber-300/45 text-amber-200 text-xs font-bold transition-colors whitespace-nowrap"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          Xem hiệu ứng thăng cấp
+                        </button>
+                      )}
                   </div>
                 </div>
               </div>

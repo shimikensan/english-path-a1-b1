@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 
 const BOOTSTRAPPED_ADMIN_EMAIL = 'buocngoat2020@gmail.com';
 const CLUB_MUSIC_DIR = path.resolve(__dirname, 'uploads', 'club-music');
-const SAFE_MUSIC_FILE_REGEX = /^club_bgm_[0-9]+_[a-f0-9]{12}\.(mp3|wav|ogg|m4a|webm)$/;
+const SAFE_MUSIC_FILE_REGEX = /^club_bgm_[0-9]+_[a-f0-9]{12}\.(mp3|wav|ogg|m4a|webm|aac|flac)$/;
 const MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
 
 interface FirebaseAppletConfig {
@@ -34,14 +34,37 @@ function loadFirebaseAppletConfig(): FirebaseAppletConfig | null {
 
 const FIREBASE_CONFIG = loadFirebaseAppletConfig();
 
+function isMpegAudioFrameSync(buf: Buffer, offset: number): boolean {
+  if (offset + 3 >= buf.length) return false;
+  const b0 = buf[offset];
+  const b1 = buf[offset + 1];
+  const b2 = buf[offset + 2];
+  if (b0 !== 0xff || (b1 & 0xe0) !== 0xe0) return false;
+  const versionBits = (b1 >> 3) & 0x03;
+  if (versionBits === 1) return false;
+  const layerBits = (b1 >> 1) & 0x03;
+  if (layerBits === 0) return false;
+  const bitrateIdx = (b2 >> 4) & 0x0f;
+  if (bitrateIdx === 0x0f) return false;
+  const sampleRateIdx = (b2 >> 2) & 0x03;
+  if (sampleRateIdx === 0x03) return false;
+  return true;
+}
+
+function isAdtsAacFrameSync(buf: Buffer, offset: number): boolean {
+  if (offset + 3 >= buf.length) return false;
+  const b0 = buf[offset];
+  const b1 = buf[offset + 1];
+  const b2 = buf[offset + 2];
+  if (b0 !== 0xff || (b1 & 0xf6) !== 0xf0) return false;
+  const sampleFreqIdx = (b2 >> 2) & 0x0f;
+  return sampleFreqIdx < 13;
+}
+
 function detectVerifiedAudioFormat(buf: Buffer): { ext: string; mime: string } | null {
   if (!buf || buf.length < 12) return null;
   // MP3 with ID3v2 tag ("ID3")
   if (buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) {
-    return { ext: 'mp3', mime: 'audio/mpeg' };
-  }
-  // Raw MP3 MPEG frame sync (0xFF followed by 0xE0..0xFF)
-  if (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) {
     return { ext: 'mp3', mime: 'audio/mpeg' };
   }
   // WAV ("RIFF" .... "WAVE")
@@ -61,6 +84,10 @@ function detectVerifiedAudioFormat(buf: Buffer): { ext: string; mime: string } |
   if (buf[0] === 0x4f && buf[1] === 0x67 && buf[2] === 0x67 && buf[3] === 0x53) {
     return { ext: 'ogg', mime: 'audio/ogg' };
   }
+  // FLAC ("fLaC")
+  if (buf[0] === 0x66 && buf[1] === 0x4c && buf[2] === 0x61 && buf[3] === 0x43) {
+    return { ext: 'flac', mime: 'audio/flac' };
+  }
   // M4A / MP4 audio (offset 4..7 == "ftyp")
   if (buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) {
     return { ext: 'm4a', mime: 'audio/mp4' };
@@ -68,6 +95,30 @@ function detectVerifiedAudioFormat(buf: Buffer): { ext: string; mime: string } |
   // WebM / Matroska EBML header (0x1A 0x45 0xDF 0xA3)
   if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
     return { ext: 'webm', mime: 'audio/webm' };
+  }
+  // Raw MP3 or ADTS AAC at byte 0
+  if (isMpegAudioFrameSync(buf, 0)) {
+    return { ext: 'mp3', mime: 'audio/mpeg' };
+  }
+  if (isAdtsAacFrameSync(buf, 0)) {
+    return { ext: 'aac', mime: 'audio/aac' };
+  }
+  // Allow leading zero padding bytes before ID3 or MPEG/AAC sync frame
+  const scanLimit = Math.min(buf.length - 4, 4096);
+  let idx = 0;
+  while (idx < scanLimit && buf[idx] === 0x00) {
+    idx += 1;
+  }
+  if (idx > 0 && idx < scanLimit) {
+    if (buf[idx] === 0x49 && buf[idx + 1] === 0x44 && buf[idx + 2] === 0x33) {
+      return { ext: 'mp3', mime: 'audio/mpeg' };
+    }
+    if (isMpegAudioFrameSync(buf, idx)) {
+      return { ext: 'mp3', mime: 'audio/mpeg' };
+    }
+    if (isAdtsAacFrameSync(buf, idx)) {
+      return { ext: 'aac', mime: 'audio/aac' };
+    }
   }
   return null;
 }
@@ -85,6 +136,10 @@ function getMimeBySafeExt(fileName: string): string {
       return 'audio/mp4';
     case '.webm':
       return 'audio/webm';
+    case '.aac':
+      return 'audio/aac';
+    case '.flac':
+      return 'audio/flac';
     default:
       return 'application/octet-stream';
   }
@@ -378,20 +433,8 @@ async function startServer() {
   app.post(
     '/api/club/music/upload',
     express.raw({
-      type: [
-        'audio/mpeg',
-        'audio/mp3',
-        'audio/wav',
-        'audio/x-wav',
-        'audio/wave',
-        'audio/ogg',
-        'audio/mp4',
-        'audio/x-m4a',
-        'audio/m4a',
-        'audio/webm',
-        'application/octet-stream',
-      ],
-      limit: '15mb',
+      type: '*/*',
+      limit: '16mb',
     }),
     async (req, res) => {
       try {
@@ -758,6 +801,15 @@ async function startServer() {
       next: express.NextFunction
     ) => {
       if (req.path.startsWith('/api')) {
+        const statusErr = err as { status?: number; statusCode?: number; type?: string } | null;
+        if (
+          statusErr?.status === 413 ||
+          statusErr?.statusCode === 413 ||
+          statusErr?.type === 'entity.too.large'
+        ) {
+          res.status(413).json({ error: 'Tệp nhạc vượt quá giới hạn tối đa 15 MB.' });
+          return;
+        }
         console.error('Express API middleware error:', err);
         res.status(500).json({ error: 'Lỗi xử lý yêu cầu trên máy chủ. Vui lòng thử lại.' });
         return;

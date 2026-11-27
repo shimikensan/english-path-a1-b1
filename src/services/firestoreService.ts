@@ -23,10 +23,10 @@ import {
   getDefaultLessonsByLevel,
 } from '../data';
 import {
+  computeGemBreakdown,
   DEFAULT_EQUIPPED_GEAR,
   DEFAULT_HANGAR_STATE,
   DEFAULT_OWNED_ITEMS,
-  estimateLeaderboardGems,
   PILOT_GEAR_CATALOG,
   type PilotHangarState,
 } from '../data/pilotGearCatalog';
@@ -38,6 +38,17 @@ import {
   isFirestoreQuotaError,
   OperationType,
 } from '../firebase';
+import {
+  base64ToBytes,
+  bytesToBase64,
+  CLUB_AUDIO_CHUNK_RAW_BYTES,
+  detectVerifiedAudioFormat,
+  generateClubTrackId,
+  isValidUploadedClubAudioUrl,
+  MAX_CLUB_AUDIO_CHUNKS,
+  MAX_CLUB_AUDIO_UPLOAD_BYTES,
+  parseFirestoreClubAudioUrl,
+} from '../utils/audioFormat';
 import type {
   AdminRecord,
   AdminSecurityVaultDoc,
@@ -1120,11 +1131,14 @@ export async function syncUserLeaderboardEntry(entry: {
   averageQuizScore: number;
   streakDays: number;
   gemsEarned?: number;
+  availableGems?: number;
+  weeklyActivityGems?: number;
+  weeklyGemsWeekKey?: string;
   totalAccessSeconds?: number;
   firstLoginAt?: Timestamp | Date;
   pilotEquipped?: LeaderboardPilotEquipped;
   isPublic?: boolean;
-}): Promise<void> {
+}): Promise<{ weeklyGems: number; weeklyGemsWeekKey: string; weeklyGemsBaseline: number } | void> {
   const path = `leaderboard/${entry.uid}`;
   const ref = doc(db, 'leaderboard', entry.uid);
 
@@ -1144,6 +1158,24 @@ export async function syncUserLeaderboardEntry(entry: {
     0,
     Math.min(10000000, Math.floor(entry.gemsEarned ?? 0))
   );
+  const safeAvailableGems = Math.max(
+    0,
+    Math.min(
+      10000000,
+      Math.floor(
+        typeof entry.availableGems === 'number' && Number.isFinite(entry.availableGems)
+          ? entry.availableGems
+          : safeGemsEarned
+      )
+    )
+  );
+  const safeActivityWeekly = Math.max(
+    0,
+    Math.min(10000000, Math.floor(entry.weeklyActivityGems ?? 0))
+  );
+  const weekKeyValid =
+    typeof entry.weeklyGemsWeekKey === 'string' &&
+    /^[0-9]{4}-W[0-5][0-9]$/.test(entry.weeklyGemsWeekKey);
   const candidateFirstLogin = toSafePastFirestoreTimestamp(entry.firstLoginAt);
   const safePilotEquipped = sanitizeLeaderboardPilotEquipped(entry.pilotEquipped);
 
@@ -1157,6 +1189,7 @@ export async function syncUserLeaderboardEntry(entry: {
     averageQuizScore: Math.max(0, Math.min(100, Math.round(entry.averageQuizScore))),
     streakDays: Math.max(0, Math.min(10000, Math.round(entry.streakDays))),
     gemsEarned: safeGemsEarned,
+    availableGems: safeAvailableGems,
     isPublic: entry.isPublic ?? true,
     updatedAt: serverTimestamp(),
   };
@@ -1167,6 +1200,8 @@ export async function syncUserLeaderboardEntry(entry: {
 
   try {
     const snap = await getDoc(ref);
+    let resolvedWeekly: { weeklyGems: number; weeklyGemsWeekKey: string; weeklyGemsBaseline: number } | undefined;
+
     if (snap.exists()) {
       const existingData = snap.data() as Partial<LeaderboardEntryDoc>;
       const existingAccess =
@@ -1178,20 +1213,64 @@ export async function syncUserLeaderboardEntry(entry: {
         ...baseMutableFields,
         totalAccessSeconds: Math.max(existingAccess, safeAccessSeconds),
       };
+
+      if (weekKeyValid && entry.weeklyGemsWeekKey) {
+        const sameWeek = existingData.weeklyGemsWeekKey === entry.weeklyGemsWeekKey;
+        const existingBaseline =
+          sameWeek &&
+          typeof existingData.weeklyGemsBaseline === 'number' &&
+          Number.isFinite(existingData.weeklyGemsBaseline)
+            ? Math.max(0, Math.min(10000000, Math.floor(existingData.weeklyGemsBaseline)))
+            : Math.max(0, safeGemsEarned - safeActivityWeekly);
+        const existingWeekly =
+          sameWeek &&
+          typeof existingData.weeklyGems === 'number' &&
+          Number.isFinite(existingData.weeklyGems)
+            ? Math.max(0, Math.min(10000000, Math.floor(existingData.weeklyGems)))
+            : 0;
+        const deltaFromBaseline = Math.max(0, safeGemsEarned - existingBaseline);
+        const nextWeeklyGems = Math.min(
+          10000000,
+          Math.max(existingWeekly, safeActivityWeekly, deltaFromBaseline)
+        );
+        updatePayload.weeklyGems = nextWeeklyGems;
+        updatePayload.weeklyGemsWeekKey = entry.weeklyGemsWeekKey;
+        updatePayload.weeklyGemsBaseline = existingBaseline;
+        resolvedWeekly = {
+          weeklyGems: nextWeeklyGems,
+          weeklyGemsWeekKey: entry.weeklyGemsWeekKey,
+          weeklyGemsBaseline: existingBaseline,
+        };
+      }
+
       // Only backfill firstLoginAt if not already recorded (immutable once set)
       if (!existingData.firstLoginAt && candidateFirstLogin) {
         updatePayload.firstLoginAt = candidateFirstLogin;
       }
       await updateDoc(ref, updatePayload);
     } else {
-      await setDoc(ref, {
+      const createPayload: Record<string, unknown> = {
         uid: entry.uid,
         ...baseMutableFields,
         totalAccessSeconds: safeAccessSeconds,
         firstLoginAt: candidateFirstLogin ?? serverTimestamp(),
-      });
+      };
+      if (weekKeyValid && entry.weeklyGemsWeekKey) {
+        const baseline = Math.max(0, safeGemsEarned - safeActivityWeekly);
+        const nextWeeklyGems = Math.min(10000000, Math.max(safeActivityWeekly, safeGemsEarned - baseline));
+        createPayload.weeklyGems = nextWeeklyGems;
+        createPayload.weeklyGemsWeekKey = entry.weeklyGemsWeekKey;
+        createPayload.weeklyGemsBaseline = baseline;
+        resolvedWeekly = {
+          weeklyGems: nextWeeklyGems,
+          weeklyGemsWeekKey: entry.weeklyGemsWeekKey,
+          weeklyGemsBaseline: baseline,
+        };
+      }
+      await setDoc(ref, createPayload);
     }
     clearLeaderboardCache();
+    return resolvedWeekly;
   } catch (error) {
     if (isFirestoreQuotaError(error)) {
       throw error;
@@ -1225,21 +1304,47 @@ export async function adminSyncAllUsersLeaderboard(
       getDocs(collection(db, 'pilot_hangar')).catch(() => null),
     ]);
 
-    const hangarEquippedByUid = new Map<string, LeaderboardPilotEquipped>();
+    const hangarByUid = new Map<
+      string,
+      { equipped?: LeaderboardPilotEquipped; spentGems: number; bonusGems: number }
+    >();
     if (hangarSnap) {
       hangarSnap.docs.forEach((d) => {
         const h = d.data() as Partial<PilotHangarDoc>;
-        const sanitized = sanitizeLeaderboardPilotEquipped(h.equipped);
-        if (sanitized) {
-          hangarEquippedByUid.set(d.id, sanitized);
-        }
+        hangarByUid.set(d.id, {
+          equipped: sanitizeLeaderboardPilotEquipped(h.equipped),
+          spentGems:
+            typeof h.spentGems === 'number' && Number.isFinite(h.spentGems)
+              ? Math.max(0, Math.floor(h.spentGems))
+              : 0,
+          bonusGems:
+            typeof h.bonusGems === 'number' && Number.isFinite(h.bonusGems)
+              ? Math.max(0, Math.floor(h.bonusGems))
+              : 0,
+        });
       });
     }
 
     const completedLessonsByUid = new Map<string, Set<string>>();
+    const progressMapByUid = new Map<string, Record<string, UserProgressDoc>>();
     progressSnap.docs.forEach((d) => {
       const p = d.data() as Partial<UserProgressDoc>;
-      if (!p.uid || !p.lessonCompleted || !p.lessonId) return;
+      if (!p.uid || !p.lessonId) return;
+      let userProgMap = progressMapByUid.get(p.uid);
+      if (!userProgMap) {
+        userProgMap = {};
+        progressMapByUid.set(p.uid, userProgMap);
+      }
+      userProgMap[p.lessonId] = {
+        uid: p.uid,
+        lessonId: p.lessonId,
+        levelId: p.levelId ?? 'A1',
+        vocabularyLearned: Array.isArray(p.vocabularyLearned) ? p.vocabularyLearned : [],
+        lessonCompleted: Boolean(p.lessonCompleted),
+        quizBestScore: typeof p.quizBestScore === 'number' ? p.quizBestScore : 0,
+        quizAttempts: typeof p.quizAttempts === 'number' ? p.quizAttempts : 0,
+      };
+      if (!p.lessonCompleted) return;
       if (validLessonIds.size > 0 && !validLessonIds.has(p.lessonId)) return;
       let set = completedLessonsByUid.get(p.uid);
       if (!set) {
@@ -1250,13 +1355,37 @@ export async function adminSyncAllUsersLeaderboard(
     });
 
     const learnedVocabByUid = new Map<string, number>();
+    const vocabMapByUid = new Map<string, Record<string, UserVocabularyDoc>>();
     vocabSnap.docs.forEach((d) => {
       const v = d.data() as Partial<UserVocabularyDoc>;
-      if (!v.uid || !v.isLearned) return;
-      learnedVocabByUid.set(v.uid, (learnedVocabByUid.get(v.uid) ?? 0) + 1);
+      if (!v.uid) return;
+      if (v.isLearned) {
+        learnedVocabByUid.set(v.uid, (learnedVocabByUid.get(v.uid) ?? 0) + 1);
+      }
+      let userVocabMap = vocabMapByUid.get(v.uid);
+      if (!userVocabMap) {
+        userVocabMap = {};
+        vocabMapByUid.set(v.uid, userVocabMap);
+      }
+      const vKey = v.vocabularyId || d.id;
+      userVocabMap[vKey] = {
+        uid: v.uid,
+        vocabularyId: vKey,
+        lessonId: v.lessonId ?? '',
+        levelId: v.levelId ?? 'A1',
+        word: v.word ?? '',
+        ipa: v.ipa ?? '',
+        partOfSpeech: v.partOfSpeech ?? '',
+        meaningVi: v.meaningVi ?? '',
+        exampleEn: v.exampleEn ?? '',
+        exampleVi: v.exampleVi ?? '',
+        isFavorite: Boolean(v.isFavorite),
+        isLearned: Boolean(v.isLearned),
+      };
     });
 
     const quizScoresByUid = new Map<string, { sum: number; count: number; durationSeconds: number }>();
+    const quizResultsByUid = new Map<string, QuizResultDoc[]>();
     quizSnap.docs.forEach((d) => {
       const q = d.data() as Partial<QuizResultDoc>;
       if (!q.uid || typeof q.score !== 'number' || !Number.isFinite(q.score)) return;
@@ -1267,6 +1396,24 @@ export async function adminSyncAllUsersLeaderboard(
         cur.durationSeconds += Math.floor(q.durationSeconds);
       }
       quizScoresByUid.set(q.uid, cur);
+
+      let list = quizResultsByUid.get(q.uid);
+      if (!list) {
+        list = [];
+        quizResultsByUid.set(q.uid, list);
+      }
+      list.push({
+        uid: q.uid,
+        lessonId: q.lessonId ?? '',
+        lessonTitle: q.lessonTitle ?? '',
+        levelId: q.levelId ?? 'A1',
+        score: q.score,
+        totalQuestions: typeof q.totalQuestions === 'number' ? q.totalQuestions : 0,
+        correctAnswers: typeof q.correctAnswers === 'number' ? q.correctAnswers : 0,
+        wrongAnswers: typeof q.wrongAnswers === 'number' ? q.wrongAnswers : 0,
+        rating: q.rating ?? 'Good',
+        durationSeconds: typeof q.durationSeconds === 'number' ? q.durationSeconds : 0,
+      });
     });
 
     const existingLeaderboardMap = new Map<string, LeaderboardEntryDoc>();
@@ -1336,21 +1483,31 @@ export async function adminSyncAllUsersLeaderboard(
         toSafePastFirestoreTimestamp(existingEntry?.firstLoginAt) ??
         toSafePastFirestoreTimestamp(user.createdAt);
 
-      const estimatedGems = estimateLeaderboardGems({
-        completedLessons,
-        learnedVocabCount,
-        averageQuizScore,
-        streakDays: safeStreak,
-        totalAccessSeconds,
+      const hangarInfo = hangarByUid.get(uid);
+      const exactBreakdown = computeGemBreakdown({
+        profile: {
+          uid,
+          fullName: safeName,
+          email: typeof user.email === 'string' ? user.email : '',
+          currentLevel: safeLevel,
+          streakDays: safeStreak,
+          lastStudyDate: typeof user.lastStudyDate === 'string' ? user.lastStudyDate : '',
+          dailyGoalMinutes: typeof user.dailyGoalMinutes === 'number' ? user.dailyGoalMinutes : 20,
+          reminderEnabled: Boolean(user.reminderEnabled),
+          totalAccessSeconds: userTrackedSec,
+        },
+        lessons: effectiveLessons,
+        progressMap: progressMapByUid.get(uid) ?? {},
+        vocabMap: vocabMapByUid.get(uid) ?? {},
+        quizResults: quizResultsByUid.get(uid) ?? [],
+        bonusGems: hangarInfo?.bonusGems ?? 0,
+        spentGems: hangarInfo?.spentGems ?? 0,
       });
-      const existingGems =
-        typeof existingEntry?.gemsEarned === 'number' && Number.isFinite(existingEntry.gemsEarned)
-          ? Math.max(0, Math.floor(existingEntry.gemsEarned))
-          : 0;
-      const gemsEarned = Math.min(10000000, Math.max(existingGems, estimatedGems));
+      const gemsEarned = Math.max(0, Math.min(10000000, Math.floor(exactBreakdown.totalEarned)));
+      const availableGems = Math.max(0, Math.min(10000000, Math.floor(exactBreakdown.availableGems)));
 
       const syncedPilotEquipped =
-        hangarEquippedByUid.get(uid) ??
+        hangarInfo?.equipped ??
         sanitizeLeaderboardPilotEquipped(existingEntry?.pilotEquipped);
 
       const payload: Record<string, unknown> = {
@@ -1364,9 +1521,28 @@ export async function adminSyncAllUsersLeaderboard(
         streakDays: safeStreak,
         totalAccessSeconds,
         gemsEarned,
+        availableGems,
         isPublic: true,
         updatedAt: serverTimestamp(),
       };
+      if (
+        typeof existingEntry?.weeklyGems === 'number' &&
+        Number.isFinite(existingEntry.weeklyGems) &&
+        typeof existingEntry?.weeklyGemsWeekKey === 'string' &&
+        /^[0-9]{4}-W[0-5][0-9]$/.test(existingEntry.weeklyGemsWeekKey)
+      ) {
+        payload.weeklyGems = Math.max(0, Math.min(10000000, Math.floor(existingEntry.weeklyGems)));
+        payload.weeklyGemsWeekKey = existingEntry.weeklyGemsWeekKey;
+        if (
+          typeof existingEntry.weeklyGemsBaseline === 'number' &&
+          Number.isFinite(existingEntry.weeklyGemsBaseline)
+        ) {
+          payload.weeklyGemsBaseline = Math.max(
+            0,
+            Math.min(10000000, Math.floor(existingEntry.weeklyGemsBaseline))
+          );
+        }
+      }
       if (firstLoginTs) {
         payload.firstLoginAt = firstLoginTs;
       }
@@ -1400,6 +1576,7 @@ export async function adminSyncAllUsersLeaderboard(
         existing.streakDays !== next.streakDays ||
         (existing.totalAccessSeconds ?? 0) !== (next.totalAccessSeconds as number) ||
         (existing.gemsEarned ?? -1) !== (next.gemsEarned as number) ||
+        (existing.availableGems ?? -1) !== (next.availableGems as number) ||
         (existingFirstMs === null && nextFirstMs !== null) ||
         existingPilotKey !== nextPilotKey ||
         existing.isPublic !== true
@@ -2263,9 +2440,6 @@ export const DEFAULT_CLUB_MUSIC_CONFIG: ClubMusicConfigDoc = {
   updatedByName: 'Hệ thống mặc định',
 };
 
-const SAFE_UPLOADED_AUDIO_URL_REGEX =
-  /^\/api\/club\/music\/files\/club_bgm_[0-9]+_[a-f0-9]{12}\.(mp3|wav|ogg|m4a|webm)$/;
-
 export async function getClubMusicConfig(): Promise<ClubMusicConfigDoc> {
   const ref = doc(db, 'club_settings', 'music');
   try {
@@ -2296,6 +2470,171 @@ export function subscribeClubMusicConfig(
   );
 }
 
+export interface UploadedClubMusicResult {
+  trackId: string;
+  totalChunks: number;
+  audioUrl: string;
+  storedFileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  blob: Blob;
+}
+
+export async function uploadClubMusicToFirestore(params: {
+  file: File;
+  adminUid: string;
+  onProgress?: (percent: number, doneChunks: number, totalChunks: number) => void;
+}): Promise<UploadedClubMusicResult> {
+  const { file, adminUid, onProgress } = params;
+  if (!file || file.size <= 0) {
+    throw new Error('Không nhận được dữ liệu tệp âm thanh.');
+  }
+  if (file.size > MAX_CLUB_AUDIO_UPLOAD_BYTES) {
+    throw new Error('Tệp nhạc vượt quá giới hạn tối đa 15 MB.');
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  const detected = detectVerifiedAudioFormat(bytes);
+  if (!detected) {
+    throw new Error(
+      'Định dạng âm thanh không hợp lệ hoặc tệp bị lỗi. Vui lòng chọn tệp MP3, WAV, OGG, M4A, WebM, AAC hoặc FLAC.'
+    );
+  }
+
+  const totalChunks = Math.ceil(bytes.length / CLUB_AUDIO_CHUNK_RAW_BYTES);
+  if (totalChunks < 1 || totalChunks > MAX_CLUB_AUDIO_CHUNKS) {
+    throw new Error('Tệp nhạc vượt quá số phần lưu trữ tối đa cho phép (15 MB).');
+  }
+
+  const trackId = generateClubTrackId();
+  const writtenChunkIds: string[] = [];
+  let completedChunks = 0;
+
+  onProgress?.(5, 0, totalChunks);
+
+  const concurrency = 4;
+  try {
+    for (let startIdx = 0; startIdx < totalChunks; startIdx += concurrency) {
+      const batchIndices: number[] = [];
+      for (let i = startIdx; i < Math.min(startIdx + concurrency, totalChunks); i += 1) {
+        batchIndices.push(i);
+      }
+
+      await Promise.all(
+        batchIndices.map(async (chunkIndex) => {
+          const sliceStart = chunkIndex * CLUB_AUDIO_CHUNK_RAW_BYTES;
+          const sliceEnd = Math.min(sliceStart + CLUB_AUDIO_CHUNK_RAW_BYTES, bytes.length);
+          const chunkBytes = bytes.subarray(sliceStart, sliceEnd);
+          const dataBase64 = bytesToBase64(chunkBytes);
+          const chunkId = `${trackId}_c${chunkIndex}`;
+
+          await setDoc(doc(db, 'club_music_chunks', chunkId), {
+            trackId,
+            chunkIndex,
+            totalChunks,
+            mimeType: detected.mime,
+            dataBase64,
+            updatedBy: adminUid,
+            updatedAt: serverTimestamp(),
+          });
+
+          writtenChunkIds.push(chunkId);
+          completedChunks += 1;
+          const pct = Math.min(95, Math.max(8, Math.round((completedChunks / totalChunks) * 90) + 5));
+          onProgress?.(pct, completedChunks, totalChunks);
+        })
+      );
+    }
+  } catch (error) {
+    // Best-effort rollback of any partial chunks so Firestore stays clean
+    await Promise.allSettled(
+      writtenChunkIds.map((chunkId) => deleteDoc(doc(db, 'club_music_chunks', chunkId)))
+    );
+    if (isFirestoreQuotaError(error)) {
+      throw new Error('Hệ thống lưu trữ đang tạm đạt giới hạn lượt ghi trong ngày. Vui lòng thử lại sau.');
+    }
+    const errCode = (error as { code?: string } | null)?.code;
+    if (errCode === 'permission-denied') {
+      throw new Error('Tài khoản của bạn chưa có quyền quản trị viên đã xác thực email để tải nhạc lên.');
+    }
+    throw new Error('Không thể tải các phần dữ liệu âm thanh lên máy chủ. Vui lòng kiểm tra kết nối mạng và thử lại.');
+  }
+
+  const audioUrl = `firestore://club_music_chunks/${trackId}/${totalChunks}`;
+  const storedFileName = `${trackId}.${detected.ext}`;
+  const blob = new Blob([bytes], { type: detected.mime });
+
+  return {
+    trackId,
+    totalChunks,
+    audioUrl,
+    storedFileName,
+    mimeType: detected.mime,
+    fileSizeBytes: bytes.length,
+    blob,
+  };
+}
+
+export async function loadFirestoreClubMusicBlob(
+  audioUrl: string,
+  fallbackMimeType = 'audio/mpeg'
+): Promise<Blob> {
+  const parsed = parseFirestoreClubAudioUrl(audioUrl);
+  if (!parsed) {
+    throw new Error('Đường dẫn tệp âm thanh không hợp lệ.');
+  }
+
+  const { trackId, totalChunks } = parsed;
+  const decodedParts: Uint8Array<ArrayBuffer>[] = new Array(totalChunks);
+  let resolvedMime = fallbackMimeType || 'audio/mpeg';
+
+  const concurrency = 6;
+  for (let startIdx = 0; startIdx < totalChunks; startIdx += concurrency) {
+    const batchIndices: number[] = [];
+    for (let i = startIdx; i < Math.min(startIdx + concurrency, totalChunks); i += 1) {
+      batchIndices.push(i);
+    }
+
+    await Promise.all(
+      batchIndices.map(async (chunkIndex) => {
+        const chunkId = `${trackId}_c${chunkIndex}`;
+        const snap = await getDoc(doc(db, 'club_music_chunks', chunkId));
+        if (!snap.exists()) {
+          throw new Error(`Thiếu phần dữ liệu âm thanh #${chunkIndex + 1}.`);
+        }
+        const data = snap.data() as { dataBase64?: string; mimeType?: string };
+        if (typeof data.dataBase64 !== 'string' || !data.dataBase64) {
+          throw new Error(`Dữ liệu âm thanh #${chunkIndex + 1} không hợp lệ.`);
+        }
+        if (chunkIndex === 0 && typeof data.mimeType === 'string' && data.mimeType) {
+          resolvedMime = data.mimeType;
+        }
+        const rawBytes = base64ToBytes(data.dataBase64);
+        const copy = new Uint8Array(new ArrayBuffer(rawBytes.byteLength));
+        copy.set(rawBytes);
+        decodedParts[chunkIndex] = copy;
+      })
+    );
+  }
+
+  return new Blob(decodedParts, { type: resolvedMime });
+}
+
+export async function deleteFirestoreClubMusicTrack(audioUrl: string): Promise<void> {
+  const parsed = parseFirestoreClubAudioUrl(audioUrl);
+  if (!parsed) return;
+  const { trackId, totalChunks } = parsed;
+  const concurrency = 6;
+  for (let startIdx = 0; startIdx < totalChunks; startIdx += concurrency) {
+    const ops: Promise<void>[] = [];
+    for (let i = startIdx; i < Math.min(startIdx + concurrency, totalChunks); i += 1) {
+      ops.push(deleteDoc(doc(db, 'club_music_chunks', `${trackId}_c${i}`)));
+    }
+    await Promise.allSettled(ops);
+  }
+}
+
 export async function adminSaveClubMusicConfig(params: {
   mode: 'builtin_see_you_again' | 'uploaded';
   title: string;
@@ -2316,7 +2655,7 @@ export async function adminSaveClubMusicConfig(params: {
   const safeMode: 'builtin_see_you_again' | 'uploaded' =
     params.mode === 'uploaded' ? 'uploaded' : 'builtin_see_you_again';
   const safeAudioUrl = safeMode === 'uploaded' ? params.audioUrl.trim() : '';
-  if (safeMode === 'uploaded' && !SAFE_UPLOADED_AUDIO_URL_REGEX.test(safeAudioUrl)) {
+  if (safeMode === 'uploaded' && !isValidUploadedClubAudioUrl(safeAudioUrl)) {
     throw new Error('Đường dẫn tệp âm thanh tải lên không hợp lệ.');
   }
 

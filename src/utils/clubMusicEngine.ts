@@ -1,8 +1,72 @@
 import type { ClubMusicConfigDoc } from '../types';
-import { DEFAULT_CLUB_MUSIC_CONFIG } from '../services/firestoreService';
+import {
+  DEFAULT_CLUB_MUSIC_CONFIG,
+  loadFirestoreClubMusicBlob,
+} from '../services/firestoreService';
+import {
+  FIRESTORE_AUDIO_URL_REGEX,
+  isValidUploadedClubAudioUrl,
+} from './audioFormat';
 
-const SAFE_UPLOADED_AUDIO_URL_REGEX =
-  /^\/api\/club\/music\/files\/club_bgm_[0-9]+_[a-f0-9]{12}\.(mp3|wav|ogg|m4a|webm)$/;
+// Shared in-memory Blob URL cache for Firestore-stored club music tracks (bounded to 4 tracks)
+const MAX_CACHED_BLOBS = 4;
+const resolvedBlobUrlCache = new Map<string, string>();
+const inflightBlobPromises = new Map<string, Promise<string | null>>();
+
+function setCachedBlobUrl(audioUrl: string, blobUrl: string): void {
+  const existing = resolvedBlobUrlCache.get(audioUrl);
+  if (existing && existing !== blobUrl) {
+    URL.revokeObjectURL(existing);
+  }
+  resolvedBlobUrlCache.set(audioUrl, blobUrl);
+  while (resolvedBlobUrlCache.size > MAX_CACHED_BLOBS) {
+    const oldestKey = resolvedBlobUrlCache.keys().next().value;
+    if (!oldestKey) break;
+    const oldestUrl = resolvedBlobUrlCache.get(oldestKey);
+    resolvedBlobUrlCache.delete(oldestKey);
+    if (oldestUrl) {
+      URL.revokeObjectURL(oldestUrl);
+    }
+  }
+}
+
+export function primeClubMusicBlobCache(audioUrl: string, blob: Blob): string | null {
+  if (!FIRESTORE_AUDIO_URL_REGEX.test(audioUrl)) return null;
+  const blobUrl = URL.createObjectURL(blob);
+  setCachedBlobUrl(audioUrl, blobUrl);
+  return blobUrl;
+}
+
+async function resolvePlayableAudioUrl(
+  audioUrl: string,
+  mimeType?: string
+): Promise<string | null> {
+  if (!isValidUploadedClubAudioUrl(audioUrl)) return null;
+  if (!FIRESTORE_AUDIO_URL_REGEX.test(audioUrl)) {
+    // Legacy server-hosted /api/club/music/files/... URL
+    return audioUrl;
+  }
+
+  const cached = resolvedBlobUrlCache.get(audioUrl);
+  if (cached) return cached;
+
+  const inflight = inflightBlobPromises.get(audioUrl);
+  if (inflight) return inflight;
+
+  const task = loadFirestoreClubMusicBlob(audioUrl, mimeType || 'audio/mpeg')
+    .then((blob) => {
+      const blobUrl = URL.createObjectURL(blob);
+      setCachedBlobUrl(audioUrl, blobUrl);
+      return blobUrl;
+    })
+    .catch(() => null)
+    .finally(() => {
+      inflightBlobPromises.delete(audioUrl);
+    });
+
+  inflightBlobPromises.set(audioUrl, task);
+  return task;
+}
 
 // MIDI note number to frequency (Hz)
 function midiToFreq(midi: number): number {
@@ -127,6 +191,15 @@ export class ClubMusicEngine {
     const prevUrl = this.config.audioUrl;
     this.config = nextConfig;
 
+    // Warm Firestore audio Blob cache in background so clicking Play starts immediately inside user gesture
+    if (
+      nextConfig.mode === 'uploaded' &&
+      typeof nextConfig.audioUrl === 'string' &&
+      FIRESTORE_AUDIO_URL_REGEX.test(nextConfig.audioUrl)
+    ) {
+      void resolvePlayableAudioUrl(nextConfig.audioUrl, nextConfig.mimeType);
+    }
+
     const sourceChanged = prevMode !== nextConfig.mode || prevUrl !== nextConfig.audioUrl;
     if (sourceChanged && this.isPlaying) {
       this.stopAllSources();
@@ -170,10 +243,10 @@ export class ClubMusicEngine {
     const useUploaded =
       this.config.mode === 'uploaded' &&
       typeof this.config.audioUrl === 'string' &&
-      SAFE_UPLOADED_AUDIO_URL_REGEX.test(this.config.audioUrl);
+      isValidUploadedClubAudioUrl(this.config.audioUrl);
 
     if (useUploaded) {
-      const ok = await this.startUploadedAudio(this.config.audioUrl);
+      const ok = await this.startUploadedAudio(this.config.audioUrl, this.config.mimeType);
       if (ok) {
         this.setPlayingFlag(true);
         return true;
@@ -235,7 +308,7 @@ export class ClubMusicEngine {
     }
   }
 
-  private async startUploadedAudio(url: string): Promise<boolean> {
+  private async startUploadedAudio(url: string, mimeType?: string): Promise<boolean> {
     // Stop synth if it was playing
     if (this.schedulerTimer !== null) {
       window.clearInterval(this.schedulerTimer);
@@ -250,14 +323,17 @@ export class ClubMusicEngine {
     }
 
     try {
+      const playableUrl = await resolvePlayableAudioUrl(url, mimeType);
+      if (!playableUrl || this.disposed) return false;
+
       if (!this.htmlAudio) {
         this.htmlAudio = new Audio();
         this.htmlAudio.loop = true;
         this.htmlAudio.preload = 'auto';
       }
-      if (this.activeUploadedUrl !== url) {
-        this.htmlAudio.src = url;
-        this.activeUploadedUrl = url;
+      if (this.activeUploadedUrl !== playableUrl) {
+        this.htmlAudio.src = playableUrl;
+        this.activeUploadedUrl = playableUrl;
         this.htmlAudio.currentTime = 0;
       }
       this.htmlAudio.volume = this.volume;

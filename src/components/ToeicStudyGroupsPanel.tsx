@@ -14,6 +14,7 @@ import {
   Gem,
   Globe,
   Heart,
+  History,
   KeyRound,
   Lock,
   LogOut,
@@ -87,6 +88,12 @@ import {
 } from './ToeicGroupBadgeEmblem';
 
 import type { ToeicChallengeNavTarget } from './ToeicQuickChallengeNotifier';
+import {
+  computeParticipantDurationSec,
+  formatChallengeDuration,
+  isHistoricalChallenge,
+  ToeicChallengeHistoryTab,
+} from './ToeicChallengeHistoryTab';
 
 interface ToeicStudyGroupsPanelProps {
   accent: SpeechAccent;
@@ -94,7 +101,7 @@ interface ToeicStudyGroupsPanelProps {
   initialGroupTarget?: ToeicChallengeNavTarget | null;
 }
 
-type GroupSubTab = 'vocab' | 'challenges' | 'members';
+type GroupSubTab = 'vocab' | 'challenges' | 'history' | 'members';
 
 interface IndexedToeicWord {
   vocab: VocabularyItem;
@@ -965,7 +972,8 @@ export function ToeicStudyGroupsPanel({
   // =========================================================================
   if (activeGroup) {
     const isCreator = activeGroup.creatorUid === user.uid;
-    const liveBattleCount = challenges.filter((c) => c.status !== 'finished').length;
+    const liveBattleCount = challenges.filter((c) => !isHistoricalChallenge(c, nowMs)).length;
+    const historyBattleCount = challenges.filter((c) => isHistoricalChallenge(c, nowMs)).length;
     const memberList = Object.values(activeGroup.members).sort((a, b) => {
       if (a.uid === activeGroup.creatorUid) return -1;
       if (b.uid === activeGroup.creatorUid) return 1;
@@ -1109,9 +1117,14 @@ export function ToeicStudyGroupsPanel({
               },
               {
                 id: 'challenges' as const,
-                label: `Thách đấu Quiz Live (${challenges.length})`,
+                label: `Thách đấu Quiz Live (${liveBattleCount})`,
                 icon: Swords,
                 hasLive: liveBattleCount > 0,
+              },
+              {
+                id: 'history' as const,
+                label: `Lịch sử thách đấu (${historyBattleCount})`,
+                icon: History,
               },
               {
                 id: 'members' as const,
@@ -2837,6 +2850,10 @@ export function ToeicStudyGroupsPanel({
                                   (p.correctCount / Math.max(1, selectedChallenge.questionCount)) *
                                     100
                                 );
+                                const durationSec = computeParticipantDurationSec(
+                                  selectedChallenge,
+                                  p
+                                );
                                 return (
                                   <div
                                     key={p.uid}
@@ -2868,7 +2885,11 @@ export function ToeicStudyGroupsPanel({
                                         <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                                           Đúng {p.correctCount}/{selectedChallenge.questionCount} câu ({acc}%)
                                           {' · '}
-                                          {p.finished ? 'Hoàn thành' : `Đã trả lời ${p.answeredCount} câu`}
+                                          {durationSec !== null
+                                            ? `Thời gian: ${formatChallengeDuration(durationSec)}`
+                                            : p.finished
+                                              ? 'Hoàn thành'
+                                              : `Đã trả lời ${p.answeredCount} câu`}
                                         </div>
                                       </div>
                                     </div>
@@ -2918,7 +2939,34 @@ export function ToeicStudyGroupsPanel({
         )}
 
         {/* =============================================================== */}
-        {/* SUB-TAB 3: MEMBERS & GROUP SETTINGS                             */}
+        {/* SUB-TAB 3: CHALLENGE HISTORY (LỊCH SỬ THÁCH ĐẤU)               */}
+        {/* =============================================================== */}
+        {groupSubTab === 'history' && (
+          <ToeicChallengeHistoryTab
+            challenges={challenges}
+            currentUid={user.uid}
+            isGroupCreator={isCreator}
+            onInspectChallenge={(challengeId) => {
+              setSelectedChallengeId(challengeId);
+              setGroupSubTab('challenges');
+            }}
+            onDeleteChallenge={async (challengeId) => {
+              try {
+                await deleteGroupChallenge(activeGroup.groupId, challengeId);
+                if (selectedChallengeId === challengeId) {
+                  setSelectedChallengeId(null);
+                }
+                addToast('info', 'Đã xóa bản ghi lịch sử thách đấu khỏi nhóm.');
+              } catch {
+                addToast('error', 'Không thể xóa bản ghi lịch sử thách đấu lúc này.');
+              }
+            }}
+            onLaunchQuickChallenge={openQuickChallengeLauncher}
+          />
+        )}
+
+        {/* =============================================================== */}
+        {/* SUB-TAB 4: MEMBERS & GROUP SETTINGS                             */}
         {/* =============================================================== */}
         {groupSubTab === 'members' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">

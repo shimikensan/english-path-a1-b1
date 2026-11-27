@@ -15,6 +15,7 @@ import {
 } from 'firebase/auth';
 import { ALL_DEFAULT_LESSONS, DEFAULT_LEVELS, DEFAULT_READING_PASSAGES } from '../data';
 import {
+  calculateWeeklyActivityGems,
   computeGemBreakdown,
   DEFAULT_HANGAR_STATE,
   getLessonGemReward,
@@ -32,6 +33,15 @@ import {
   OperationType,
 } from '../firebase';
 import { recordDailyQuizCompleted, recordDailyVocabLearned } from '../utils/dailyChallenges';
+import {
+  dispatchLevelUpCelebration,
+  getLevelCompletionBonusGems,
+  getNextCefrLevel,
+  hasCelebratedLevelCompletion,
+  isCefrProgressionLevel,
+  isHigherCefrLevel,
+  markLevelCompletionCelebrated,
+} from '../utils/levelCelebration';
 import {
   checkIsAdmin,
   checkUserRevoked,
@@ -68,7 +78,7 @@ import type {
   VocabularyItem,
 } from '../types';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { toTimestampMillis } from '../utils/helpers';
+import { getCurrentIsoWeekInfo, toTimestampMillis } from '../utils/helpers';
 import {
   readOfflineProfileCache,
   readOfflineVocabCache,
@@ -254,6 +264,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [progressHydrated, setProgressHydrated] = useState(false);
   const [quizHydrated, setQuizHydrated] = useState(false);
   const [vocabHydrated, setVocabHydrated] = useState(false);
+  const [hangarHydrated, setHangarHydrated] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntryDoc[]>(() =>
     getCachedLeaderboardSnapshot()
   );
@@ -450,6 +461,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setProgressHydrated(false);
         setQuizHydrated(false);
         setVocabHydrated(false);
+        setHangarHydrated(false);
         autoSeededRef.current = false;
         lastLeaderboardSigRef.current = '';
         trackedAccessUidRef.current = null;
@@ -602,10 +614,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 }
                 return merged;
               });
+              setHangarHydrated(true);
             }
           },
           () => {
             // Keep local hangar state seamlessly if Firestore is temporarily offline or quota-limited
+            if (!cancelled) {
+              setHangarHydrated(true);
+            }
           }
         )
       );
@@ -613,6 +629,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const bootstrap = async () => {
       setDataLoading(true);
+      setHangarHydrated(false);
 
       // Hydrate cached 3D Pilot Hangar state immediately for instant UI responsiveness
       try {
@@ -963,6 +980,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       !progressHydrated ||
       !quizHydrated ||
       !vocabHydrated ||
+      !hangarHydrated ||
       lessons.length === 0
     ) {
       return;
@@ -1003,6 +1021,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       (firebaseUser.metadata?.creationTime ? new Date(firebaseUser.metadata.creationTime) : undefined);
     const firstLoginMs = toTimestampMillis(firstLoginAt) ?? '';
     const gemsEarned = Math.max(0, Math.floor(gemBreakdown.totalEarned));
+    const availableGems = Math.max(0, Math.floor(gemBreakdown.availableGems));
+    const weekInfo = getCurrentIsoWeekInfo();
+    const weeklyActivityGems = calculateWeeklyActivityGems({
+      lessons: publishedLessons,
+      progressMap,
+      vocabMap,
+      quizResults,
+      weekStartMs: weekInfo.weekStartMs,
+      weekEndMs: weekInfo.weekEndMs,
+      toMillis: toTimestampMillis,
+    });
 
     const displayName = (profile.fullName || 'Phi công tập sự').trim();
     const pilotEquipped = {
@@ -1035,6 +1064,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       profile.streakDays ?? 1,
       effectiveAccessSeconds,
       gemsEarned,
+      availableGems,
+      weeklyActivityGems,
+      weekInfo.weekKey,
       firstLoginMs,
       pilotSig,
     ].join('|');
@@ -1056,11 +1088,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       streakDays: profile.streakDays ?? 1,
       totalAccessSeconds: effectiveAccessSeconds,
       gemsEarned,
+      availableGems,
+      weeklyActivityGems,
+      weeklyGemsWeekKey: weekInfo.weekKey,
       firstLoginAt,
       pilotEquipped,
       isPublic: true,
     })
-      .then(() => {
+      .then((resolvedWeekly) => {
         // Optimistically update local leaderboard state without re-reading the entire collection
         setLeaderboard((prev) => {
           const nextEntry: LeaderboardEntryDoc = {
@@ -1075,6 +1110,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             streakDays: profile.streakDays ?? 1,
             totalAccessSeconds: effectiveAccessSeconds,
             gemsEarned,
+            availableGems,
+            weeklyGems: resolvedWeekly?.weeklyGems ?? weeklyActivityGems,
+            weeklyGemsWeekKey: resolvedWeekly?.weeklyGemsWeekKey ?? weekInfo.weekKey,
+            weeklyGemsBaseline: resolvedWeekly?.weeklyGemsBaseline,
             firstLoginAt,
             pilotEquipped,
             isPublic: true,
@@ -1088,6 +1127,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                       ...nextEntry,
                       totalAccessSeconds: Math.max(e.totalAccessSeconds ?? 0, effectiveAccessSeconds),
                       gemsEarned,
+                      availableGems,
+                      weeklyGems: resolvedWeekly?.weeklyGems ?? Math.max(e.weeklyGems ?? 0, weeklyActivityGems),
+                      weeklyGemsWeekKey: resolvedWeekly?.weeklyGemsWeekKey ?? weekInfo.weekKey,
+                      weeklyGemsBaseline: resolvedWeekly?.weeklyGemsBaseline ?? e.weeklyGemsBaseline,
                       firstLoginAt: e.firstLoginAt ?? firstLoginAt,
                       pilotEquipped,
                     }
@@ -1119,11 +1162,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     progressHydrated,
     quizHydrated,
     vocabHydrated,
+    hangarHydrated,
     lessons,
     progressMap,
     vocabMap,
     quizResults,
     gemBreakdown.totalEarned,
+    gemBreakdown.availableGems,
     hangarState.equipped,
     notifyQuotaExceeded,
   ]);
@@ -1333,6 +1378,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [profile, vocabMap, progressMap, recordStudyActivity, addToast]
   );
 
+  const persistHangar = useCallback(
+    async (uid: string, next: PilotHangarState) => {
+      setHangarState(next);
+      try {
+        window.localStorage.setItem(`pilot_hangar_v1_${uid}`, JSON.stringify(next));
+      } catch {
+        // Ignore storage quota errors
+      }
+      if (!navigator.onLine) return;
+      try {
+        await savePilotHangarState(uid, next);
+      } catch (err) {
+        if (isFirestoreQuotaError(err)) {
+          notifyQuotaExceeded();
+        }
+      }
+    },
+    [notifyQuotaExceeded]
+  );
+
+  const awardBonusGems = useCallback(
+    (amount: number, reason?: string) => {
+      const uid = profile?.uid || firebaseUser?.uid;
+      const safeAdd = Math.max(0, Math.min(200, Math.floor(amount)));
+      if (!uid || safeAdd <= 0) return;
+      const current = hangarStateRef.current;
+      const next: PilotHangarState = {
+        ...current,
+        bonusGems: current.bonusGems + safeAdd,
+      };
+      void persistHangar(uid, next);
+      if (reason) {
+        addToast('success', `${reason} (+${safeAdd} Ngọc)`);
+      }
+    },
+    [profile?.uid, firebaseUser?.uid, persistHangar, addToast]
+  );
+
   const saveQuizAttempt = useCallback(
     async (params: {
       lesson: LessonDoc;
@@ -1377,29 +1460,66 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ? `Hoàn thành bài học (${params.score}%) · Nhận +${totalGained} Ngọc kiến thức!`
           : `Đã lưu kết quả kiểm tra (${params.score}%) · Nhận +${quizGems} Ngọc!`
       );
-      return id;
-    },
-    [profile, progressMap, addToast, recordStudyActivity, triggerGemFlight]
-  );
 
-  const persistHangar = useCallback(
-    async (uid: string, next: PilotHangarState) => {
-      setHangarState(next);
-      try {
-        window.localStorage.setItem(`pilot_hangar_v1_${uid}`, JSON.stringify(next));
-      } catch {
-        // Ignore storage quota errors
-      }
-      if (!navigator.onLine) return;
-      try {
-        await savePilotHangarState(uid, next);
-      } catch (err) {
-        if (isFirestoreQuotaError(err)) {
-          notifyQuotaExceeded();
+      // Check if submitting this quiz completed all lessons of a CEFR progression level (A1..C1)
+      if (isCefrProgressionLevel(params.lesson.levelId)) {
+        const completedLevel = params.lesson.levelId;
+        const levelLessons = lessons.filter(
+          (l) => l.isPublished !== false && l.levelId === completedLevel
+        );
+        const wasLevelCompleteBefore =
+          levelLessons.length > 0 &&
+          levelLessons.every((l) => Boolean(progressMap[l.lessonId]?.lessonCompleted));
+        const isLevelCompleteNow =
+          levelLessons.length > 0 &&
+          levelLessons.every(
+            (l) =>
+              l.lessonId === params.lesson.lessonId ||
+              Boolean(progressMap[l.lessonId]?.lessonCompleted)
+          );
+
+        if (!wasLevelCompleteBefore && isLevelCompleteNow) {
+          const nextLevel = getNextCefrLevel(completedLevel);
+          const shouldPromote = Boolean(
+            nextLevel && isHigherCefrLevel(nextLevel, profile.currentLevel)
+          );
+          if (shouldPromote && nextLevel) {
+            void updateUserProfileData(profile.uid, { currentLevel: nextLevel }).catch(
+              () => undefined
+            );
+          }
+
+          const alreadyCelebrated = hasCelebratedLevelCompletion(profile.uid, completedLevel);
+          const bonusGems = alreadyCelebrated
+            ? 0
+            : getLevelCompletionBonusGems(completedLevel);
+          if (bonusGems > 0) {
+            awardBonusGems(bonusGems);
+            markLevelCompletionCelebrated(profile.uid, completedLevel);
+          }
+
+          dispatchLevelUpCelebration({
+            completedLevel,
+            promotedToLevel: nextLevel,
+            totalLessonsInLevel: levelLessons.length,
+            bonusGems,
+            isReplay: false,
+            triggerKind: 'level_completed',
+          });
         }
       }
+
+      return id;
     },
-    [notifyQuotaExceeded]
+    [
+      profile,
+      lessons,
+      progressMap,
+      addToast,
+      recordStudyActivity,
+      triggerGemFlight,
+      awardBonusGems,
+    ]
   );
 
   const purchasePilotGear = useCallback(
@@ -1459,24 +1579,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await persistHangar(uid, next);
     },
     [profile?.uid, firebaseUser?.uid, persistHangar]
-  );
-
-  const awardBonusGems = useCallback(
-    (amount: number, reason?: string) => {
-      const uid = profile?.uid || firebaseUser?.uid;
-      const safeAdd = Math.max(0, Math.min(200, Math.floor(amount)));
-      if (!uid || safeAdd <= 0) return;
-      const current = hangarStateRef.current;
-      const next: PilotHangarState = {
-        ...current,
-        bonusGems: current.bonusGems + safeAdd,
-      };
-      void persistHangar(uid, next);
-      if (reason) {
-        addToast('success', `${reason} (+${safeAdd} Ngọc)`);
-      }
-    },
-    [profile?.uid, firebaseUser?.uid, persistHangar, addToast]
   );
 
   return (

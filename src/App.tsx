@@ -11,6 +11,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { GemLeaderboardFlight } from './components/GemLeaderboardFlight';
 import { Layout } from './components/Layout';
 import { LeaderboardPanel } from './components/LeaderboardPanel';
+import { LevelUpCelebrationModal } from './components/LevelUpCelebrationModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ToastContainer } from './components/ToastContainer';
 import {
@@ -502,6 +503,23 @@ function AppShell() {
         </AnimatePresence>
       </Layout>
       <DailyChallengesCelebration />
+      <LevelUpCelebrationModal
+        onStartNextLevel={(nextLevel) => {
+          const firstLesson =
+            lessons.find(
+              (l) =>
+                l.isPublished !== false &&
+                l.levelId === nextLevel &&
+                !progressMap[l.lessonId]?.lessonCompleted
+            ) || lessons.find((l) => l.isPublished !== false && l.levelId === nextLevel);
+          if (firstLesson) {
+            handleOpenLesson(firstLesson.lessonId, 'vocabulary');
+          } else {
+            handleNavigate('roadmap');
+          }
+        }}
+        onOpenRoadmap={() => handleNavigate('roadmap')}
+      />
       <GemLeaderboardFlight onOpenLeaderboard={() => handleNavigate('leaderboard')} />
       <ToeicQuickChallengeNotifier
         onAcceptChallenge={(groupId, challengeId) => {

@@ -234,6 +234,10 @@ export interface LeaderboardEntryDoc {
   averageQuizScore: number;
   streakDays: number;
   gemsEarned?: number;
+  availableGems?: number;
+  weeklyGems?: number;
+  weeklyGemsWeekKey?: string;
+  weeklyGemsBaseline?: number;
   totalAccessSeconds?: number;
   firstLoginAt?: Timestamp | Date;
   pilotEquipped?: LeaderboardPilotEquipped;
