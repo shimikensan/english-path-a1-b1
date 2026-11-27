@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   Award,
   CheckCircle2,
   ChevronLeft,
@@ -7,6 +8,7 @@ import {
   Clock,
   RotateCcw,
   Send,
+  Target,
   XCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -31,6 +33,8 @@ interface QuizSectionProps {
   onNextLesson?: () => void;
 }
 
+type ReviewFilterMode = 'all' | 'mistakes';
+
 export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
   const { saveQuizAttempt, addToast } = useApp();
 
@@ -43,7 +47,14 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
   const [submitting, setSubmitting] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [confettiKey, setConfettiKey] = useState(0);
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilterMode>('all');
+
+  // Focused reinforcement drill state for re-answering only missed questions
+  const [drillQuestions, setDrillQuestions] = useState<ShuffledQuizQuestion[] | null>(null);
+  const [drillAnswers, setDrillAnswers] = useState<Record<string, number>>({});
+
   const startTimeRef = useRef<number>(Date.now());
+  const reviewSectionRef = useRef<HTMLElement | null>(null);
 
   // Reset quiz with fresh shuffle when lesson changes
   useEffect(() => {
@@ -53,6 +64,9 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
     setSubmitted(false);
     setElapsedSeconds(0);
     setConfettiKey(0);
+    setReviewFilter('all');
+    setDrillQuestions(null);
+    setDrillAnswers({});
     startTimeRef.current = Date.now();
   }, [lesson.lessonId, lesson.quiz]);
 
@@ -80,6 +94,19 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
     const rating: QuizRating = getQuizRating(score);
     return { correct, wrong, score, rating };
   }, [questions, answers, totalCount]);
+
+  const reviewEntries = useMemo(() => {
+    return questions.map((q, idx) => {
+      const userAns = answers[q.id];
+      const isCorrect = userAns === q.shuffledCorrectIndex;
+      return { q, originalNumber: idx + 1, userAns, isCorrect };
+    });
+  }, [questions, answers]);
+
+  const mistakeEntries = useMemo(
+    () => reviewEntries.filter((entry) => !entry.isCorrect),
+    [reviewEntries]
+  );
 
   const handleSelectOption = (questionId: string, optionIdx: number) => {
     if (submitted) return;
@@ -121,6 +148,9 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
       });
       setElapsedSeconds(duration);
       setSubmitted(true);
+      setReviewFilter('all');
+      setDrillQuestions(null);
+      setDrillAnswers({});
       setConfettiKey((k) => k + 1);
       playMissionCompleteChime();
     } catch (err) {
@@ -128,6 +158,9 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
         const duration = Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000));
         setElapsedSeconds(duration);
         setSubmitted(true);
+        setReviewFilter('all');
+        setDrillQuestions(null);
+        setDrillAnswers({});
         setConfettiKey((k) => k + 1);
         playMissionCompleteChime();
         addToast(
@@ -154,7 +187,43 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
     setSubmitted(false);
     setElapsedSeconds(0);
     setConfettiKey(0);
+    setReviewFilter('all');
+    setDrillQuestions(null);
+    setDrillAnswers({});
     startTimeRef.current = Date.now();
+  };
+
+  const handleOpenReviewMistakes = () => {
+    setReviewFilter('mistakes');
+    setDrillQuestions(null);
+    setDrillAnswers({});
+    window.requestAnimationFrame(() => {
+      reviewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const handleStartMistakesDrill = () => {
+    if (mistakeEntries.length === 0) return;
+    const missedRaw = mistakeEntries.map((entry) => entry.q);
+    setReviewFilter('mistakes');
+    setDrillQuestions(prepareShuffledQuiz(missedRaw));
+    setDrillAnswers({});
+    window.requestAnimationFrame(() => {
+      reviewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const handleSelectDrillOption = (questionId: string, optionIdx: number) => {
+    if (!drillQuestions || drillAnswers[questionId] !== undefined) return;
+    const target = drillQuestions.find((q) => q.id === questionId);
+    if (target) {
+      if (optionIdx === target.shuffledCorrectIndex) {
+        playCorrectBeep();
+      } else {
+        playWrongTone();
+      }
+    }
+    setDrillAnswers((prev) => ({ ...prev, [questionId]: optionIdx }));
   };
 
   const formatTimer = (sec: number) => {
@@ -182,6 +251,13 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
           : ratingInfo.tone === 'amber'
             ? 'text-amber-600 dark:text-amber-400'
             : 'text-rose-600 dark:text-rose-400';
+
+    const visibleEntries = reviewFilter === 'mistakes' ? mistakeEntries : reviewEntries;
+    const drillAnsweredCount = drillQuestions ? Object.keys(drillAnswers).length : 0;
+    const drillCorrectCount = drillQuestions
+      ? drillQuestions.filter((q) => drillAnswers[q.id] === q.shuffledCorrectIndex).length
+      : 0;
+    const drillCompleted = Boolean(drillQuestions && drillAnsweredCount === drillQuestions.length);
 
     return (
       <div className="space-y-6">
@@ -228,55 +304,290 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            {mistakeEntries.length > 0 && (
+              <button
+                type="button"
+                onClick={handleOpenReviewMistakes}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 text-sm font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/80 transition-colors whitespace-nowrap"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Ôn lại câu sai ({mistakeEntries.length})
+              </button>
+            )}
             <button
               type="button"
               onClick={handleRetry}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-4 h-4 shrink-0" />
               Làm lại bài kiểm tra (trộn mới)
             </button>
             {onNextLesson && (
               <button
                 type="button"
                 onClick={onNextLesson}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-bold transition-colors shadow-[0_0_16px_rgba(255,107,0,0.22)]"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-bold transition-colors whitespace-nowrap shadow-[0_0_16px_rgba(255,107,0,0.22)]"
               >
                 Sang bài học tiếp theo
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-4 h-4 shrink-0" />
               </button>
             )}
           </div>
         </section>
 
-        {/* Detailed Review of All Answers */}
-        <section className="bg-white dark:bg-slate-900 cockpit-radar-panel p-6 space-y-4">
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            Xem lại chi tiết đáp án và giải thích
-          </h3>
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {questions.map((q, idx) => {
-              const userAns = answers[q.id];
-              const isCorrect = userAns === q.shuffledCorrectIndex;
-              return (
-                <div key={q.id} className="py-4 space-y-2">
+        {/* Detailed Review & Focused Review Mistakes Section */}
+        <section
+          ref={reviewSectionRef}
+          className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 sm:p-6 space-y-5"
+        >
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {drillQuestions
+                  ? `Luyện củng cố câu sai (${drillQuestions.length} câu)`
+                  : reviewFilter === 'mistakes'
+                    ? `Ôn lại câu trả lời sai (${mistakeEntries.length} câu)`
+                    : 'Xem lại chi tiết đáp án và giải thích'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {drillQuestions
+                  ? 'Trả lời lại các câu bạn đã làm sai với thứ tự đáp án được trộn mới để ghi nhớ chắc chắn hơn.'
+                  : reviewFilter === 'mistakes'
+                    ? 'Chỉ hiển thị những câu bạn trả lời chưa đúng để tập trung khắc phục lỗ hổng kiến thức.'
+                    : 'Xem toàn bộ kết quả bài làm hoặc chuyển sang chế độ chỉ xem câu sai để ôn tập trọng tâm.'}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 self-start md:self-center">
+              {/* Filter toggle: Only Mistakes vs All Questions */}
+              <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReviewFilter('mistakes');
+                    setDrillQuestions(null);
+                    setDrillAnswers({});
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap tabular-nums ${
+                    reviewFilter === 'mistakes' && !drillQuestions
+                      ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-xs ring-1 ring-rose-500/30'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Chỉ câu sai ({mistakeEntries.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReviewFilter('all');
+                    setDrillQuestions(null);
+                    setDrillAnswers({});
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap tabular-nums ${
+                    reviewFilter === 'all' && !drillQuestions
+                      ? 'bg-white dark:bg-slate-900 text-[#D94E00] dark:text-[#FF8524] shadow-xs ring-1 ring-[#FF6B00]/30'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Tất cả ({questions.length})
+                </button>
+              </div>
+
+              {mistakeEntries.length > 0 && !drillQuestions && (
+                <button
+                  type="button"
+                  onClick={handleStartMistakesDrill}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-xs font-bold transition-colors whitespace-nowrap"
+                >
+                  <Target className="w-3.5 h-3.5 shrink-0" />
+                  Làm lại {mistakeEntries.length} câu sai
+                </button>
+              )}
+
+              {drillQuestions && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrillQuestions(null);
+                    setDrillAnswers({});
+                    setReviewFilter('mistakes');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+                >
+                  Quay lại danh sách câu sai
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Focused Reinforcement Interactive Drill Mode */}
+          {drillQuestions ? (
+            <div className="space-y-5">
+              {drillCompleted && (
+                <div
+                  className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                    drillCorrectCount === drillQuestions.length
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-900 dark:text-emerald-200'
+                      : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200'
+                  }`}
+                >
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-bold tabular-nums">
+                      Kết quả luyện củng cố: {drillCorrectCount}/{drillQuestions.length} câu đúng
+                    </p>
+                    <p className="text-xs opacity-90">
+                      {drillCorrectCount === drillQuestions.length
+                        ? 'Xuất sắc! Bạn đã khắc phục toàn bộ các câu sai trước đó.'
+                        : 'Bạn có thể trộn lại vòng luyện củng cố để ghi nhớ chắc chắn hơn.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleStartMistakesDrill}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold whitespace-nowrap self-start sm:self-center"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Luyện lại vòng này
+                  </button>
+                </div>
+              )}
+
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {drillQuestions.map((dq, idx) => {
+                  const chosen = drillAnswers[dq.id];
+                  const answered = chosen !== undefined;
+                  const isRight = chosen === dq.shuffledCorrectIndex;
+                  return (
+                    <div key={dq.id} className="py-5 first:pt-1 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-bold text-rose-600 dark:text-rose-400 tabular-nums">
+                          Câu sai {idx + 1}/{drillQuestions.length}
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span>{getQuestionTypeLabelVi(dq.type)}</span>
+                      </div>
+
+                      {dq.passage && (
+                        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-sm font-serif text-slate-800 dark:text-slate-200 leading-relaxed">
+                          {dq.passage}
+                        </div>
+                      )}
+
+                      <p className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                        {dq.question}
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {dq.shuffledOptions.map((optText, optIdx) => {
+                          const letter = String.fromCharCode(65 + optIdx);
+                          const isSelected = chosen === optIdx;
+                          const isCorrectOpt = optIdx === dq.shuffledCorrectIndex;
+
+                          let btnClass =
+                            'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 hover:border-[#FF6B00]/60 hover:bg-amber-50/40 dark:hover:bg-slate-800';
+                          if (answered) {
+                            if (isCorrectOpt) {
+                              btnClass =
+                                'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200 font-semibold';
+                            } else if (isSelected) {
+                              btnClass =
+                                'border-rose-500 bg-rose-50 dark:bg-rose-950/50 text-rose-900 dark:text-rose-200';
+                            } else {
+                              btnClass =
+                                'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 text-slate-400 dark:text-slate-500';
+                            }
+                          }
+
+                          return (
+                            <button
+                              key={optIdx}
+                              type="button"
+                              disabled={answered}
+                              onClick={() => handleSelectDrillOption(dq.id, optIdx)}
+                              className={`text-left px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm transition-colors flex items-center justify-between gap-2 ${btnClass}`}
+                            >
+                              <span className="flex items-start gap-2">
+                                <span className="font-mono text-xs font-bold mt-0.5 shrink-0">
+                                  {letter}.
+                                </span>
+                                <span>{optText}</span>
+                              </span>
+                              {answered && isCorrectOpt && (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              )}
+                              {answered && isSelected && !isCorrectOpt && (
+                                <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {answered && (
+                        <p
+                          className={`text-xs leading-relaxed ${
+                            isRight
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : 'text-rose-700 dark:text-rose-300'
+                          }`}
+                        >
+                          <span className="font-bold">
+                            {isRight ? 'Chính xác!' : 'Vẫn chưa đúng:'}
+                          </span>{' '}
+                          {dq.explanationVi}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : visibleEntries.length === 0 ? (
+            <div className="py-10 text-center space-y-2">
+              <CheckCircle2 className="w-9 h-9 text-emerald-600 dark:text-emerald-400 mx-auto" />
+              <p className="text-base font-bold text-slate-900 dark:text-white">
+                Tuyệt vời! Bạn không làm sai câu nào
+              </p>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                Bạn đã đạt điểm tuyệt đối 100% trong bài kiểm tra này. Hãy chuyển sang bài học tiếp theo hoặc xem lại toàn bộ đáp án nếu muốn.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {visibleEntries.map(({ q, originalNumber, userAns, isCorrect }) => (
+                <div key={q.id} className="py-4 first:pt-1 space-y-2.5">
                   <div className="flex items-start gap-2.5">
                     {isCorrect ? (
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-1" />
                     ) : (
                       <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-1" />
                     )}
-                    <div className="space-y-1 text-sm">
+                    <div className="space-y-1.5 text-sm flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300 tabular-nums">
+                          Câu {originalNumber}
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span>{getQuestionTypeLabelVi(q.type)}</span>
+                      </div>
+
+                      {q.passage && reviewFilter === 'mistakes' && (
+                        <p className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 text-xs sm:text-sm font-serif text-slate-800 dark:text-slate-200 leading-relaxed">
+                          {q.passage}
+                        </p>
+                      )}
+
                       <p className="font-semibold text-slate-900 dark:text-white">
-                        Câu {idx + 1}: {q.question}
+                        {q.question}
                       </p>
+
                       <p className="text-xs text-slate-600 dark:text-slate-400">
                         Bạn chọn:{' '}
                         <span
                           className={`font-semibold ${
                             isCorrect
                               ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-rose-600 dark:text-rose-400'
+                              : 'text-rose-600 dark:text-rose-400 line-through decoration-rose-400/70'
                           }`}
                         >
                           {q.shuffledOptions[userAns] ?? 'Chưa chọn'}
@@ -290,15 +601,16 @@ export function QuizSection({ lesson, onNextLesson }: QuizSectionProps) {
                           </>
                         )}
                       </p>
+
                       <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                         {q.explanationVi}
                       </p>
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     );

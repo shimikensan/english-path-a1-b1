@@ -614,6 +614,136 @@ async function startServer() {
     }
   });
 
+  const TRANSLATE_RESPONSE_SCHEMA = {
+    type: Type.OBJECT,
+    properties: {
+      wordOrPhrase: {
+        type: Type.STRING,
+        description: 'The normalized English word, phrase, or sentence being translated.',
+      },
+      ipa: {
+        type: Type.STRING,
+        description:
+          'Accurate IPA phonetic transcription enclosed in slashes (e.g. /ˈpaɪ.lət/) for single words or short idioms, or empty string for full sentences.',
+      },
+      partOfSpeech: {
+        type: Type.STRING,
+        description:
+          'Vietnamese part of speech label such as "danh từ (n)", "động từ (v)", "tính từ (adj)", "cụm từ", or "Câu / Đoạn văn".',
+      },
+      meaningVi: {
+        type: Type.STRING,
+        description:
+          'Clear, natural, concise Vietnamese meaning or translation tailored to the context sentence if provided.',
+      },
+      noteVi: {
+        type: Type.STRING,
+        description:
+          'Optional very short Vietnamese usage or grammar note (max 1 concise sentence), or empty string if unnecessary.',
+      },
+    },
+    required: ['wordOrPhrase', 'ipa', 'partOfSpeech', 'meaningVi', 'noteVi'],
+  };
+
+  app.post('/api/ai/translate', async (req, res) => {
+    try {
+      const { text, context } = (req.body ?? {}) as {
+        text?: unknown;
+        context?: unknown;
+      };
+
+      if (typeof text !== 'string' || !text.trim()) {
+        res.status(400).json({ error: 'Thiếu văn bản tiếng Anh cần tra nghĩa.' });
+        return;
+      }
+
+      const cleanedText = text.trim().replace(/\s+/g, ' ').slice(0, 500);
+      const cleanedContext =
+        typeof context === 'string' ? context.trim().replace(/\s+/g, ' ').slice(0, 300) : '';
+
+      const isSingleOrShort = cleanedText.split(/\s+/).length <= 3 && cleanedText.length <= 45;
+      const systemInstruction = [
+        'Bạn là từ điển Anh–Việt chính xác, ngắn gọn, chuyên hỗ trợ người Việt học tiếng Anh.',
+        'Trả về JSON đúng theo schema yêu cầu, KHÔNG dùng markdown.',
+        isSingleOrShort
+          ? 'Với từ đơn hoặc cụm từ ngắn: cung cấp phiên âm IPA chuẩn (trong dấu /.../), từ loại bằng tiếng Việt (ví dụ: danh từ (n), động từ (v), tính từ (adj), cụm động từ), nghĩa tiếng Việt tự nhiên sát ngữ cảnh nhất (ngắn gọn, dễ hiểu), và ghi chú ngữ pháp/cách dùng cực ngắn nếu hữu ích (hoặc chuỗi rỗng "").'
+          : 'Với câu hoặc đoạn văn tiếng Anh: để ipa là "", partOfSpeech là "Câu / Đoạn văn", dịch meaningVi sang tiếng Việt tự nhiên, sát nghĩa và mạch lạc, và noteVi chỉ ghi ngắn gọn điểm ngữ pháp/thành ngữ nổi bật nếu có (hoặc chuỗi rỗng "").',
+      ].join('\n');
+
+      const promptText = cleanedContext
+        ? `Dịch sang tiếng Việt: "${cleanedText}"\nNgữ cảnh câu chứa từ này: "${cleanedContext}"`
+        : `Dịch sang tiếng Việt: "${cleanedText}"`;
+
+      const ai = getAIClient();
+      let rawText: string | undefined;
+
+      try {
+        const primaryResponse = await withTimeout(
+          ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents: promptText,
+            config: {
+              systemInstruction,
+              thinkingConfig: {
+                thinkingLevel: ThinkingLevel.LOW,
+              },
+              responseMimeType: 'application/json',
+              responseSchema: TRANSLATE_RESPONSE_SCHEMA,
+            },
+          }),
+          6000
+        );
+        rawText = primaryResponse.text?.trim();
+      } catch (primaryErr) {
+        if (!isTransientAiError(primaryErr)) {
+          throw primaryErr;
+        }
+        console.warn(
+          'gemini-4-hydrogen translate transient error, switching to gemini-3.1-flash-lite:',
+          primaryErr
+        );
+        const fallbackResponse = await withTimeout(
+          ai.models.generateContent({
+            model: 'gemini-3.1-flash-lite',
+            contents: promptText,
+            config: {
+              systemInstruction,
+              responseMimeType: 'application/json',
+              responseSchema: TRANSLATE_RESPONSE_SCHEMA,
+            },
+          }),
+          10000
+        );
+        rawText = fallbackResponse.text?.trim();
+      }
+
+      if (!rawText) {
+        res.status(502).json({ error: 'Không nhận được kết quả dịch từ AI. Vui lòng thử lại.' });
+        return;
+      }
+
+      const parsed = parseJsonResponseText(rawText) as {
+        wordOrPhrase?: string;
+        ipa?: string;
+        partOfSpeech?: string;
+        meaningVi?: string;
+        noteVi?: string;
+      };
+
+      res.json({
+        wordOrPhrase: parsed.wordOrPhrase?.trim() || cleanedText,
+        ipa: parsed.ipa?.trim() || '',
+        partOfSpeech: parsed.partOfSpeech?.trim() || (isSingleOrShort ? 'Từ vựng' : 'Câu / Đoạn văn'),
+        meaningVi: parsed.meaningVi?.trim() || '',
+        noteVi: parsed.noteVi?.trim() || '',
+      });
+    } catch (error) {
+      console.error('AI Translate endpoint error:', error);
+      const { status, message } = formatFriendlyAiError(error);
+      res.status(status).json({ error: message });
+    }
+  });
+
   // Always return JSON for unknown /api/* routes
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Không tìm thấy API yêu cầu.' });

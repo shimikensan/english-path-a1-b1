@@ -9,7 +9,7 @@ interface VocabularyHubPageProps {
 }
 
 export function VocabularyHubPage({ onOpenLesson }: VocabularyHubPageProps) {
-  const { lessons, vocabMap, toggleVocabState, addToast } = useApp();
+  const { lessons, vocabMap, isOnline, toggleVocabState, addToast } = useApp();
   const [search, setSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'all' | 'learned' | 'unlearned'>('all');
@@ -173,9 +173,10 @@ export function VocabularyHubPage({ onOpenLesson }: VocabularyHubPageProps) {
                   </button>
                   <button
                     type="button"
-                    disabled={savingId === vocab.id}
+                    disabled={savingId === vocab.id || !isOnline}
                     onClick={() => void handleToggle(lesson, vocab, { isFavorite: !isFav })}
-                    className={`p-2 rounded-lg border transition-colors ${
+                    title={isOnline ? 'Yêu thích' : 'Cần kết nối mạng để chỉnh sửa'}
+                    className={`p-2 rounded-lg border transition-colors disabled:opacity-50 ${
                       isFav
                         ? 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400'
                         : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:text-rose-600'
@@ -186,9 +187,10 @@ export function VocabularyHubPage({ onOpenLesson }: VocabularyHubPageProps) {
                   </button>
                   <button
                     type="button"
-                    disabled={savingId === vocab.id}
+                    disabled={savingId === vocab.id || !isOnline}
                     onClick={() => void handleToggle(lesson, vocab, { isLearned: !isLearned })}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+                    title={isOnline ? 'Đánh dấu đã thuộc' : 'Cần kết nối mạng để chỉnh sửa'}
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap disabled:opacity-50 ${
                       isLearned
                         ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                         : 'border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'

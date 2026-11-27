@@ -6,7 +6,6 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
-  Flame,
   Maximize2,
   MessageSquare,
   Plane,
@@ -27,12 +26,13 @@ import {
 } from 'recharts';
 import { LeaderboardPanel } from '../components/LeaderboardPanel';
 import { calculateLessonCompletion, LessonMiniProgress } from '../components/LessonMiniProgress';
+import { StudyStreakWidget } from '../components/StudyStreakWidget';
 import { WordOfTheDayCard } from '../components/WordOfTheDayCard';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { AUTH_HERO_IMAGE, PILOT_RANKS } from '../data';
 import type { AppRoute, LessonDoc } from '../types';
-import { formatShortDateVi, getLocalDateString } from '../utils/helpers';
+import { formatAccessDurationVi, formatShortDateVi, getLocalDateString } from '../utils/helpers';
 
 interface DashboardPageProps {
   onOpenLesson: (lessonId: string) => void;
@@ -302,18 +302,32 @@ export function DashboardPage({
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
           <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">
-            <span>Chuỗi ngày học liên tiếp</span>
-            <Flame className="w-4 h-4 text-amber-500" />
+            <span>Tổng thời gian truy cập</span>
+            <Clock className="w-4 h-4 text-sky-600 dark:text-sky-400" />
           </div>
-          <div className="text-3xl font-extrabold text-slate-900 dark:text-white tabular-nums">
-            {profile?.streakDays ?? 1}
-            <span className="text-sm font-medium text-slate-400 dark:text-slate-500 ml-1">ngày</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tabular-nums">
+            {formatAccessDurationVi(profile?.totalAccessSeconds)}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
             Trình độ mục tiêu: CEFR {profile?.currentLevel || 'A1'}
           </p>
         </div>
       </section>
+
+      {/* Dedicated Study Streak Widget with Flame Icon & 7-Day Milestone Celebration */}
+      <StudyStreakWidget
+        uid={profile?.uid}
+        streakDays={profile?.streakDays ?? 1}
+        studiedToday={studiedToday}
+        dailyGoalMinutes={profile?.dailyGoalMinutes ?? 20}
+        onStartStudy={() => {
+          if (stats.activeLesson) {
+            onOpenLesson(stats.activeLesson.lessonId);
+          } else {
+            onNavigate('practice');
+          }
+        }}
+      />
 
       {/* Word of the Day (Level-Matched Passive Vocabulary Booster) */}
       <WordOfTheDayCard onOpenLesson={onOpenLesson} />

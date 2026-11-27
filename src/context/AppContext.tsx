@@ -55,7 +55,15 @@ import type {
   UserVocabularyDoc,
   VocabularyItem,
 } from '../types';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { toTimestampMillis } from '../utils/helpers';
+import {
+  readOfflineProfileCache,
+  readOfflineVocabCache,
+  readOfflineVocabFromCacheStorage,
+  saveOfflineProfileCache,
+  saveOfflineVocabCache,
+} from '../utils/offlineVocabCache';
 import {
   clearLastReminderShownMs,
   computeLastStudyTimestampMs,
@@ -125,6 +133,8 @@ interface AppContextValue {
   progressMap: Record<string, UserProgressDoc>;
   quizResults: QuizResultDoc[];
   vocabMap: Record<string, UserVocabularyDoc>;
+  offlineVocabSyncedAt: number | null;
+  isOnline: boolean;
   leaderboard: LeaderboardEntryDoc[];
   leaderboardLoading: boolean;
   leaderboardError: string | null;
@@ -211,6 +221,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [progressMap, setProgressMap] = useState<Record<string, UserProgressDoc>>({});
   const [quizResults, setQuizResults] = useState<QuizResultDoc[]>([]);
   const [vocabMap, setVocabMap] = useState<Record<string, UserVocabularyDoc>>({});
+  const [offlineVocabSyncedAt, setOfflineVocabSyncedAt] = useState<number | null>(null);
+  const isOnline = useOnlineStatus();
   const [progressHydrated, setProgressHydrated] = useState(false);
   const [quizHydrated, setQuizHydrated] = useState(false);
   const [vocabHydrated, setVocabHydrated] = useState(false);
@@ -388,6 +400,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setProgressMap({});
         setQuizResults([]);
         setVocabMap({});
+        setOfflineVocabSyncedAt(null);
         setProgressHydrated(false);
         setQuizHydrated(false);
         setVocabHydrated(false);
@@ -428,15 +441,135 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         notifyQuotaExceeded();
         return;
       }
+      if (!navigator.onLine) {
+        return;
+      }
+      const code = (err as { code?: string } | null)?.code;
+      if (code === 'unavailable' || code === 'failed-precondition') {
+        return;
+      }
       handleFirestoreError(err, op, path);
+    };
+
+    const buildFallbackProfile = (): UserProfile => {
+      const cached = readOfflineProfileCache(firebaseUser.uid);
+      if (cached) return cached;
+      return {
+        uid: firebaseUser.uid,
+        fullName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Học viên',
+        email: firebaseUser.email || '',
+        currentLevel: 'A1',
+        streakDays: 1,
+        lastStudyDate: '',
+        dailyGoalMinutes: 20,
+        reminderEnabled: true,
+      };
+    };
+
+    const attachSubscriptions = (isRootAdmin: boolean) => {
+      unsubscribers.push(
+        subscribeUserProfile(
+          firebaseUser.uid,
+          (p) => {
+            if (cancelled) return;
+            if (p) {
+              setProfile(p);
+              saveOfflineProfileCache(p);
+            } else if (!isRootAdmin && navigator.onLine) {
+              void checkUserRevoked(firebaseUser.uid).then((revoked) => {
+                if (cancelled || !revoked) return;
+                const msg = revoked.reason
+                  ? `Tài khoản của bạn đã bị quản trị viên xóa khỏi hệ thống. Lý do: ${revoked.reason}`
+                  : 'Tài khoản của bạn đã bị quản trị viên xóa khỏi hệ thống.';
+                setRevokedNotice(msg);
+                addToast('error', msg);
+                void signOut(auth);
+              });
+            }
+          },
+          handleSubError(`users/${firebaseUser.uid}`, OperationType.GET)
+        )
+      );
+      unsubscribers.push(
+        subscribeUserProgress(
+          firebaseUser.uid,
+          (map) => {
+            if (!cancelled) {
+              setProgressMap(map);
+              setProgressHydrated(true);
+            }
+          },
+          handleSubError('user_progress', OperationType.LIST)
+        )
+      );
+      unsubscribers.push(
+        subscribeQuizResults(
+          firebaseUser.uid,
+          (results) => {
+            if (!cancelled) {
+              setQuizResults(results);
+              setQuizHydrated(true);
+            }
+          },
+          handleSubError('quiz_results', OperationType.LIST)
+        )
+      );
+      unsubscribers.push(
+        subscribeUserVocabulary(
+          firebaseUser.uid,
+          (vMap) => {
+            if (!cancelled) {
+              // Avoid overwriting cached offline words with an empty offline snapshot
+              if (Object.keys(vMap).length > 0 || navigator.onLine) {
+                setVocabMap(vMap);
+                const syncedAt = saveOfflineVocabCache(firebaseUser.uid, vMap);
+                setOfflineVocabSyncedAt(syncedAt);
+              }
+              setVocabHydrated(true);
+            }
+          },
+          handleSubError('user_vocabulary', OperationType.LIST)
+        )
+      );
     };
 
     const bootstrap = async () => {
       setDataLoading(true);
-      try {
-        const isRootAdmin =
-          firebaseUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
 
+      // Hydrate offline cached vocabulary & profile immediately so learned words remain viewable offline
+      const cachedVocab = readOfflineVocabCache(firebaseUser.uid);
+      if (cachedVocab) {
+        setVocabMap(cachedVocab.vocabMap);
+        setOfflineVocabSyncedAt(cachedVocab.savedAt);
+        setVocabHydrated(true);
+      } else {
+        void readOfflineVocabFromCacheStorage(firebaseUser.uid).then((cacheSnap) => {
+          if (!cancelled && cacheSnap && Object.keys(cacheSnap.vocabMap).length > 0) {
+            setVocabMap((prev) => (Object.keys(prev).length > 0 ? prev : cacheSnap.vocabMap));
+            setOfflineVocabSyncedAt((prev) => prev ?? cacheSnap.savedAt);
+            setVocabHydrated(true);
+          }
+        });
+      }
+
+      const cachedProfile = readOfflineProfileCache(firebaseUser.uid);
+      if (cachedProfile) {
+        setProfile((prev) => prev ?? cachedProfile);
+      }
+
+      const isRootAdmin =
+        firebaseUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
+
+      // If starting completely offline, hydrate immediately from local cache & Firestore IndexedDB cache
+      if (!navigator.onLine) {
+        setProfile((prev) => prev ?? buildFallbackProfile());
+        setIsAdmin(isRootAdmin);
+        attachSubscriptions(isRootAdmin);
+        if (!cancelled) setDataLoading(false);
+        return;
+      }
+
+      try {
         if (!isRootAdmin) {
           const revoked = await checkUserRevoked(firebaseUser.uid);
           if (cancelled) return;
@@ -462,6 +595,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ]);
         if (cancelled) return;
         setProfile(ensuredProfile);
+        saveOfflineProfileCache(ensuredProfile);
         setIsAdmin(adminFlag);
 
         // Fetch curriculum once with 30-min local cache instead of permanent 57-doc onSnapshot listeners
@@ -511,86 +645,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        unsubscribers.push(
-          subscribeUserProfile(
-            firebaseUser.uid,
-            (p) => {
-              if (cancelled) return;
-              if (p) {
-                setProfile(p);
-              } else if (!isRootAdmin) {
-                void checkUserRevoked(firebaseUser.uid).then((revoked) => {
-                  if (cancelled || !revoked) return;
-                  const msg = revoked.reason
-                    ? `Tài khoản của bạn đã bị quản trị viên xóa khỏi hệ thống. Lý do: ${revoked.reason}`
-                    : 'Tài khoản của bạn đã bị quản trị viên xóa khỏi hệ thống.';
-                  setRevokedNotice(msg);
-                  addToast('error', msg);
-                  void signOut(auth);
-                });
-              }
-            },
-            handleSubError(`users/${firebaseUser.uid}`, OperationType.GET)
-          )
-        );
-        unsubscribers.push(
-          subscribeUserProgress(
-            firebaseUser.uid,
-            (map) => {
-              if (!cancelled) {
-                setProgressMap(map);
-                setProgressHydrated(true);
-              }
-            },
-            handleSubError('user_progress', OperationType.LIST)
-          )
-        );
-        unsubscribers.push(
-          subscribeQuizResults(
-            firebaseUser.uid,
-            (results) => {
-              if (!cancelled) {
-                setQuizResults(results);
-                setQuizHydrated(true);
-              }
-            },
-            handleSubError('quiz_results', OperationType.LIST)
-          )
-        );
-        unsubscribers.push(
-          subscribeUserVocabulary(
-            firebaseUser.uid,
-            (vMap) => {
-              if (!cancelled) {
-                setVocabMap(vMap);
-                setVocabHydrated(true);
-              }
-            },
-            handleSubError('user_vocabulary', OperationType.LIST)
-          )
-        );
+        attachSubscriptions(isRootAdmin);
       } catch (err) {
         if (!cancelled) {
           if (isFirestoreQuotaError(err)) {
             notifyQuotaExceeded();
-            // Provide a usable fallback profile from Firebase Auth so learner can still study bundled lessons
-            setProfile((prev) =>
-              prev ?? {
-                uid: firebaseUser.uid,
-                fullName:
-                  firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Học viên',
-                email: firebaseUser.email || '',
-                currentLevel: 'A1',
-                streakDays: 1,
-                lastStudyDate: '',
-                dailyGoalMinutes: 20,
-                reminderEnabled: true,
-              }
-            );
+            setProfile((prev) => prev ?? buildFallbackProfile());
+          } else if (!navigator.onLine) {
+            setProfile((prev) => prev ?? buildFallbackProfile());
+            setIsAdmin(isRootAdmin);
+            attachSubscriptions(isRootAdmin);
           } else {
+            setProfile((prev) => prev ?? buildFallbackProfile());
+            attachSubscriptions(isRootAdmin);
             addToast(
-              'error',
-              err instanceof Error ? 'Không thể tải dữ liệu học tập từ Firestore.' : 'Lỗi kết nối Firestore.'
+              'info',
+              'Không thể kết nối máy chủ lúc này. Đang sử dụng dữ liệu từ vựng đã lưu trong bộ nhớ đệm.'
             );
           }
         }
@@ -1086,6 +1156,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       changes: { isFavorite?: boolean; isLearned?: boolean }
     ) => {
       if (!profile) return;
+      if (!navigator.onLine) {
+        addToast(
+          'info',
+          'Bạn đang ở chế độ ngoại tuyến. Bạn có thể xem lại toàn bộ từ vựng đã học; việc cập nhật trạng thái mới cần kết nối mạng.'
+        );
+        return;
+      }
       recordStudyActivity();
       await toggleUserVocabularyState(
         profile,
@@ -1096,7 +1173,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         progressMap[lesson.lessonId]
       );
     },
-    [profile, vocabMap, progressMap, recordStudyActivity]
+    [profile, vocabMap, progressMap, recordStudyActivity, addToast]
   );
 
   const saveQuizAttempt = useCallback(
@@ -1151,6 +1228,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         progressMap,
         quizResults,
         vocabMap,
+        offlineVocabSyncedAt,
+        isOnline,
         leaderboard,
         leaderboardLoading,
         leaderboardError,

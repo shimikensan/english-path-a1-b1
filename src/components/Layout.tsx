@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { FocusStudyTimer } from './FocusStudyTimer';
 import { HudOverlay } from './HudOverlay';
+import { PWAInstallButton } from './PWAInstallButton';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { APP_BRAND, PILOT_RANKS } from '../data';
@@ -344,6 +345,8 @@ export function Layout({
                   {PILOT_RANKS[profile?.currentLevel || 'A1']?.rankVi || 'Học viên Phi công'} ({profile?.currentLevel || 'A1'})
                 </span>
               </div>
+
+              <PWAInstallButton />
 
               {onToggleFocusMode && (currentRoute === 'dashboard' || currentRoute === 'lesson') && (
                 <button

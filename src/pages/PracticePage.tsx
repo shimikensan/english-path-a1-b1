@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  AlertCircle,
   CheckCircle2,
   ChevronRight,
   RotateCcw,
@@ -42,6 +43,10 @@ export function PracticePage() {
   const [selectedOpt, setSelectedOpt] = useState<number | null>(null);
   const [score, setScore] = useState(0);
   const [finished, setFinished] = useState(false);
+  const [mistakes, setMistakes] = useState<
+    Array<{ questionNumber: number; question: SpeedQuestion; chosenIndex: number }>
+  >([]);
+  const [showReviewMistakes, setShowReviewMistakes] = useState(false);
 
   const pool = useMemo<VocabularyItem[]>(() => {
     const all: VocabularyItem[] = [];
@@ -95,6 +100,8 @@ export function PracticePage() {
     setSelectedOpt(null);
     setScore(0);
     setFinished(false);
+    setMistakes([]);
+    setShowReviewMistakes(false);
   };
 
   const currentQuestion = speedQuestions[qIdx];
@@ -175,24 +182,101 @@ export function PracticePage() {
         </div>
       ) : mode === 'speed_quiz' ? (
         finished ? (
-          <div className="max-w-xl mx-auto bg-white dark:bg-slate-900 cockpit-radar-panel p-8 text-center space-y-5">
-            <div className="text-sm font-semibold text-[#D94E00] dark:text-[#FF8524]">
-              Hoàn thành phiên luyện tập nhanh
+          <div className="max-w-2xl mx-auto space-y-5">
+            <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-8 text-center space-y-5">
+              <div className="text-sm font-semibold text-[#D94E00] dark:text-[#FF8524]">
+                Hoàn thành phiên luyện tập nhanh
+              </div>
+              <div className="text-5xl font-extrabold text-slate-900 dark:text-white tabular-nums">
+                {score} / {speedQuestions.length}
+              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Tỷ lệ chính xác {Math.round((score / speedQuestions.length) * 100)}%. Luyện lặp lại 5 phút mỗi ngày sẽ giúp bạn phản xạ từ vựng tức thì.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                {mistakes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowReviewMistakes((v) => !v)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/80 text-sm font-bold transition-colors whitespace-nowrap"
+                  >
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    {showReviewMistakes
+                      ? 'Ẩn danh sách câu sai'
+                      : `Ôn lại câu sai (${mistakes.length})`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => resetSession()}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-bold transition-colors whitespace-nowrap shadow-[0_0_16px_rgba(255,107,0,0.22)]"
+                >
+                  <RotateCcw className="w-4 h-4 shrink-0" />
+                  Luyện vòng mới (trộn ngẫu nhiên)
+                </button>
+              </div>
             </div>
-            <div className="text-5xl font-extrabold text-slate-900 dark:text-white tabular-nums">
-              {score} / {speedQuestions.length}
-            </div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Tỷ lệ chính xác {Math.round((score / speedQuestions.length) * 100)}%. Luyện lặp lại 5 phút mỗi ngày sẽ giúp bạn phản xạ từ vựng tức thì.
-            </p>
-            <button
-              type="button"
-              onClick={() => resetSession()}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white text-sm font-bold transition-colors shadow-[0_0_16px_rgba(255,107,0,0.22)]"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Luyện vòng mới (trộn ngẫu nhiên)
-            </button>
+
+            {showReviewMistakes && mistakes.length > 0 && (
+              <div className="bg-white dark:bg-slate-900 cockpit-radar-panel p-5 sm:p-6 space-y-4">
+                <div className="space-y-0.5 pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Ôn lại câu trả lời sai ({mistakes.length} từ)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Chỉ hiển thị các từ bạn chọn chưa chính xác trong phiên luyện vừa rồi.
+                  </p>
+                </div>
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {mistakes.map((m) => (
+                    <div
+                      key={`${m.questionNumber}-${m.question.vocab.id}`}
+                      className="py-3.5 first:pt-1 flex items-start justify-between gap-3"
+                    >
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 tabular-nums">
+                            Câu {m.questionNumber}
+                          </span>
+                          <span className="text-base font-bold text-slate-900 dark:text-white">
+                            {m.question.vocab.word}
+                          </span>
+                          <span className="text-xs font-mono text-[#D94E00] dark:text-[#FF8524]">
+                            {m.question.vocab.ipa}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                          Bạn chọn:{' '}
+                          <span className="font-semibold text-rose-600 dark:text-rose-400 line-through decoration-rose-400/70">
+                            {m.question.options[m.chosenIndex]}
+                          </span>
+                          {' · '}Đáp án đúng:{' '}
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            {m.question.options[m.question.correctIndex]}
+                          </span>
+                        </p>
+                        {m.question.vocab.exampleEn && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            <span className="font-serif text-slate-800 dark:text-slate-200">
+                              {m.question.vocab.exampleEn}
+                            </span>{' '}
+                            · {m.question.vocab.exampleVi}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => speakEnglish(m.question.vocab.word)}
+                        className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 shrink-0"
+                        aria-label={`Nghe phát âm ${m.question.vocab.word}`}
+                      >
+                        <Volume2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : currentQuestion ? (
           <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 cockpit-radar-panel p-6 sm:p-8 space-y-6">
@@ -257,6 +341,10 @@ export function PracticePage() {
                         setScore((s) => s + 1);
                       } else {
                         playWrongTone();
+                        setMistakes((prev) => [
+                          ...prev,
+                          { questionNumber: qIdx + 1, question: currentQuestion, chosenIndex: idx },
+                        ]);
                       }
                     }}
                     className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors flex items-center justify-between ${cls}`}
