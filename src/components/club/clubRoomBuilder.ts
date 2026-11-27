@@ -4,8 +4,25 @@ export interface ClubRoomAssets {
   roomGroup: THREE.Group;
   floorHitMesh: THREE.Mesh;
   walkTargetRing: THREE.Mesh;
+  setNightBlend: (nightMix: number, elapsedSec: number) => void;
   dispose: () => void;
 }
+
+const _tmpColor = new THREE.Color();
+const DAY_WALL_COLOR = new THREE.Color(0xf7efe4);
+const NIGHT_WALL_COLOR = new THREE.Color(0x1f2840);
+const DAY_OAK_COLOR = new THREE.Color(0xb9895f);
+const NIGHT_OAK_COLOR = new THREE.Color(0x5b463d);
+const DAY_WALNUT_COLOR = new THREE.Color(0x6f4a32);
+const NIGHT_WALNUT_COLOR = new THREE.Color(0x30262b);
+const DAY_APRON_COLOR = new THREE.Color(0xb7997a);
+const NIGHT_APRON_COLOR = new THREE.Color(0x182034);
+const DAY_FLOOR_TINT = new THREE.Color(0xffffff);
+const NIGHT_FLOOR_TINT = new THREE.Color(0x667494);
+const DAY_RUG_TINT = new THREE.Color(0xffffff);
+const NIGHT_RUG_TINT = new THREE.Color(0x7c87a6);
+const DAY_PATCH_COLOR = new THREE.Color(0xffe4b3);
+const NIGHT_PATCH_COLOR = new THREE.Color(0x67b7ff);
 
 function createWoodParquetTexture(maxAnisotropy: number): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -201,6 +218,57 @@ function createWindowSkyTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+function createWindowNightSkyTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, '#040814');
+    grad.addColorStop(0.45, '#0A1530');
+    grad.addColorStop(0.78, '#162850');
+    grad.addColorStop(1, '#1E335E');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 512);
+
+    // Subtle glowing crescent moon in upper pane
+    const moonGlow = ctx.createRadialGradient(178, 118, 6, 178, 118, 64);
+    moonGlow.addColorStop(0, 'rgba(224, 242, 254, 0.72)');
+    moonGlow.addColorStop(0.45, 'rgba(125, 211, 252, 0.22)');
+    moonGlow.addColorStop(1, 'rgba(125, 211, 252, 0)');
+    ctx.fillStyle = moonGlow;
+    ctx.beginPath();
+    ctx.arc(178, 118, 64, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#F8FAFC';
+    ctx.beginPath();
+    ctx.arc(178, 118, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#09132B';
+    ctx.beginPath();
+    ctx.arc(187, 112, 19, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Twinkling constellations visible outside the lounge windows
+    for (let i = 0; i < 65; i += 1) {
+      const sx = ((i * 73 + 29) % 236) + 10;
+      const sy = ((i * 97 + 41) % 440) + 16;
+      const r = i % 9 === 0 ? 2.2 : i % 4 === 0 ? 1.5 : 0.95;
+      ctx.fillStyle = i % 7 === 0 ? '#7DD3FC' : i % 5 === 0 ? '#FDE68A' : '#FFFFFF';
+      ctx.globalAlpha = 0.45 + ((i * 31) % 55) / 100;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 export function createClubRoom(maxAnisotropy = 4): ClubRoomAssets {
   const disposables: { dispose: () => void }[] = [];
   const track = <T extends { dispose: () => void }>(item: T): T => {
@@ -328,14 +396,16 @@ export function createClubRoom(maxAnisotropy = 4): ClubRoomAssets {
   leftCornice.position.set(-7.42, wallH + 0.05, 0);
   roomGroup.add(leftCornice);
 
-  // === TWO LARGE SUNLIT WINDOWS ON LEFT WALL ===
+  // === TWO LARGE WINDOWS ON LEFT WALL (DAY SUNLIGHT <-> NIGHT STARLIGHT) ===
   const skyTex = track(createWindowSkyTexture());
+  const nightSkyTex = track(createWindowNightSkyTexture());
   const windowGlassMat = track(
     new THREE.MeshBasicMaterial({
       map: skyTex,
     })
   );
   const frameBarMat = walnutMat;
+  const floorPatchMats: THREE.MeshBasicMaterial[] = [];
 
   const buildWindow = (zPos: number) => {
     const winGroup = new THREE.Group();
@@ -365,7 +435,7 @@ export function createClubRoom(maxAnisotropy = 4): ClubRoomAssets {
     const midVBar = new THREE.Mesh(track(new THREE.BoxGeometry(0.08, 2.4, 0.06)), frameBarMat);
     winGroup.add(leftBar, rightBar, midVBar);
 
-    // Warm sunlit patch cast onto the oak floor
+    // Sunlit / Moonlit patch cast onto the oak floor
     const sunPatchGeo = track(new THREE.PlaneGeometry(3.2, 2.6));
     const sunPatchMat = track(
       new THREE.MeshBasicMaterial({
@@ -376,6 +446,7 @@ export function createClubRoom(maxAnisotropy = 4): ClubRoomAssets {
         depthWrite: false,
       })
     );
+    floorPatchMats.push(sunPatchMat);
     const sunPatch = new THREE.Mesh(sunPatchGeo, sunPatchMat);
     sunPatch.rotation.x = -Math.PI / 2;
     sunPatch.position.set(2.8, -2.72, 0.25);
@@ -407,6 +478,23 @@ export function createClubRoom(maxAnisotropy = 4): ClubRoomAssets {
   const boardSurface = new THREE.Mesh(boardSurfaceGeo, boardSurfaceMat);
   boardSurface.position.z = 0.056;
   boardGroup.add(boardSurface);
+
+  // Subtle cyan neon LED halo rail along top & bottom of chalkboard (glows in Night Mode)
+  const boardNeonMat = track(
+    new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0,
+      toneMapped: false,
+    })
+  );
+  const boardNeonBarGeo = track(new THREE.BoxGeometry(4.24, 0.032, 0.032));
+  const boardNeonTop = new THREE.Mesh(boardNeonBarGeo, boardNeonMat);
+  boardNeonTop.position.set(0, 1.07, 0.062);
+  const boardNeonBottom = new THREE.Mesh(boardNeonBarGeo, boardNeonMat);
+  boardNeonBottom.position.set(0, -1.07, 0.062);
+  boardGroup.add(boardNeonTop, boardNeonBottom);
+
   roomGroup.add(boardGroup);
 
   // === ESPRESSO COFFEE BAR COUNTER (Back-Right) ===
@@ -494,6 +582,22 @@ export function createClubRoom(maxAnisotropy = 4): ClubRoomAssets {
     bulb.position.set(lx, 3.12, 0.05);
     barGroup.add(bulb);
   });
+
+  // Warm amber neon LED under-counter strip along espresso bar (glows softly in Night Mode)
+  const barNeonMat = track(
+    new THREE.MeshBasicMaterial({
+      color: 0xff8a2a,
+      transparent: true,
+      opacity: 0,
+      toneMapped: false,
+    })
+  );
+  const barNeonStrip = new THREE.Mesh(
+    track(new THREE.BoxGeometry(4.56, 0.036, 0.036)),
+    barNeonMat
+  );
+  barNeonStrip.position.set(0, 1.01, 0.6);
+  barGroup.add(barNeonStrip);
 
   roomGroup.add(barGroup);
 
@@ -675,6 +779,46 @@ export function createClubRoom(maxAnisotropy = 4): ClubRoomAssets {
   buildPottedPlant(6.45, -5.6, 1.1);
   buildPottedPlant(6.35, 5.4, 0.95);
 
+  let lastWindowNight = false;
+  const setNightBlend = (nightMix: number, elapsedSec: number) => {
+    const m = Math.max(0, Math.min(1, nightMix));
+
+    wallPlasterMat.color.copy(DAY_WALL_COLOR).lerp(NIGHT_WALL_COLOR, m);
+    oakTrimMat.color.copy(DAY_OAK_COLOR).lerp(NIGHT_OAK_COLOR, m);
+    walnutMat.color.copy(DAY_WALNUT_COLOR).lerp(NIGHT_WALNUT_COLOR, m);
+    apronMat.color.copy(DAY_APRON_COLOR).lerp(NIGHT_APRON_COLOR, m);
+    floorMat.color.copy(DAY_FLOOR_TINT).lerp(NIGHT_FLOOR_TINT, m);
+    rugMat.color.copy(DAY_RUG_TINT).lerp(NIGHT_RUG_TINT, m);
+
+    // Swap window sky panorama cleanly between sunny clouds and starry moonlit sky
+    const useNightWindow = m >= 0.45;
+    if (useNightWindow !== lastWindowNight) {
+      lastWindowNight = useNightWindow;
+      windowGlassMat.map = useNightWindow ? nightSkyTex : skyTex;
+      windowGlassMat.needsUpdate = true;
+    }
+
+    // Shift sunlit floor patch into cool moonlight sheen at night
+    _tmpColor.copy(DAY_PATCH_COLOR).lerp(NIGHT_PATCH_COLOR, m);
+    const patchOpacity = THREE.MathUtils.lerp(0.14, 0.1, m);
+    for (let i = 0; i < floorPatchMats.length; i += 1) {
+      floorPatchMats[i].color.copy(_tmpColor);
+      floorPatchMats[i].opacity = patchOpacity;
+    }
+
+    // Warm Edison pendant lamps shine richer at night
+    warmGlowMat.emissiveIntensity = THREE.MathUtils.lerp(1.4, 2.85, m);
+
+    // Subtle neon LED strips on bar & chalkboard fade in smoothly at night
+    const neonPulse = 0.88 + 0.12 * Math.sin(elapsedSec * 2.2);
+    const showNeon = m > 0.02;
+    boardNeonTop.visible = showNeon;
+    boardNeonBottom.visible = showNeon;
+    barNeonStrip.visible = showNeon;
+    boardNeonMat.opacity = m * 0.86 * neonPulse;
+    barNeonMat.opacity = m * 0.9 * (0.9 + 0.1 * Math.cos(elapsedSec * 1.9));
+  };
+
   const dispose = () => {
     disposables.forEach((d) => d.dispose());
   };
@@ -683,6 +827,7 @@ export function createClubRoom(maxAnisotropy = 4): ClubRoomAssets {
     roomGroup,
     floorHitMesh,
     walkTargetRing,
+    setNightBlend,
     dispose,
   };
 }

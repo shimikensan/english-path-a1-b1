@@ -7,6 +7,7 @@ import {
   LogOut,
   MessageCircle,
   MessageSquare,
+  Moon,
   Music,
   Pause,
   Pencil,
@@ -14,6 +15,7 @@ import {
   Play,
   Smile,
   Sparkles,
+  Sun,
   Users,
   Volume2,
   VolumeX,
@@ -52,6 +54,7 @@ import type {
 import { ClubMusicEngine } from '../utils/clubMusicEngine';
 
 const STORAGE_STATUS_KEY = 'pilot_club_status_text_v1';
+const STORAGE_NIGHT_MODE_KEY = 'pilot_club_night_mode_v1';
 
 const PRESET_GREETINGS = [
   'Hi! Let’s practice English together!',
@@ -158,6 +161,13 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
   const [emojiPopoverOpen, setEmojiPopoverOpen] = useState(false);
+  const [nightMode, setNightMode] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(STORAGE_NIGHT_MODE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [soloTipDismissed, setSoloTipDismissed] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
   const [cameraCommand, setCameraCommand] = useState<ClubCameraCommand>({
@@ -834,6 +844,18 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
     setCameraCommand((prev) => ({ mode, uid, seq: prev.seq + 1 }));
   };
 
+  const handleToggleNightMode = () => {
+    setNightMode((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(STORAGE_NIGHT_MODE_KEY, next ? '1' : '0');
+      } catch {
+        // Ignore storage errors
+      }
+      return next;
+    });
+  };
+
   const handleTypingChange = useCallback(
     (isTyping: boolean) => {
       setLocalTyping(isTyping);
@@ -903,7 +925,13 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
   };
 
   return (
-    <div className="relative w-full h-[calc(100vh-10.5rem)] min-h-[540px] max-h-[840px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-[#EFE6DB] shadow-lg select-none">
+    <div
+      className={`relative w-full h-[calc(100vh-10.5rem)] min-h-[540px] max-h-[840px] rounded-2xl overflow-hidden border shadow-lg select-none transition-colors duration-500 ${
+        nightMode
+          ? 'border-slate-800 bg-[#060B19]'
+          : 'border-slate-200 dark:border-slate-800 bg-[#EFE6DB]'
+      }`}
+    >
       {/* Interactive Three.js 3D Scene (Synced with Pilot Hangar 3D Avatar) */}
       <ClubScene3D
         members={mergedMembers}
@@ -915,6 +943,7 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
         activeTalkingUids={activeTalkingUids}
         chatBubblesByUid={chatBubblesByUid}
         emojiBurstsByUid={emojiBurstsByUid}
+        nightMode={nightMode}
         cameraCommand={cameraCommand}
         onSelectMember={handleSelectMemberFrom3D}
         onLocalMove={handleLocalMove}
@@ -929,6 +958,11 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
             <span className="text-[10px] font-bold text-[#D94E00] dark:text-[#FF8524]">
               · {equippedSuitName}
             </span>
+            {nightMode && (
+              <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400">
+                · Night Mode
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
@@ -1249,6 +1283,29 @@ export function EnglishClubPage({ onNavigate }: EnglishClubPageProps) {
               title="Camera đi theo Phi công 3D của bạn"
             >
               Theo tôi
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleNightMode}
+              aria-pressed={nightMode}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                nightMode
+                  ? 'bg-indigo-950 text-sky-300 ring-1 ring-sky-400/40 hover:bg-indigo-900'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-700 dark:hover:text-sky-300'
+              }`}
+              title={
+                nightMode
+                  ? 'Chuyển về không gian ban ngày nắng ấm'
+                  : 'Bật chế độ Night Mode sao trời & đèn neon Phi công'
+              }
+            >
+              {nightMode ? (
+                <Sun className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              ) : (
+                <Moon className="w-3.5 h-3.5 text-indigo-600 dark:text-sky-400 shrink-0" />
+              )}
+              <span>{nightMode ? 'Ban ngày' : 'Night Mode'}</span>
             </button>
 
             <span className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5 shrink-0" />

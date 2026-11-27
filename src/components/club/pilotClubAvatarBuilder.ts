@@ -32,6 +32,7 @@ export interface ClubPilotAvatarRig {
   setChatBubble: (text: string | null, isSelf?: boolean) => void;
   setChatBubbleVisual: (scale: number, opacity: number, yOffset?: number) => void;
   spawnEmojiBurst: (primaryEmoji?: string) => void;
+  setNightMode: (nightMix: number, elapsedSec: number) => void;
   setHighlight: (state: 'none' | 'hover' | 'selected' | 'self') => void;
   dispose: () => void;
 }
@@ -438,6 +439,111 @@ export function createClubPilotAvatar(params: {
   pilotRig.root.scale.setScalar(PILOT_CLUB_SCALE);
   pilotRig.root.position.set(0, 0, 0);
   root.add(pilotRig.root);
+
+  // 3b. Night Mode Neon Rig for the 3D Pilot (glowing floor halo, visor strip, shoulder arcs, chest core & rim glow)
+  const primaryNeonHex = label.isSelf ? 0x22d3ee : 0xff7e29;
+  const secondaryNeonHex = label.isSelf ? 0x38bdf8 : 0x38bdf8;
+
+  const neonPrimaryMat = trackMat(
+    new THREE.MeshBasicMaterial({
+      color: primaryNeonHex,
+      transparent: true,
+      opacity: 0,
+      toneMapped: false,
+    })
+  );
+  const neonSecondaryMat = trackMat(
+    new THREE.MeshBasicMaterial({
+      color: secondaryNeonHex,
+      transparent: true,
+      opacity: 0,
+      toneMapped: false,
+    })
+  );
+  const neonFloorHaloMat = trackMat(
+    new THREE.MeshBasicMaterial({
+      color: primaryNeonHex,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    })
+  );
+
+  // Holographic neon ring + outer glow aura beneath the Pilot's boots
+  const neonBaseGroup = new THREE.Group();
+  neonBaseGroup.visible = false;
+  const neonCoreRing = new THREE.Mesh(
+    trackGeo(new THREE.TorusGeometry(0.46, 0.018, 10, 40)),
+    neonPrimaryMat
+  );
+  neonCoreRing.rotation.x = Math.PI / 2;
+  neonCoreRing.position.y = 0.026;
+  neonBaseGroup.add(neonCoreRing);
+
+  const neonOuterAura = new THREE.Mesh(
+    trackGeo(new THREE.RingGeometry(0.32, 0.68, 36)),
+    neonFloorHaloMat
+  );
+  neonOuterAura.rotation.x = -Math.PI / 2;
+  neonOuterAura.position.y = 0.014;
+  neonBaseGroup.add(neonOuterAura);
+  root.add(neonBaseGroup);
+
+  // Neon flight-suit accents mounted onto articulated bodyGroup & headGroup
+  const neonSuitGroup = new THREE.Group();
+  neonSuitGroup.visible = false;
+
+  // Glowing chest flight-core bar
+  const chestNeonBar = new THREE.Mesh(
+    trackGeo(new THREE.CapsuleGeometry(0.022, 0.22, 6, 12)),
+    neonPrimaryMat
+  );
+  chestNeonBar.rotation.z = Math.PI / 2;
+  chestNeonBar.position.set(0, 0.22, 0.34);
+  neonSuitGroup.add(chestNeonBar);
+
+  // Glowing left & right neon shoulder trim arcs
+  const shoulderArcGeo = trackGeo(new THREE.TorusGeometry(0.16, 0.018, 8, 20, Math.PI * 0.78));
+  const leftShoulderArc = new THREE.Mesh(shoulderArcGeo, neonSecondaryMat);
+  leftShoulderArc.position.set(-0.34, 0.31, 0.02);
+  leftShoulderArc.rotation.set(0.15, Math.PI / 2, 0.25);
+  neonSuitGroup.add(leftShoulderArc);
+
+  const rightShoulderArc = new THREE.Mesh(shoulderArcGeo, neonSecondaryMat);
+  rightShoulderArc.position.set(0.34, 0.31, 0.02);
+  rightShoulderArc.rotation.set(0.15, -Math.PI / 2, -0.25);
+  neonSuitGroup.add(rightShoulderArc);
+
+  // Subtle neon belt trim around waist
+  const waistNeonRing = new THREE.Mesh(
+    trackGeo(new THREE.TorusGeometry(0.32, 0.014, 8, 28)),
+    neonSecondaryMat
+  );
+  waistNeonRing.rotation.x = Math.PI / 2;
+  waistNeonRing.position.set(0, -0.14, 0.01);
+  neonSuitGroup.add(waistNeonRing);
+
+  pilotRig.bodyGroup.add(neonSuitGroup);
+
+  // Glowing neon helmet/goggle visor rim mounted onto headGroup
+  const neonHeadGroup = new THREE.Group();
+  neonHeadGroup.visible = false;
+  const visorNeonArc = new THREE.Mesh(
+    trackGeo(new THREE.TorusGeometry(0.45, 0.018, 8, 28, Math.PI * 0.62)),
+    neonPrimaryMat
+  );
+  visorNeonArc.position.set(0, 0.14, 0.06);
+  visorNeonArc.rotation.set(Math.PI / 2 - 0.12, 0, Math.PI * 0.19);
+  neonHeadGroup.add(visorNeonArc);
+  pilotRig.headGroup.add(neonHeadGroup);
+
+  // Personal short-range neon pool light around the Pilot in Night Mode (no shadows -> fast)
+  const pilotNeonLight = new THREE.PointLight(primaryNeonHex, 0, 3.6, 1.9);
+  pilotNeonLight.position.set(0, 1.05, 0.22);
+  root.add(pilotNeonLight);
 
   // 4. Floating 3D Speech Indicator Bubble (visible during talk animation)
   const talkBubbleGroup = new THREE.Group();
@@ -880,6 +986,29 @@ export function createClubPilotAvatar(params: {
     chatBubbleSprite.visible = opacity > 0.01;
   };
 
+  const setNightMode = (nightMix: number, elapsedSec: number) => {
+    const m = Math.max(0, Math.min(1, nightMix));
+    const visible = m > 0.015;
+
+    neonBaseGroup.visible = visible;
+    neonSuitGroup.visible = visible;
+    neonHeadGroup.visible = visible;
+
+    if (!visible) {
+      pilotNeonLight.intensity = 0;
+      return;
+    }
+
+    const pulse = 0.84 + 0.16 * Math.sin(elapsedSec * 2.8 + initialTimeOffset);
+    const haloScale = 0.96 + 0.06 * Math.sin(elapsedSec * 2.1 + initialTimeOffset);
+
+    neonPrimaryMat.opacity = m * 0.95 * pulse;
+    neonSecondaryMat.opacity = m * 0.85 * (0.86 + 0.14 * Math.cos(elapsedSec * 2.4 + initialTimeOffset));
+    neonFloorHaloMat.opacity = m * 0.34 * pulse;
+    neonOuterAura.scale.setScalar(haloScale);
+    pilotNeonLight.intensity = m * (label.isSelf ? 1.55 : 1.15) * pulse;
+  };
+
   const setHighlight = (state: 'none' | 'hover' | 'selected' | 'self') => {
     if (state === 'selected') {
       ringMat.color.setHex(0xff6b00);
@@ -916,6 +1045,7 @@ export function createClubPilotAvatar(params: {
     setChatBubble,
     setChatBubbleVisual,
     spawnEmojiBurst,
+    setNightMode,
     setHighlight,
     dispose,
   };

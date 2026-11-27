@@ -41,6 +41,7 @@ interface ClubScene3DProps {
   activeTalkingUids: Record<string, boolean>;
   chatBubblesByUid: Record<string, ClubChatBubbleData>;
   emojiBurstsByUid?: Record<string, ClubEmojiBurstData>;
+  nightMode?: boolean;
   cameraCommand: ClubCameraCommand;
   onSelectMember: (uid: string) => void;
   onLocalMove: (posX: number, posZ: number, rotationY: number, isFinal: boolean) => void;
@@ -67,6 +68,199 @@ const _targetLookAt = new THREE.Vector3();
 const _moveDir = new THREE.Vector3();
 const _camForward = new THREE.Vector3();
 const _camRight = new THREE.Vector3();
+
+// Pre-allocated day/night atmosphere color constants
+const DAY_BG_COLOR = new THREE.Color(0xefe6db);
+const NIGHT_BG_COLOR = new THREE.Color(0x060b19);
+const DAY_HEMI_SKY = new THREE.Color(0xd9ecff);
+const NIGHT_HEMI_SKY = new THREE.Color(0x243b6b);
+const DAY_HEMI_GROUND = new THREE.Color(0x9b7e62);
+const NIGHT_HEMI_GROUND = new THREE.Color(0x101729);
+const DAY_SUN_COLOR = new THREE.Color(0xfff1dc);
+const NIGHT_MOON_COLOR = new THREE.Color(0x7cb2ff);
+const DAY_LAMP_COLOR = new THREE.Color(0xffcb85);
+const NIGHT_LAMP_COLOR = new THREE.Color(0xff9b3d);
+
+function createTwinklingStarfield(pixelRatio: number) {
+  const starCount = 420;
+  const positions = new Float32Array(starCount * 3);
+  const colors = new Float32Array(starCount * 3);
+  const sizes = new Float32Array(starCount);
+  const phases = new Float32Array(starCount);
+  const speeds = new Float32Array(starCount);
+
+  const starPalette = [
+    new THREE.Color(0xffffff),
+    new THREE.Color(0xbae6fd),
+    new THREE.Color(0x7dd3fc),
+    new THREE.Color(0xfef3c7),
+    new THREE.Color(0xc7d2fe),
+  ];
+
+  for (let i = 0; i < starCount; i += 1) {
+    const theta = Math.random() * Math.PI * 2;
+    // Bias stars across upper sky dome & visible horizon surround
+    const phi = Math.acos(0.08 + Math.random() * 0.92);
+    const radius = 21 + Math.random() * 19;
+
+    positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = Math.max(1.2, radius * Math.cos(phi) + 2.2);
+    positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+
+    const c = starPalette[i % starPalette.length];
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+
+    sizes[i] = i % 13 === 0 ? 11.5 + Math.random() * 5.0 : 4.2 + Math.random() * 5.6;
+    phases[i] = Math.random() * Math.PI * 2;
+    speeds[i] = 1.2 + Math.random() * 2.8;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+  geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+  geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uNightMix: { value: 0 },
+      uPixelRatio: { value: pixelRatio },
+    },
+    vertexShader: `
+      attribute vec3 aColor;
+      attribute float aSize;
+      attribute float aPhase;
+      attribute float aSpeed;
+      uniform float uTime;
+      uniform float uPixelRatio;
+      varying vec3 vColor;
+      varying float vTwinkle;
+
+      void main() {
+        vColor = aColor;
+        float tw = 0.52 + 0.48 * sin(uTime * aSpeed + aPhase);
+        vTwinkle = tw * tw;
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = aSize * uPixelRatio * (0.75 + 0.45 * vTwinkle) * (24.0 / max(8.0, -mvPos.z));
+        gl_Position = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: `
+      uniform float uNightMix;
+      varying vec3 vColor;
+      varying float vTwinkle;
+
+      void main() {
+        vec2 uv = gl_PointCoord - vec2(0.5);
+        float d = length(uv);
+        if (d > 0.5) discard;
+
+        // Crisp bright star core + soft atmospheric halo
+        float core = smoothstep(0.5, 0.04, d);
+        float sparkle = pow(core, 2.2);
+        float alpha = sparkle * (0.35 + 0.65 * vTwinkle) * uNightMix;
+        gl_FragColor = vec4(vColor * (1.0 + 0.45 * vTwinkle), alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+  });
+
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+  points.visible = false;
+
+  return { points, geometry, material };
+}
+
+function createNocturnalFireflies(pixelRatio: number) {
+  const count = 42;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const phases = new Float32Array(count);
+
+  const palette = [
+    new THREE.Color(0x38bdf8),
+    new THREE.Color(0x22d3ee),
+    new THREE.Color(0xffb347),
+  ];
+
+  for (let i = 0; i < count; i += 1) {
+    const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+    const radius = 5.4 + Math.random() * 5.8;
+    positions[i * 3] = Math.cos(angle) * radius;
+    positions[i * 3 + 1] = 1.1 + Math.random() * 4.2;
+    positions[i * 3 + 2] = Math.sin(angle) * radius;
+
+    const c = palette[i % palette.length];
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+    phases[i] = Math.random() * Math.PI * 2;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uNightMix: { value: 0 },
+      uPixelRatio: { value: pixelRatio },
+    },
+    vertexShader: `
+      attribute vec3 aColor;
+      attribute float aPhase;
+      uniform float uTime;
+      uniform float uPixelRatio;
+      varying vec3 vColor;
+      varying float vPulse;
+
+      void main() {
+        vColor = aColor;
+        vec3 pos = position;
+        pos.y += sin(uTime * 0.85 + aPhase) * 0.42;
+        pos.x += cos(uTime * 0.45 + aPhase * 1.3) * 0.35;
+        pos.z += sin(uTime * 0.52 + aPhase * 0.7) * 0.35;
+        vPulse = 0.5 + 0.5 * sin(uTime * 2.1 + aPhase);
+        vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+        gl_PointSize = (6.5 + 4.5 * vPulse) * uPixelRatio * (14.0 / max(4.0, -mvPos.z));
+        gl_Position = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: `
+      uniform float uNightMix;
+      varying vec3 vColor;
+      varying float vPulse;
+
+      void main() {
+        vec2 uv = gl_PointCoord - vec2(0.5);
+        float d = length(uv);
+        if (d > 0.5) discard;
+        float glow = pow(smoothstep(0.5, 0.0, d), 2.0);
+        gl_FragColor = vec4(vColor, glow * (0.28 + 0.48 * vPulse) * uNightMix);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+  });
+
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+  points.visible = false;
+
+  return { points, geometry, material };
+}
 
 function detectSoftwareGl(gl: WebGLRenderingContext | WebGL2RenderingContext): boolean {
   try {
@@ -110,6 +304,7 @@ export function ClubScene3D({
   activeTalkingUids,
   chatBubblesByUid,
   emojiBurstsByUid,
+  nightMode = false,
   cameraCommand,
   onSelectMember,
   onLocalMove,
@@ -126,6 +321,7 @@ export function ClubScene3D({
   const activeTalkingRef = useRef<Record<string, boolean>>(activeTalkingUids);
   const chatBubblesRef = useRef<Record<string, ClubChatBubbleData>>(chatBubblesByUid);
   const emojiBurstsRef = useRef<Record<string, ClubEmojiBurstData>>(emojiBurstsByUid ?? {});
+  const nightModeRef = useRef<boolean>(nightMode);
   const onSelectMemberRef = useRef(onSelectMember);
   const onLocalMoveRef = useRef(onLocalMove);
   const cameraCommandRef = useRef<ClubCameraCommand>(cameraCommand);
@@ -138,6 +334,7 @@ export function ClubScene3D({
   activeTalkingRef.current = activeTalkingUids;
   chatBubblesRef.current = chatBubblesByUid;
   emojiBurstsRef.current = emojiBurstsByUid ?? {};
+  nightModeRef.current = nightMode;
   onSelectMemberRef.current = onSelectMember;
   onLocalMoveRef.current = onLocalMove;
 
@@ -233,7 +430,20 @@ export function ClubScene3D({
     cafeLampFill.position.set(3.8, 3.0, -5.3);
     scene.add(cafeLampFill);
 
-    // 5. Build the Cozy Sunlit 3D English Club Room
+    // Nocturnal cyan-indigo rim light (smoothly ramps up in Night Mode to outline 3D Pilots)
+    const nightRimLight = new THREE.DirectionalLight(0x38bdf8, 0);
+    nightRimLight.position.set(8.5, 6.8, -9.2);
+    scene.add(nightRimLight);
+
+    // 4b. Twinkling 3D Starfield Sky Dome & Floating Night Starlight Motes
+    const effectivePixelRatio = renderer.getPixelRatio();
+    const starfield = createTwinklingStarfield(effectivePixelRatio);
+    scene.add(starfield.points);
+
+    const nightFireflies = createNocturnalFireflies(effectivePixelRatio);
+    scene.add(nightFireflies.points);
+
+    // 5. Build the 3D English Club Room (supports seamless Day <-> Night transition)
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
     const clubRoom = createClubRoom(maxAnisotropy);
     scene.add(clubRoom.roomGroup);
@@ -527,7 +737,10 @@ export function ClubScene3D({
     let timerId = 0;
     let lastFrameTime = performance.now();
     let lastKeyboardEmitTime = 0;
+    let nightMix = nightModeRef.current ? 1 : 0;
     const walkRingMat = clubRoom.walkTargetRing.material as THREE.MeshBasicMaterial;
+    const sceneBgColor = scene.background as THREE.Color;
+    const sceneFog = scene.fog as THREE.Fog;
 
     const afterDraw = (next: () => void) => {
       if (disposed) return;
@@ -704,7 +917,51 @@ export function ClubScene3D({
           state.lastEmojiSeq = emojiBurst.seq;
           state.rig.spawnEmojiBurst(emojiBurst.emoji);
         }
+
+        // Update 3D Pilot's neon night accents & underglow smoothly
+        state.rig.setNightMode(nightMix, elapsedSec);
       });
+
+      // Smooth Day <-> Night Mode atmospheric interpolation (Zero GC)
+      const nightTarget = nightModeRef.current ? 1 : 0;
+      nightMix = THREE.MathUtils.damp(nightMix, nightTarget, 3.8, dt);
+      if (Math.abs(nightMix - nightTarget) < 0.002) {
+        nightMix = nightTarget;
+      }
+
+      sceneBgColor.copy(DAY_BG_COLOR).lerp(NIGHT_BG_COLOR, nightMix);
+      sceneFog.color.copy(sceneBgColor);
+      sceneFog.near = THREE.MathUtils.lerp(20, 17, nightMix);
+      sceneFog.far = THREE.MathUtils.lerp(44, 48, nightMix);
+
+      hemiLight.color.copy(DAY_HEMI_SKY).lerp(NIGHT_HEMI_SKY, nightMix);
+      hemiLight.groundColor.copy(DAY_HEMI_GROUND).lerp(NIGHT_HEMI_GROUND, nightMix);
+      hemiLight.intensity = THREE.MathUtils.lerp(0.92, 0.48, nightMix);
+
+      sunKey.color.copy(DAY_SUN_COLOR).lerp(NIGHT_MOON_COLOR, nightMix);
+      sunKey.intensity = THREE.MathUtils.lerp(2.05, 0.78, nightMix);
+
+      cafeLampFill.color.copy(DAY_LAMP_COLOR).lerp(NIGHT_LAMP_COLOR, nightMix);
+      cafeLampFill.intensity = THREE.MathUtils.lerp(1.35, 2.55, nightMix);
+      cafeLampFill.distance = THREE.MathUtils.lerp(14, 17.5, nightMix);
+
+      nightRimLight.intensity = nightMix * 0.78;
+      scene.environmentIntensity = THREE.MathUtils.lerp(1.0, 0.36, nightMix);
+      renderer.toneMappingExposure = THREE.MathUtils.lerp(1.04, 1.12, nightMix);
+
+      clubRoom.setNightBlend(nightMix, elapsedSec);
+
+      const showNightSky = nightMix > 0.015;
+      starfield.points.visible = showNightSky;
+      nightFireflies.points.visible = showNightSky;
+      if (showNightSky) {
+        starfield.material.uniforms.uTime.value = elapsedSec;
+        starfield.material.uniforms.uNightMix.value = nightMix;
+        starfield.points.rotation.y = elapsedSec * 0.012;
+
+        nightFireflies.material.uniforms.uTime.value = elapsedSec;
+        nightFireflies.material.uniforms.uNightMix.value = nightMix;
+      }
 
       // Fade floor click-to-walk target ring
       if (walkRingAlpha > 0.01) {
@@ -770,6 +1027,10 @@ export function ClubScene3D({
       });
       avatarStates.clear();
       clubRoom.dispose();
+      starfield.geometry.dispose();
+      starfield.material.dispose();
+      nightFireflies.geometry.dispose();
+      nightFireflies.material.dispose();
       envTarget.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === container) {
