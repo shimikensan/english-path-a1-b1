@@ -50,3 +50,7 @@
 31. **Unsafe Club Audio URL Injection**: Admin or attacker attempts to write `audioUrl: "javascript:alert(1)"` or an external URL into `/club_settings/music` when `mode == 'uploaded'`. -> **PERMISSION_DENIED**
 32. **Access Duration Overflow / Negative Tampering**: Learner `uidA` attempts to write `totalAccessSeconds: -50` or `totalAccessSeconds: 99999999999` or decrease their recorded `totalAccessSeconds` in `/users/uidA` or `/leaderboard/uidA`. -> **PERMISSION_DENIED**
 33. **First Login Timestamp Forgery / Mutation**: Learner `uidA` attempts to set `firstLoginAt` to a future timestamp (`> request.time`) or overwrite an already-recorded `firstLoginAt` on `/leaderboard/uidA`. -> **PERMISSION_DENIED**
+34. **TOEIC Group Private Listing / Capacity Bypass**: Non-member `uidC` executes an unscoped `list` on `/toeic_groups` to discover private groups (`isPublic == false`), or attempts to join a full group (`memberUids.size() >= maxMembers`) or inject another user's UID into `memberUids`. -> **PERMISSION_DENIED**
+35. **TOEIC Group Non-Member Subcollection Write**: Non-member `uidC` attempts to `create`, `update`, or `delete` documents inside `/toeic_groups/{groupId}/shared_vocab` or `/toeic_groups/{groupId}/challenges`. -> **PERMISSION_DENIED**
+36. **TOEIC Challenge Cross-Player Score Tampering & Terminal State Mutation**: Participant `uidA` attempts to overwrite `participants[uidB].score` in an active challenge, or attempts to modify any field of a challenge whose `status == 'finished'`. -> **PERMISSION_DENIED**
+

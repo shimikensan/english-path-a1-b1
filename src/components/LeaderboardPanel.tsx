@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   ExternalLink,
+  Eye,
   Flame,
   Gem,
   Medal,
@@ -22,6 +23,10 @@ import { estimateLeaderboardGems } from '../data/pilotGearCatalog';
 import { FIRESTORE_PRICING_URL, FIRESTORE_UPGRADE_URL } from '../firebase';
 import type { LeaderboardEntryDoc } from '../types';
 import { formatAccessDurationVi, formatTimestampVi } from '../utils/helpers';
+import {
+  LeaderboardPilotModal,
+  type RankedLeaderboardEntry,
+} from './pilot3d/LeaderboardPilotModal';
 
 interface LeaderboardPanelProps {
   compact?: boolean;
@@ -101,10 +106,12 @@ export function LeaderboardPanel({
     profile,
     lessons,
     gemBreakdown,
+    hangarState,
   } = useApp();
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('ALL');
   const [sortBy, setSortBy] = useState<LeaderboardSortBy>('completion');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPilotEntry, setSelectedPilotEntry] = useState<RankedLeaderboardEntry | null>(null);
 
   // Normalize all learners against the same canonical published curriculum (e.g. 51 lessons / 765 vocab)
   const normalizedEntries = useMemo(() => {
@@ -344,7 +351,7 @@ export function LeaderboardPanel({
                     </div>
                   </div>
 
-                  <div className="w-28 sm:w-36 shrink-0 space-y-1">
+                  <div className="w-24 sm:w-32 shrink-0 space-y-1">
                     <div className="flex items-center justify-between text-xs tabular-nums">
                       <span className="text-slate-500 dark:text-slate-400">Hoàn thiện</span>
                       <span className="font-bold text-slate-900 dark:text-white">
@@ -358,11 +365,29 @@ export function LeaderboardPanel({
                       />
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPilotEntry(entry)}
+                    title={`Xem Phi công 3D của ${entry.displayName}`}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-sky-200 dark:border-sky-800/80 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50 text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Phi công 3D</span>
+                    <span className="sm:hidden">3D</span>
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
+
+        <LeaderboardPilotModal
+          entry={selectedPilotEntry}
+          liveOwnEquipped={hangarState.equipped}
+          isCurrentUser={Boolean(selectedPilotEntry && profile?.uid === selectedPilotEntry.uid)}
+          onClose={() => setSelectedPilotEntry(null)}
+        />
       </section>
     );
   }
@@ -520,6 +545,14 @@ export function LeaderboardPanel({
                       <span>{formatTimestampVi(entry.firstLoginAt)}</span>
                     </span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPilotEntry(entry)}
+                    className="w-full mt-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-sky-200 dark:border-sky-800/80 bg-sky-50/90 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 text-sky-700 dark:text-sky-300 text-xs font-bold transition-colors whitespace-nowrap cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Xem Phi công 3D</span>
+                  </button>
                 </div>
               </div>
             );
@@ -702,6 +735,7 @@ export function LeaderboardPanel({
                   <th className="py-3 px-4 whitespace-nowrap">Từ vựng</th>
                   <th className="py-3 px-4 whitespace-nowrap">Tổng thời gian truy cập</th>
                   <th className="py-3 px-4 whitespace-nowrap">Đăng nhập lần đầu</th>
+                  <th className="py-3 px-4 whitespace-nowrap text-right">Phi công 3D</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-sm">
@@ -816,6 +850,17 @@ export function LeaderboardPanel({
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
+
+                      <td className="py-3.5 px-4 whitespace-nowrap text-right">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPilotEntry(entry)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-sky-200 dark:border-sky-800/80 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 text-sky-700 dark:text-sky-300 text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Xem 3D</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -824,6 +869,13 @@ export function LeaderboardPanel({
           </div>
         )}
       </section>
+
+      <LeaderboardPilotModal
+        entry={selectedPilotEntry}
+        liveOwnEquipped={hangarState.equipped}
+        isCurrentUser={Boolean(selectedPilotEntry && profile?.uid === selectedPilotEntry.uid)}
+        onClose={() => setSelectedPilotEntry(null)}
+      />
     </div>
   );
 }

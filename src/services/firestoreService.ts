@@ -49,6 +49,7 @@ import type {
   FeedbackCategory,
   FeedbackStatus,
   LeaderboardEntryDoc,
+  LeaderboardPilotEquipped,
   LearnerCEFRLevel,
   LessonDoc,
   LevelDoc,
@@ -1089,6 +1090,25 @@ function toSafePastFirestoreTimestamp(value: unknown): Timestamp | null {
   return Timestamp.fromMillis(Math.max(0, clampedMs));
 }
 
+const VALID_FIRESTORE_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
+
+function sanitizeLeaderboardPilotEquipped(
+  raw?: Partial<LeaderboardPilotEquipped> | null
+): LeaderboardPilotEquipped | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const pick = (val: unknown, fallback: string): string =>
+    typeof val === 'string' && VALID_FIRESTORE_ID_REGEX.test(val) ? val : fallback;
+  return {
+    helmet: pick(raw.helmet, DEFAULT_EQUIPPED_GEAR.helmet),
+    goggles: pick(raw.goggles, DEFAULT_EQUIPPED_GEAR.goggles),
+    suit: pick(raw.suit, DEFAULT_EQUIPPED_GEAR.suit),
+    scarf: pick(raw.scarf, DEFAULT_EQUIPPED_GEAR.scarf),
+    backpack: pick(raw.backpack, DEFAULT_EQUIPPED_GEAR.backpack),
+    companion: pick(raw.companion, DEFAULT_EQUIPPED_GEAR.companion),
+    aircraft: pick(raw.aircraft, DEFAULT_EQUIPPED_GEAR.aircraft),
+  };
+}
+
 export async function syncUserLeaderboardEntry(entry: {
   uid: string;
   displayName: string;
@@ -1102,6 +1122,7 @@ export async function syncUserLeaderboardEntry(entry: {
   gemsEarned?: number;
   totalAccessSeconds?: number;
   firstLoginAt?: Timestamp | Date;
+  pilotEquipped?: LeaderboardPilotEquipped;
   isPublic?: boolean;
 }): Promise<void> {
   const path = `leaderboard/${entry.uid}`;
@@ -1124,8 +1145,9 @@ export async function syncUserLeaderboardEntry(entry: {
     Math.min(10000000, Math.floor(entry.gemsEarned ?? 0))
   );
   const candidateFirstLogin = toSafePastFirestoreTimestamp(entry.firstLoginAt);
+  const safePilotEquipped = sanitizeLeaderboardPilotEquipped(entry.pilotEquipped);
 
-  const baseMutableFields = {
+  const baseMutableFields: Record<string, unknown> = {
     displayName: truncate(entry.displayName.trim() || 'Phi công tập sự', 100) || 'Phi công tập sự',
     currentLevel: safeLevel,
     completedLessons: Math.max(0, Math.min(500, Math.round(entry.completedLessons))),
@@ -1138,6 +1160,10 @@ export async function syncUserLeaderboardEntry(entry: {
     isPublic: entry.isPublic ?? true,
     updatedAt: serverTimestamp(),
   };
+
+  if (safePilotEquipped) {
+    baseMutableFields.pilotEquipped = safePilotEquipped;
+  }
 
   try {
     const snap = await getDoc(ref);
@@ -1174,8 +1200,6 @@ export async function syncUserLeaderboardEntry(entry: {
   }
 }
 
-const VALID_FIRESTORE_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
-
 export async function adminSyncAllUsersLeaderboard(
   publishedLessons: LessonDoc[]
 ): Promise<{ syncedUsers: number; removedOrphans: number; totalLessons: number }> {
@@ -1192,13 +1216,25 @@ export async function adminSyncAllUsersLeaderboard(
   const validLessonIds = new Set(effectiveLessons.map((l) => l.lessonId));
 
   try {
-    const [usersSnap, progressSnap, vocabSnap, quizSnap, leaderboardSnap] = await Promise.all([
+    const [usersSnap, progressSnap, vocabSnap, quizSnap, leaderboardSnap, hangarSnap] = await Promise.all([
       getDocs(collection(db, 'users')),
       getDocs(collection(db, 'user_progress')),
       getDocs(collection(db, 'user_vocabulary')),
       getDocs(collection(db, 'quiz_results')),
       getDocs(collection(db, 'leaderboard')),
+      getDocs(collection(db, 'pilot_hangar')).catch(() => null),
     ]);
+
+    const hangarEquippedByUid = new Map<string, LeaderboardPilotEquipped>();
+    if (hangarSnap) {
+      hangarSnap.docs.forEach((d) => {
+        const h = d.data() as Partial<PilotHangarDoc>;
+        const sanitized = sanitizeLeaderboardPilotEquipped(h.equipped);
+        if (sanitized) {
+          hangarEquippedByUid.set(d.id, sanitized);
+        }
+      });
+    }
 
     const completedLessonsByUid = new Map<string, Set<string>>();
     progressSnap.docs.forEach((d) => {
@@ -1313,6 +1349,10 @@ export async function adminSyncAllUsersLeaderboard(
           : 0;
       const gemsEarned = Math.min(10000000, Math.max(existingGems, estimatedGems));
 
+      const syncedPilotEquipped =
+        hangarEquippedByUid.get(uid) ??
+        sanitizeLeaderboardPilotEquipped(existingEntry?.pilotEquipped);
+
       const payload: Record<string, unknown> = {
         displayName: safeName,
         currentLevel: safeLevel,
@@ -1330,6 +1370,9 @@ export async function adminSyncAllUsersLeaderboard(
       if (firstLoginTs) {
         payload.firstLoginAt = firstLoginTs;
       }
+      if (syncedPilotEquipped) {
+        payload.pilotEquipped = syncedPilotEquipped;
+      }
       return payload;
     };
 
@@ -1340,6 +1383,12 @@ export async function adminSyncAllUsersLeaderboard(
       const next = buildEntryPayload(uid, user);
       const existingFirstMs = toTimestampMillis(existing.firstLoginAt);
       const nextFirstMs = toTimestampMillis(next.firstLoginAt);
+      const existingPilotKey = existing.pilotEquipped
+        ? JSON.stringify(existing.pilotEquipped)
+        : '';
+      const nextPilotKey = next.pilotEquipped
+        ? JSON.stringify(next.pilotEquipped)
+        : '';
       return (
         existing.displayName !== next.displayName ||
         existing.currentLevel !== next.currentLevel ||
@@ -1352,6 +1401,7 @@ export async function adminSyncAllUsersLeaderboard(
         (existing.totalAccessSeconds ?? 0) !== (next.totalAccessSeconds as number) ||
         (existing.gemsEarned ?? -1) !== (next.gemsEarned as number) ||
         (existingFirstMs === null && nextFirstMs !== null) ||
+        existingPilotKey !== nextPilotKey ||
         existing.isPublic !== true
       );
     });

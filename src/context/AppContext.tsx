@@ -89,6 +89,7 @@ const CANONICAL_LEVEL_RANK: Record<string, number> = {
   B2: 4,
   C1: 5,
   ESP: 6,
+  TOEIC: 7,
 };
 
 function getLevelSortRank(levelId: string, fallbackOrder: number): number {
@@ -783,7 +784,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (firestoreLevels.length === 0) return DEFAULT_LEVELS;
     const existingIds = new Set(firestoreLevels.map((l) => l.levelId));
     const missingDefaults = DEFAULT_LEVELS.filter(
-      (l) => (l.levelId === 'B2' || l.levelId === 'C1' || l.levelId === 'ESP') && !existingIds.has(l.levelId)
+      (l) =>
+        (l.levelId === 'B2' || l.levelId === 'C1' || l.levelId === 'ESP' || l.levelId === 'TOEIC') &&
+        !existingIds.has(l.levelId)
     );
     return [...firestoreLevels, ...missingDefaults].sort(
       (a, b) => getLevelSortRank(a.levelId, a.order) - getLevelSortRank(b.levelId, b.order)
@@ -792,13 +795,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const lessons = useMemo<LessonDoc[]>(() => {
     if (firestoreLessons.length === 0) return ALL_DEFAULT_LESSONS;
-    const existingIds = new Set(firestoreLessons.map((l) => l.lessonId));
+    const firestoreToeicCount = firestoreLessons.filter((l) => l.levelId === 'TOEIC').length;
+    const defaultToeicCount = ALL_DEFAULT_LESSONS.filter((l) => l.levelId === 'TOEIC').length;
+    const baseFirestore =
+      firestoreToeicCount > 0 && firestoreToeicCount < defaultToeicCount
+        ? firestoreLessons.filter((l) => l.levelId !== 'TOEIC')
+        : firestoreLessons;
+    const existingIds = new Set(baseFirestore.map((l) => l.lessonId));
     const missingExtended = ALL_DEFAULT_LESSONS.filter(
       (l) =>
-        (l.levelId === 'B2' || l.levelId === 'C1' || l.levelId === 'ESP') &&
+        (l.levelId === 'B2' || l.levelId === 'C1' || l.levelId === 'ESP' || l.levelId === 'TOEIC') &&
         !existingIds.has(l.lessonId)
     );
-    return [...firestoreLessons, ...missingExtended].sort((a, b) => {
+    return [...baseFirestore, ...missingExtended].sort((a, b) => {
       const rankDiff = getLevelSortRank(a.levelId, 99) - getLevelSortRank(b.levelId, 99);
       if (rankDiff !== 0) return rankDiff;
       return a.order - b.order;
@@ -996,6 +1005,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const gemsEarned = Math.max(0, Math.floor(gemBreakdown.totalEarned));
 
     const displayName = (profile.fullName || 'Phi công tập sự').trim();
+    const pilotEquipped = {
+      helmet: hangarState.equipped.helmet,
+      goggles: hangarState.equipped.goggles,
+      suit: hangarState.equipped.suit,
+      scarf: hangarState.equipped.scarf,
+      backpack: hangarState.equipped.backpack,
+      companion: hangarState.equipped.companion,
+      aircraft: hangarState.equipped.aircraft,
+    };
+    const pilotSig = [
+      pilotEquipped.helmet,
+      pilotEquipped.goggles,
+      pilotEquipped.suit,
+      pilotEquipped.scarf,
+      pilotEquipped.backpack,
+      pilotEquipped.companion,
+      pilotEquipped.aircraft,
+    ].join(',');
     const sig = [
       profile.uid,
       displayName,
@@ -1009,6 +1036,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       effectiveAccessSeconds,
       gemsEarned,
       firstLoginMs,
+      pilotSig,
     ].join('|');
 
     if (lastLeaderboardSigRef.current === sig) {
@@ -1029,6 +1057,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       totalAccessSeconds: effectiveAccessSeconds,
       gemsEarned,
       firstLoginAt,
+      pilotEquipped,
       isPublic: true,
     })
       .then(() => {
@@ -1047,6 +1076,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             totalAccessSeconds: effectiveAccessSeconds,
             gemsEarned,
             firstLoginAt,
+            pilotEquipped,
             isPublic: true,
           };
           const exists = prev.some((e) => e.uid === profile.uid);
@@ -1059,6 +1089,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                       totalAccessSeconds: Math.max(e.totalAccessSeconds ?? 0, effectiveAccessSeconds),
                       gemsEarned,
                       firstLoginAt: e.firstLoginAt ?? firstLoginAt,
+                      pilotEquipped,
                     }
                   : e
               )
@@ -1093,6 +1124,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     vocabMap,
     quizResults,
     gemBreakdown.totalEarned,
+    hangarState.equipped,
     notifyQuotaExceeded,
   ]);
 

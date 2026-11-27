@@ -551,6 +551,10 @@
           "format": "date-time",
           "description": "Timestamp of the learner's very first sign-in to the application (immutable once set)."
         },
+        "pilotEquipped": {
+          "type": "object",
+          "description": "PII-free synced 3D Pilot gear and aircraft IDs (helmet, goggles, suit, scarf, backpack, companion, aircraft) for public 3D inspection on the leaderboard."
+        },
         "isPublic": {
           "type": "boolean"
         },
@@ -1029,6 +1033,289 @@
         "bonusGems",
         "updatedAt"
       ]
+    },
+    "ToeicGroup": {
+      "title": "ToeicGroup",
+      "description": "PII-free TOEIC small study group for collaborative vocabulary sharing and real-time quiz battles.",
+      "type": "object",
+      "properties": {
+        "groupId": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "inviteCode": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 10,
+          "pattern": "^[A-Z0-9]+$"
+        },
+        "targetScore": {
+          "type": "number",
+          "description": "Target TOEIC score (450 to 990)."
+        },
+        "maxMembers": {
+          "type": "number",
+          "description": "Maximum member capacity (2 to 12)."
+        },
+        "creatorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "creatorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Bounded list of current member UIDs (1 to 12)."
+        },
+        "members": {
+          "type": "object",
+          "description": "Map of uid -> PII-free member profile summary (displayName, currentLevel, joinedAtMs)."
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "groupId",
+        "name",
+        "description",
+        "inviteCode",
+        "targetScore",
+        "maxMembers",
+        "creatorUid",
+        "creatorName",
+        "memberUids",
+        "members",
+        "isPublic",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ToeicGroupVocab": {
+      "title": "ToeicGroupVocab",
+      "description": "Real-time shared TOEIC vocabulary card posted inside a TOEIC study group.",
+      "type": "object",
+      "properties": {
+        "entryId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "groupId": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "word": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "ipa": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "partOfSpeech": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "meaningVi": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "exampleEn": {
+          "type": "string",
+          "maxLength": 320
+        },
+        "exampleVi": {
+          "type": "string",
+          "maxLength": 320
+        },
+        "noteVi": {
+          "type": "string",
+          "maxLength": 280
+        },
+        "topicLabel": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "sourceVocabId": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "sourceLessonId": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "sharedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sharedByName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "likedByUids": {
+          "type": "array",
+          "description": "Bounded list of member UIDs who liked this vocabulary card (max 12)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "entryId",
+        "groupId",
+        "word",
+        "ipa",
+        "partOfSpeech",
+        "meaningVi",
+        "exampleEn",
+        "exampleVi",
+        "noteVi",
+        "topicLabel",
+        "sourceVocabId",
+        "sourceLessonId",
+        "sharedByUid",
+        "sharedByName",
+        "likedByUids",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ToeicGroupChallenge": {
+      "title": "ToeicGroupChallenge",
+      "description": "Real-time synchronized TOEIC quiz battle room hosted inside a TOEIC study group.",
+      "type": "object",
+      "properties": {
+        "challengeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "groupId": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "scopeLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "hostUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "hostName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "status": {
+          "type": "string",
+          "enum": ["waiting", "active", "finished"]
+        },
+        "questionCount": {
+          "type": "number"
+        },
+        "timeLimitSeconds": {
+          "type": "number"
+        },
+        "questions": {
+          "type": "array",
+          "description": "Bounded list of 3 to 15 synchronized quiz question objects."
+        },
+        "participantUids": {
+          "type": "array",
+          "description": "Bounded list of 1 to 12 participating member UIDs."
+        },
+        "participants": {
+          "type": "object",
+          "description": "Map of uid -> real-time challenge progress and score."
+        },
+        "isQuickChallenge": {
+          "type": "boolean",
+          "description": "Whether this session was launched via the 10-question Quick Challenge flow."
+        },
+        "invitedUids": {
+          "type": "array",
+          "description": "Bounded list of up to 12 group member UIDs explicitly invited to this challenge."
+        },
+        "startedAtMs": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "challengeId",
+        "groupId",
+        "title",
+        "scopeLabel",
+        "hostUid",
+        "hostName",
+        "status",
+        "questionCount",
+        "timeLimitSeconds",
+        "questions",
+        "participantUids",
+        "participants",
+        "startedAtMs",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -1095,6 +1382,18 @@
     "/pilot_hangar/{userId}": {
       "schema": { "$ref": "#/entities/PilotHangar" },
       "description": "Per-user 3D Pilot avatar wardrobe and gem spending ledger isolated to owner and admins."
+    },
+    "/toeic_groups/{groupId}": {
+      "schema": { "$ref": "#/entities/ToeicGroup" },
+      "description": "PII-free TOEIC study groups with bounded member lists (max 12) and invite codes."
+    },
+    "/toeic_groups/{groupId}/shared_vocab/{entryId}": {
+      "schema": { "$ref": "#/entities/ToeicGroupVocab" },
+      "description": "Real-time shared TOEIC vocabulary entries scoped to group members."
+    },
+    "/toeic_groups/{groupId}/challenges/{challengeId}": {
+      "schema": { "$ref": "#/entities/ToeicGroupChallenge" },
+      "description": "Real-time synchronized TOEIC quiz battle sessions scoped to group members."
     }
   }
 }

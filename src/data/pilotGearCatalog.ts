@@ -545,6 +545,7 @@ const LEVEL_BASE_GEMS: Record<string, number> = {
   B2: 60,
   C1: 80,
   ESP: 75,
+  TOEIC: 65,
 };
 
 /**

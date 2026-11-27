@@ -62,12 +62,12 @@ export function DashboardPage({
         : 0;
 
     // Level progress breakdown for chart
-    const levelChartData = ['A1', 'A2', 'B1', 'B2', 'C1', 'ESP'].map((lvl) => {
+    const levelChartData = ['A1', 'A2', 'B1', 'B2', 'C1', 'ESP', 'TOEIC'].map((lvl) => {
       const levelLessons = lessons.filter((l) => l.levelId === lvl);
       const done = levelLessons.filter((l) => progressMap[l.lessonId]?.lessonCompleted).length;
       const pct = levelLessons.length > 0 ? Math.round((done / levelLessons.length) * 100) : 0;
       return {
-        level: lvl === 'ESP' ? 'ESP' : lvl,
+        level: lvl,
         completed: done,
         total: levelLessons.length,
         percent: pct,

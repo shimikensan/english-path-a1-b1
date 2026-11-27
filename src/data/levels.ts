@@ -14,6 +14,7 @@ export const PILOT_RANKS: Record<string, { stage: string; rankVi: string; callsi
   B2: { stage: 'Chặng 4 · Bay tầm cao', rankVi: 'Phi công Trưởng tuyến', callsign: 'Senior Captain' },
   C1: { stage: 'Chặng 5 · Làm chủ bầu trời', rankVi: 'Cơ trưởng Huấn luyện', callsign: 'Flight Commander' },
   ESP: { stage: 'Chặng 6 · Nhiệm vụ chuyên ngành', rankVi: 'Phi công Chuyên nhiệm', callsign: 'Mission Specialist' },
+  TOEIC: { stage: 'Chặng 7 · Luyện thi TOEIC Quốc tế', rankVi: 'Chuyên gia Thương mại', callsign: 'TOEIC Captain' },
 };
 
 export const AUTH_HERO_IMAGE = '/src/assets/images/pilot_boy_auth_hero_1795055571818.jpg';
@@ -80,6 +81,15 @@ export const DEFAULT_LEVELS: LevelDoc[] = [
     description:
       'Chặng chuyên sâu giúp học viên làm chủ 135 thuật ngữ kỹ thuật, mẫu câu tác chiến/nghiệp vụ, từ viết tắt chuyên ngành và mô phỏng tình huống thực tế.',
     order: 6,
+    isPublished: true,
+  },
+  {
+    levelId: 'TOEIC',
+    name: 'Luyện thi Tiếng Anh TOEIC',
+    subtitle: '44 chủ đề (1–44) · 616 từ vựng thông dụng · Word Family & Part 5',
+    description:
+      'Tổng hợp trọn bộ 44 chủ đề với 616 từ vựng TOEIC thông dụng nhất (từ Hợp đồng, Tiếp thị, Công nghệ, Nhân sự, Tài chính, Du lịch đến Y tế & Giao thông), tích lũy Ngọc kiến thức ở mọi hoạt động.',
+    order: 7,
     isPublished: true,
   },
 ];

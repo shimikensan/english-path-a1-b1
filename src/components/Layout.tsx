@@ -5,6 +5,7 @@ import {
   BookMarked,
   BookOpen,
   BookOpenText,
+  Briefcase,
   ClipboardCheck,
   Compass,
   Dumbbell,
@@ -66,6 +67,7 @@ const MAIN_NAV: NavItem[] = [
   { id: 'pilot-hangar', label: 'Phi công 3D', icon: Gem },
   { id: 'roadmap', label: 'Lộ trình học', icon: Compass },
   { id: 'specialized', label: 'Chuyên ngành', icon: Radar },
+  { id: 'toeic', label: 'Tiếng Anh TOEIC', icon: Briefcase },
   { id: 'ai-tutor', label: 'Nhắn tin AI', icon: MessageSquare },
   { id: 'english-club', label: 'Câu lạc bộ 3D', icon: Users },
   { id: 'vocabulary', label: 'Từ vựng', icon: BookOpen },
@@ -170,7 +172,10 @@ export function Layout({
             currentRoute === item.id ||
             (currentRoute === 'lesson' &&
               ((activeLessonLevelId === 'ESP' && item.id === 'specialized') ||
-                (activeLessonLevelId !== 'ESP' && item.id === 'roadmap')));
+                (activeLessonLevelId === 'TOEIC' && item.id === 'toeic') ||
+                (activeLessonLevelId !== 'ESP' &&
+                  activeLessonLevelId !== 'TOEIC' &&
+                  item.id === 'roadmap')));
           const isLeaderboardItem = item.id === 'leaderboard';
           const isImpacted = isLeaderboardItem && Boolean(leaderboardImpact);
           return (

@@ -1,7 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 
 export type LearnerCEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
-export type CEFRLevelId = LearnerCEFRLevel | 'ESP' | string;
+export type CEFRLevelId = LearnerCEFRLevel | 'ESP' | 'TOEIC' | string;
 
 export type PartOfSpeech =
   | 'noun'
@@ -213,6 +213,16 @@ export interface UserVocabularyDoc {
   updatedAt?: Timestamp | Date;
 }
 
+export interface LeaderboardPilotEquipped {
+  helmet: string;
+  goggles: string;
+  suit: string;
+  scarf: string;
+  backpack: string;
+  companion: string;
+  aircraft?: string;
+}
+
 export interface LeaderboardEntryDoc {
   uid: string;
   displayName: string;
@@ -226,6 +236,7 @@ export interface LeaderboardEntryDoc {
   gemsEarned?: number;
   totalAccessSeconds?: number;
   firstLoginAt?: Timestamp | Date;
+  pilotEquipped?: LeaderboardPilotEquipped;
   isPublic: boolean;
   updatedAt?: Timestamp | Date;
 }
@@ -393,11 +404,96 @@ export interface PilotHangarDoc {
   updatedAt: unknown;
 }
 
+export interface ToeicGroupMemberInfo {
+  uid: string;
+  displayName: string;
+  currentLevel: LearnerCEFRLevel;
+  joinedAtMs: number;
+}
+
+export interface ToeicGroupDoc {
+  groupId: string;
+  name: string;
+  description: string;
+  inviteCode: string;
+  targetScore: number;
+  maxMembers: number;
+  creatorUid: string;
+  creatorName: string;
+  memberUids: string[];
+  members: Record<string, ToeicGroupMemberInfo>;
+  isPublic: boolean;
+  createdAt?: Timestamp | Date;
+  updatedAt?: Timestamp | Date;
+}
+
+export interface ToeicGroupVocabDoc {
+  entryId: string;
+  groupId: string;
+  word: string;
+  ipa: string;
+  partOfSpeech: string;
+  meaningVi: string;
+  exampleEn: string;
+  exampleVi: string;
+  noteVi: string;
+  topicLabel: string;
+  sourceVocabId: string;
+  sourceLessonId: string;
+  sharedByUid: string;
+  sharedByName: string;
+  likedByUids: string[];
+  createdAt?: Timestamp | Date;
+  updatedAt?: Timestamp | Date;
+}
+
+export interface ToeicChallengeQuestion {
+  id: string;
+  prompt: string;
+  options: [string, string, string, string];
+  correctIndex: number;
+  explanationVi: string;
+}
+
+export interface ToeicChallengeParticipant {
+  uid: string;
+  displayName: string;
+  ready: boolean;
+  score: number;
+  correctCount: number;
+  answeredCount: number;
+  finished: boolean;
+  finishedAtMs: number;
+}
+
+export type ToeicChallengeStatus = 'waiting' | 'active' | 'finished';
+
+export interface ToeicGroupChallengeDoc {
+  challengeId: string;
+  groupId: string;
+  title: string;
+  scopeLabel: string;
+  hostUid: string;
+  hostName: string;
+  status: ToeicChallengeStatus;
+  questionCount: number;
+  timeLimitSeconds: number;
+  questions: ToeicChallengeQuestion[];
+  participantUids: string[];
+  participants: Record<string, ToeicChallengeParticipant>;
+  isQuickChallenge?: boolean;
+  invitedUids?: string[];
+  startedAtMs: number;
+  createdAt?: Timestamp | Date;
+  updatedAt?: Timestamp | Date;
+}
+
 export type AppRoute =
   | 'dashboard'
   | 'pilot-hangar'
   | 'roadmap'
   | 'specialized'
+  | 'toeic'
   | 'ai-tutor'
   | 'english-club'
   | 'vocabulary'

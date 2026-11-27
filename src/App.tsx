@@ -38,6 +38,7 @@ import { RoadmapPage } from './pages/RoadmapPage';
 import { SavedWordsPage } from './pages/SavedWordsPage';
 import { SpecializedHubPage } from './pages/SpecializedHubPage';
 import { StoriesPage } from './pages/StoriesPage';
+import { ToeicHubPage } from './pages/ToeicHubPage';
 import { VocabGamesPage } from './pages/VocabGamesPage';
 import { VocabularyHubPage } from './pages/VocabularyHubPage';
 import type { AppRoute, LessonTab } from './types';
@@ -55,6 +56,7 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   'pilot-hangar': 'Hangar Phi công 3D & Kho Ngọc',
   roadmap: 'Đường bay CEFR A1–C1 & Chuyên ngành',
   specialized: 'Tiếng Anh Chuyên ngành (ESP)',
+  toeic: 'Luyện thi Tiếng Anh TOEIC',
   'ai-tutor': 'Nhắn tin tiếng Anh với AI',
   'english-club': 'Câu lạc bộ Tiếng Anh 3D',
   vocabulary: 'Kho từ vựng',
@@ -166,7 +168,8 @@ function AppShell() {
         nextRoute === 'english-club' ||
         nextRoute === 'reading' ||
         nextRoute === 'stories' ||
-        nextRoute === 'games'
+        nextRoute === 'games' ||
+        nextRoute === 'toeic'
       ) {
         recordStudyActivity();
       }
@@ -206,6 +209,7 @@ function AppShell() {
       'reading',
       'stories',
       'games',
+      'toeic',
     ]);
 
     const checkAndNotifyInactivity = () => {
@@ -433,6 +437,9 @@ function AppShell() {
             {route === 'specialized' && (
               <SpecializedHubPage onOpenLesson={(id, tab) => handleOpenLesson(id, tab ?? 'vocabulary')} />
             )}
+            {route === 'toeic' && (
+              <ToeicHubPage onOpenLesson={(id, tab) => handleOpenLesson(id, tab ?? 'vocabulary')} />
+            )}
             {route === 'ai-tutor' && <AITutorPage />}
             {route === 'english-club' && <EnglishClubPage onNavigate={handleNavigate} />}
             {route === 'vocabulary' && (
@@ -468,7 +475,13 @@ function AppShell() {
                   if (focusMode) {
                     handleExitFocusMode();
                   } else {
-                    handleNavigate(activeLesson?.levelId === 'ESP' ? 'specialized' : 'roadmap');
+                    handleNavigate(
+                      activeLesson?.levelId === 'ESP'
+                        ? 'specialized'
+                        : activeLesson?.levelId === 'TOEIC'
+                          ? 'toeic'
+                          : 'roadmap'
+                    );
                   }
                 }}
                 onOpenLesson={(id) => handleOpenLesson(id, 'vocabulary')}

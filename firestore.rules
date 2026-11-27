@@ -229,7 +229,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'uid', 'displayName', 'currentLevel', 'completedLessons', 'totalLessons',
           'completionPercent', 'learnedVocabCount', 'averageQuizScore', 'streakDays',
-          'gemsEarned', 'totalAccessSeconds', 'firstLoginAt', 'isPublic', 'updatedAt'
+          'gemsEarned', 'totalAccessSeconds', 'firstLoginAt', 'pilotEquipped', 'isPublic', 'updatedAt'
         ])
         && isValidId(data.uid)
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
@@ -243,6 +243,18 @@ service cloud.firestore {
         && (!('gemsEarned' in data) || (data.gemsEarned is number && data.gemsEarned >= 0 && data.gemsEarned <= 10000000))
         && (!('totalAccessSeconds' in data) || (data.totalAccessSeconds is number && data.totalAccessSeconds >= 0 && data.totalAccessSeconds <= 315360000))
         && (!('firstLoginAt' in data) || data.firstLoginAt is timestamp)
+        && (!('pilotEquipped' in data) || (
+          data.pilotEquipped is map
+          && data.pilotEquipped.keys().hasOnly(['helmet', 'goggles', 'suit', 'scarf', 'backpack', 'companion', 'aircraft'])
+          && data.pilotEquipped.keys().hasAll(['helmet', 'goggles', 'suit', 'scarf', 'backpack', 'companion'])
+          && isValidId(data.pilotEquipped.helmet)
+          && isValidId(data.pilotEquipped.goggles)
+          && isValidId(data.pilotEquipped.suit)
+          && isValidId(data.pilotEquipped.scarf)
+          && isValidId(data.pilotEquipped.backpack)
+          && isValidId(data.pilotEquipped.companion)
+          && (!('aircraft' in data.pilotEquipped) || isValidId(data.pilotEquipped.aircraft))
+        ))
         && data.isPublic is bool
         && data.updatedAt is timestamp;
     }
@@ -429,6 +441,120 @@ service cloud.firestore {
         && (!('aircraft' in data.equipped) || isValidId(data.equipped.aircraft))
         && data.spentGems is int && data.spentGems >= 0 && data.spentGems <= 1000000
         && data.bonusGems is int && data.bonusGems >= 0 && data.bonusGems <= 1000000
+        && data.updatedAt is timestamp;
+    }
+
+    function isToeicGroupMember(groupId) {
+      return isSignedIn()
+        && isValidId(groupId)
+        && exists(/databases/$(database)/documents/toeic_groups/$(groupId))
+        && request.auth.uid in get(/databases/$(database)/documents/toeic_groups/$(groupId)).data.memberUids;
+    }
+
+    function isToeicGroupCreator(groupId) {
+      return isSignedIn()
+        && isValidId(groupId)
+        && exists(/databases/$(database)/documents/toeic_groups/$(groupId))
+        && get(/databases/$(database)/documents/toeic_groups/$(groupId)).data.creatorUid == request.auth.uid;
+    }
+
+    function isValidToeicGroup(data) {
+      return data.keys().hasAll([
+          'groupId', 'name', 'description', 'inviteCode', 'targetScore',
+          'maxMembers', 'creatorUid', 'creatorName', 'memberUids', 'members',
+          'isPublic', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'groupId', 'name', 'description', 'inviteCode', 'targetScore',
+          'maxMembers', 'creatorUid', 'creatorName', 'memberUids', 'members',
+          'isPublic', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.groupId)
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 80
+        && data.description is string && data.description.size() <= 240
+        && data.inviteCode is string && data.inviteCode.size() >= 6 && data.inviteCode.size() <= 10
+        && data.inviteCode.matches('^[A-Z0-9]+$')
+        && data.targetScore is number && data.targetScore >= 450 && data.targetScore <= 990
+        && data.maxMembers is int && data.maxMembers >= 2 && data.maxMembers <= 12
+        && isValidId(data.creatorUid)
+        && data.creatorName is string && data.creatorName.size() >= 1 && data.creatorName.size() <= 100
+        && data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 12
+        && data.memberUids[0] is string
+        && data.members is map && data.members.size() >= 1 && data.members.size() <= 12
+        && data.memberUids.size() == data.members.size()
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidToeicGroupVocab(data) {
+      return data.keys().hasAll([
+          'entryId', 'groupId', 'word', 'ipa', 'partOfSpeech', 'meaningVi',
+          'exampleEn', 'exampleVi', 'noteVi', 'topicLabel', 'sourceVocabId',
+          'sourceLessonId', 'sharedByUid', 'sharedByName', 'likedByUids',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'entryId', 'groupId', 'word', 'ipa', 'partOfSpeech', 'meaningVi',
+          'exampleEn', 'exampleVi', 'noteVi', 'topicLabel', 'sourceVocabId',
+          'sourceLessonId', 'sharedByUid', 'sharedByName', 'likedByUids',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.entryId)
+        && isValidId(data.groupId)
+        && data.word is string && data.word.size() >= 1 && data.word.size() <= 80
+        && data.ipa is string && data.ipa.size() <= 80
+        && data.partOfSpeech is string && data.partOfSpeech.size() >= 1 && data.partOfSpeech.size() <= 30
+        && data.meaningVi is string && data.meaningVi.size() >= 1 && data.meaningVi.size() <= 240
+        && data.exampleEn is string && data.exampleEn.size() <= 320
+        && data.exampleVi is string && data.exampleVi.size() <= 320
+        && data.noteVi is string && data.noteVi.size() <= 280
+        && data.topicLabel is string && data.topicLabel.size() <= 100
+        && data.sourceVocabId is string && data.sourceVocabId.size() <= 80
+        && data.sourceLessonId is string && data.sourceLessonId.size() <= 80
+        && isValidId(data.sharedByUid)
+        && data.sharedByName is string && data.sharedByName.size() >= 1 && data.sharedByName.size() <= 100
+        && data.likedByUids is list && data.likedByUids.size() <= 12
+        && (data.likedByUids.size() == 0 || data.likedByUids[0] is string)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidToeicGroupChallenge(data) {
+      return data.keys().hasAll([
+          'challengeId', 'groupId', 'title', 'scopeLabel', 'hostUid', 'hostName',
+          'status', 'questionCount', 'timeLimitSeconds', 'questions',
+          'participantUids', 'participants', 'startedAtMs', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'challengeId', 'groupId', 'title', 'scopeLabel', 'hostUid', 'hostName',
+          'status', 'questionCount', 'timeLimitSeconds', 'questions',
+          'participantUids', 'participants', 'isQuickChallenge', 'invitedUids',
+          'startedAtMs', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.challengeId)
+        && isValidId(data.groupId)
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 100
+        && data.scopeLabel is string && data.scopeLabel.size() >= 1 && data.scopeLabel.size() <= 120
+        && isValidId(data.hostUid)
+        && data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 100
+        && data.status is string && data.status in ['waiting', 'active', 'finished']
+        && data.questionCount is int && data.questionCount >= 3 && data.questionCount <= 15
+        && data.timeLimitSeconds is int && data.timeLimitSeconds >= 30 && data.timeLimitSeconds <= 600
+        && data.questions is list && data.questions.size() == data.questionCount
+        && data.questions[0] is map
+        && data.participantUids is list && data.participantUids.size() >= 1 && data.participantUids.size() <= 12
+        && data.participantUids[0] is string
+        && data.participants is map && data.participants.size() >= 1 && data.participants.size() <= 12
+        && data.participantUids.size() == data.participants.size()
+        && (!('isQuickChallenge' in data) || data.isQuickChallenge is bool)
+        && (!('invitedUids' in data) || (
+          data.invitedUids is list
+          && data.invitedUids.size() <= 12
+          && (data.invitedUids.size() == 0 || data.invitedUids[0] is string)
+        ))
+        && data.startedAtMs is number && data.startedAtMs >= 0
+        && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
 
@@ -701,7 +827,7 @@ service cloud.firestore {
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'displayName', 'currentLevel', 'completedLessons', 'totalLessons',
               'completionPercent', 'learnedVocabCount', 'averageQuizScore',
-              'streakDays', 'gemsEarned', 'totalAccessSeconds', 'firstLoginAt', 'isPublic', 'updatedAt'
+              'streakDays', 'gemsEarned', 'totalAccessSeconds', 'firstLoginAt', 'pilotEquipped', 'isPublic', 'updatedAt'
             ])
           )
           || isAdmin()
@@ -862,6 +988,250 @@ service cloud.firestore {
           'ownedItemIds', 'equipped', 'spentGems', 'bonusGems', 'updatedAt'
         ]);
       allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // --- Collection: toeic_groups (PII-Free TOEIC Study Groups & Live Battles) ---
+    match /toeic_groups/{groupId} {
+      allow get: if isValidId(groupId) && isSignedIn();
+      allow list: if isAdmin() || (
+        isSignedIn() && (
+          existing().isPublic == true
+          || request.auth.uid in existing().memberUids
+        )
+      );
+      allow create: if isVerifiedUser()
+        && !isRevokedUser()
+        && isValidId(groupId)
+        && isValidToeicGroup(incoming())
+        && incoming().groupId == groupId
+        && incoming().creatorUid == request.auth.uid
+        && incoming().memberUids.size() == 1
+        && request.auth.uid in incoming().memberUids
+        && incoming().members.keys().hasOnly([request.auth.uid])
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerifiedUser()
+        && !isRevokedUser()
+        && isValidId(groupId)
+        && isValidToeicGroup(incoming())
+        && incoming().groupId == existing().groupId
+        && incoming().creatorUid == existing().creatorUid
+        && incoming().inviteCode == existing().inviteCode
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          // Action 1: Creator updates group settings
+          || (
+            existing().creatorUid == request.auth.uid
+            && request.auth.uid in existing().memberUids
+            && incoming().maxMembers >= existing().memberUids.size()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'description', 'targetScore', 'maxMembers', 'isPublic', 'updatedAt'
+            ])
+          )
+          // Action 2: Verified learner joins group (adds only self, cannot alter other members)
+          || (
+            !(request.auth.uid in existing().memberUids)
+            && existing().memberUids.size() < existing().maxMembers
+            && request.auth.uid in incoming().memberUids
+            && incoming().memberUids.size() == existing().memberUids.size() + 1
+            && incoming().memberUids.hasAll(existing().memberUids)
+            && incoming().members.diff(existing().members).affectedKeys().hasOnly([request.auth.uid])
+            && request.auth.uid in incoming().members
+            && incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'members', 'updatedAt'])
+          )
+          // Action 3: Non-creator member leaves group (removes only self, cannot alter other members)
+          || (
+            request.auth.uid in existing().memberUids
+            && existing().creatorUid != request.auth.uid
+            && !(request.auth.uid in incoming().memberUids)
+            && incoming().memberUids.size() == existing().memberUids.size() - 1
+            && existing().memberUids.hasAll(incoming().memberUids)
+            && incoming().members.diff(existing().members).affectedKeys().hasOnly([request.auth.uid])
+            && !(request.auth.uid in incoming().members)
+            && incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'members', 'updatedAt'])
+          )
+          // Action 4: Creator removes another member
+          || (
+            existing().creatorUid == request.auth.uid
+            && request.auth.uid in incoming().memberUids
+            && incoming().memberUids.size() == existing().memberUids.size() - 1
+            && existing().memberUids.hasAll(incoming().memberUids)
+            && existing().members.keys().hasAll(incoming().members.keys())
+            && incoming().members.size() == existing().members.size() - 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'members', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(groupId) && (
+        isAdmin()
+        || (isVerifiedUser() && !isRevokedUser() && existing().creatorUid == request.auth.uid)
+      );
+
+      // Subcollection: shared_vocab (Real-Time Shared TOEIC Vocabulary)
+      match /shared_vocab/{entryId} {
+        allow get: if isValidId(groupId) && isValidId(entryId) && (isAdmin() || isToeicGroupMember(groupId));
+        allow list: if isAdmin() || isToeicGroupMember(groupId);
+        allow create: if isVerifiedUser()
+          && !isRevokedUser()
+          && isValidId(groupId)
+          && isValidId(entryId)
+          && isValidToeicGroupVocab(incoming())
+          && incoming().entryId == entryId
+          && incoming().groupId == groupId
+          && incoming().sharedByUid == request.auth.uid
+          && incoming().likedByUids.size() == 0
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && isToeicGroupMember(groupId);
+        allow update: if isVerifiedUser()
+          && !isRevokedUser()
+          && isValidId(groupId)
+          && isValidId(entryId)
+          && isValidToeicGroupVocab(incoming())
+          && incoming().entryId == existing().entryId
+          && incoming().groupId == existing().groupId
+          && incoming().sharedByUid == existing().sharedByUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin()
+            // Action 1: Group member toggles ONLY their own UID in likedByUids
+            || (
+              isToeicGroupMember(groupId)
+              && incoming().diff(existing()).affectedKeys().hasOnly(['likedByUids', 'updatedAt'])
+              && (
+                (
+                  !(request.auth.uid in existing().likedByUids)
+                  && request.auth.uid in incoming().likedByUids
+                  && incoming().likedByUids.size() == existing().likedByUids.size() + 1
+                  && incoming().likedByUids.hasAll(existing().likedByUids)
+                )
+                || (
+                  request.auth.uid in existing().likedByUids
+                  && !(request.auth.uid in incoming().likedByUids)
+                  && incoming().likedByUids.size() == existing().likedByUids.size() - 1
+                  && existing().likedByUids.hasAll(incoming().likedByUids)
+                )
+              )
+            )
+            // Action 2: Author updates note or examples
+            || (
+              existing().sharedByUid == request.auth.uid
+              && isToeicGroupMember(groupId)
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'noteVi', 'meaningVi', 'exampleEn', 'exampleVi', 'updatedAt'
+              ])
+            )
+          );
+        allow delete: if isValidId(groupId) && isValidId(entryId) && (
+          isAdmin()
+          || (
+            isVerifiedUser()
+            && !isRevokedUser()
+            && (
+              (existing().sharedByUid == request.auth.uid && isToeicGroupMember(groupId))
+              || isToeicGroupCreator(groupId)
+            )
+          )
+        );
+      }
+
+      // Subcollection: challenges (Real-Time Synchronized TOEIC Quiz Battles)
+      match /challenges/{challengeId} {
+        allow get: if isValidId(groupId) && isValidId(challengeId) && (isAdmin() || isToeicGroupMember(groupId));
+        allow list: if isAdmin() || isToeicGroupMember(groupId);
+        allow create: if isVerifiedUser()
+          && !isRevokedUser()
+          && isValidId(groupId)
+          && isValidId(challengeId)
+          && isValidToeicGroupChallenge(incoming())
+          && incoming().challengeId == challengeId
+          && incoming().groupId == groupId
+          && incoming().hostUid == request.auth.uid
+          && incoming().status == 'waiting'
+          && incoming().startedAtMs == 0
+          && incoming().participantUids.size() == 1
+          && request.auth.uid in incoming().participantUids
+          && incoming().participants.keys().hasOnly([request.auth.uid])
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && isToeicGroupMember(groupId);
+        allow update: if isVerifiedUser()
+          && !isRevokedUser()
+          && isValidId(groupId)
+          && isValidId(challengeId)
+          && isValidToeicGroupChallenge(incoming())
+          && incoming().challengeId == existing().challengeId
+          && incoming().groupId == existing().groupId
+          && incoming().hostUid == existing().hostUid
+          && incoming().hostName == existing().hostName
+          && incoming().questionCount == existing().questionCount
+          && incoming().timeLimitSeconds == existing().timeLimitSeconds
+          && !('questions' in incoming().diff(existing()).affectedKeys())
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin()
+            // Action 1: Group member joins waiting or active challenge (adds only self)
+            || (
+              existing().status != 'finished'
+              && isToeicGroupMember(groupId)
+              && !(request.auth.uid in existing().participantUids)
+              && request.auth.uid in incoming().participantUids
+              && incoming().participantUids.size() == existing().participantUids.size() + 1
+              && incoming().participantUids.hasAll(existing().participantUids)
+              && incoming().participants.diff(existing().participants).affectedKeys().hasOnly([request.auth.uid])
+              && request.auth.uid in incoming().participants
+              && incoming().diff(existing()).affectedKeys().hasOnly(['participantUids', 'participants', 'updatedAt'])
+            )
+            // Action 2: Host starts the live quiz battle (waiting -> active)
+            || (
+              existing().status == 'waiting'
+              && existing().hostUid == request.auth.uid
+              && isToeicGroupMember(groupId)
+              && incoming().status == 'active'
+              && incoming().startedAtMs > 0
+              && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'startedAtMs', 'updatedAt'])
+            )
+            // Action 3: Participant updates ONLY their own progress/score/ready state
+            || (
+              existing().status != 'finished'
+              && isToeicGroupMember(groupId)
+              && request.auth.uid in existing().participantUids
+              && incoming().participants.keys().hasAll(existing().participants.keys())
+              && incoming().participants.keys().hasOnly(existing().participants.keys())
+              && incoming().participants.diff(existing().participants).affectedKeys().hasOnly([request.auth.uid])
+              && incoming().diff(existing()).affectedKeys().hasOnly(['participants', 'updatedAt'])
+            )
+            // Action 4: Host or finishing participant marks active challenge finished (terminal lock)
+            || (
+              existing().status == 'active'
+              && isToeicGroupMember(groupId)
+              && request.auth.uid in existing().participantUids
+              && incoming().status == 'finished'
+              && incoming().participants.keys().hasAll(existing().participants.keys())
+              && incoming().participants.keys().hasOnly(existing().participants.keys())
+              && (
+                incoming().participants == existing().participants
+                || incoming().participants.diff(existing().participants).affectedKeys().hasOnly([request.auth.uid])
+              )
+              && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'participants', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(groupId) && isValidId(challengeId) && (
+          isAdmin()
+          || (
+            isVerifiedUser()
+            && !isRevokedUser()
+            && (
+              (existing().hostUid == request.auth.uid && isToeicGroupMember(groupId))
+              || isToeicGroupCreator(groupId)
+            )
+          )
+        );
+      }
     }
   }
 }
