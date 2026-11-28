@@ -67,6 +67,32 @@ export function useCockpitAudio(): {
   };
 }
 
+let unlockListenersAttached = false;
+
+export function unlockCockpitAudio(): void {
+  if (typeof window === 'undefined') return;
+  const ctx = getAudioContext();
+  if (ctx && ctx.state === 'suspended') {
+    void ctx.resume().catch(() => {});
+  }
+}
+
+function ensureAudioUnlockListeners(): void {
+  if (typeof window === 'undefined' || unlockListenersAttached) return;
+  unlockListenersAttached = true;
+  const handleGesture = () => {
+    unlockCockpitAudio();
+    if (cachedContext && cachedContext.state === 'running') {
+      window.removeEventListener('pointerdown', handleGesture, true);
+      window.removeEventListener('keydown', handleGesture, true);
+    }
+  };
+  window.addEventListener('pointerdown', handleGesture, true);
+  window.addEventListener('keydown', handleGesture, true);
+}
+
+ensureAudioUnlockListeners();
+
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -232,31 +258,156 @@ export function playCockpitToggleBeep(): void {
   ]);
 }
 
+let lastChallengeChimeAt = 0;
+const recentChallengeChimes = new Map<string, number>();
+
 /**
- * Crisp 3-pulse cockpit radar alert played when a real-time TOEIC Quick Challenge invite arrives.
+ * Distinct, bright push-notification radar bell chime played when a real-time
+ * TOEIC Quick Challenge invitation arrives from a study group member.
+ * Includes built-in dedupe so global & in-page listeners never double-fire.
  */
-export function playChallengeInviteChime(): void {
+export function playChallengeInviteChime(options?: {
+  forcePlay?: boolean;
+  challengeId?: string;
+}): void {
+  if (!options?.forcePlay && !audioEnabledState) return;
+
+  const nowMs = Date.now();
+  if (!options?.forcePlay) {
+    if (options?.challengeId) {
+      const prevForId = recentChallengeChimes.get(options.challengeId) ?? 0;
+      if (nowMs - prevForId < 2500) return;
+      recentChallengeChimes.set(options.challengeId, nowMs);
+      if (recentChallengeChimes.size > 40) {
+        recentChallengeChimes.clear();
+        recentChallengeChimes.set(options.challengeId, nowMs);
+      }
+    }
+    if (nowMs - lastChallengeChimeAt < 850) return;
+  }
+  lastChallengeChimeAt = nowMs;
+
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime + 0.015;
+
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-16, now);
+    compressor.knee.setValueAtTime(14, now);
+    compressor.ratio.setValueAtTime(5, now);
+    compressor.attack.setValueAtTime(0.004, now);
+    compressor.release.setValueAtTime(0.14, now);
+
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.95, now);
+    compressor.connect(masterGain);
+    masterGain.connect(ctx.destination);
+
+    // Helper: crisp crystal push-notification bell with harmonic shimmer
+    const playBell = (freq: number, delaySec: number, durationSec: number, peakGain: number) => {
+      const tStart = now + delaySec;
+      const tEnd = tStart + durationSec;
+
+      const oscMain = ctx.createOscillator();
+      const oscHarm = ctx.createOscillator();
+      const envMain = ctx.createGain();
+      const envHarm = ctx.createGain();
+
+      oscMain.type = 'sine';
+      oscMain.frequency.setValueAtTime(freq, tStart);
+
+      oscHarm.type = 'triangle';
+      oscHarm.frequency.setValueAtTime(freq * 2, tStart);
+
+      envMain.gain.setValueAtTime(0.0001, tStart);
+      envMain.gain.linearRampToValueAtTime(peakGain, tStart + 0.008);
+      envMain.gain.exponentialRampToValueAtTime(0.0001, tEnd);
+
+      envHarm.gain.setValueAtTime(0.0001, tStart);
+      envHarm.gain.linearRampToValueAtTime(peakGain * 0.28, tStart + 0.006);
+      envHarm.gain.exponentialRampToValueAtTime(0.0001, tStart + durationSec * 0.45);
+
+      oscMain.connect(envMain);
+      oscHarm.connect(envHarm);
+      envMain.connect(compressor);
+      envHarm.connect(compressor);
+
+      oscMain.start(tStart);
+      oscHarm.start(tStart);
+      oscMain.stop(tEnd + 0.02);
+      oscHarm.stop(tEnd + 0.02);
+    };
+
+    // Subtle tactile radar sub-ping for push-alert presence
+    const subOsc = ctx.createOscillator();
+    const subEnv = ctx.createGain();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(220, now);
+    subOsc.frequency.exponentialRampToValueAtTime(140, now + 0.11);
+    subEnv.gain.setValueAtTime(0.0001, now);
+    subEnv.gain.linearRampToValueAtTime(0.12, now + 0.008);
+    subEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+    subOsc.connect(subEnv);
+    subEnv.connect(compressor);
+    subOsc.start(now);
+    subOsc.stop(now + 0.15);
+
+    // Burst 1: Bright rising push chime (G5 -> C6 -> E6)
+    playBell(783.99, 0.0, 0.14, 0.14);
+    playBell(1046.5, 0.085, 0.16, 0.16);
+    playBell(1318.51, 0.17, 0.24, 0.17);
+
+    // Burst 2: Crisp push-notification double echo (C6 -> G6 sparkling tail)
+    playBell(1046.5, 0.34, 0.15, 0.13);
+    playBell(1567.98, 0.43, 0.36, 0.17);
+  } catch {
+    // Ignore Web Audio synthesis errors
+  }
+}
+
+/**
+ * Energetic ascending cockpit launch confirmation when accepting or launching a Quick Challenge.
+ */
+export function playChallengeAcceptedSfx(): void {
   playSequence([
     {
-      startFreq: 783.99, // G5
+      startFreq: 587.33, // D5
       delaySec: 0,
       durationSec: 0.075,
-      gain: 0.06,
-      type: 'sine',
-    },
-    {
-      startFreq: 1046.5, // C6
-      delaySec: 0.09,
-      durationSec: 0.075,
-      gain: 0.065,
-      type: 'sine',
-    },
-    {
-      startFreq: 1567.98, // G6
-      delaySec: 0.18,
-      durationSec: 0.14,
-      gain: 0.07,
+      gain: 0.08,
       type: 'triangle',
+    },
+    {
+      startFreq: 880, // A5
+      delaySec: 0.07,
+      durationSec: 0.085,
+      gain: 0.09,
+      type: 'sine',
+    },
+    {
+      startFreq: 1174.66, // D6
+      delaySec: 0.145,
+      durationSec: 0.18,
+      gain: 0.1,
+      type: 'sine',
+    },
+  ]);
+}
+
+/**
+ * Soft neutral descending tone when declining a Quick Challenge invite.
+ */
+export function playChallengeDeclinedSfx(): void {
+  playSequence([
+    {
+      startFreq: 440,
+      endFreq: 330,
+      delaySec: 0,
+      durationSec: 0.11,
+      gain: 0.055,
+      type: 'sine',
     },
   ]);
 }

@@ -33,6 +33,15 @@ const FLIGHT_PROFILES: Record<AircraftCategory, FlightProfile> = {
     times: [0, 0.35, 0.65, 1],
     trailAngle: -10,
   },
+  uav: {
+    x: ['-24vw', '32vw', '66vw', '122vw'],
+    y: ['18vh', '2vh', '-4vh', '-18vh'],
+    rotate: [-6, -4, -5, -8],
+    scale: [0.84, 1.16, 1.1, 0.9],
+    duration: 2.05,
+    times: [0, 0.36, 0.68, 1],
+    trailAngle: -9,
+  },
   civilian: {
     x: ['-26vw', '30vw', '68vw', '122vw'],
     y: ['26vh', '4vh', '-8vh', '-26vh'],
@@ -50,6 +59,15 @@ const FLIGHT_PROFILES: Record<AircraftCategory, FlightProfile> = {
     duration: 1.75,
     times: [0, 0.36, 0.62, 1],
     trailAngle: -10,
+  },
+  bomber: {
+    x: ['-28vw', '30vw', '64vw', '124vw'],
+    y: ['20vh', '2vh', '-6vh', '-22vh'],
+    rotate: [-10, -7, -6, -10],
+    scale: [0.82, 1.22, 1.16, 0.9],
+    duration: 2.2,
+    times: [0, 0.38, 0.68, 1],
+    trailAngle: -11,
   },
   spacecraft: {
     x: ['-24vw', '28vw', '66vw', '120vw'],
@@ -169,6 +187,71 @@ function AircraftVectorSilhouette({
         <path d="M106 64 L154 64 L118 86 L92 86 Z" fill="#CBD5E1" />
         <ellipse cx="122" cy="79" rx="14" ry="5.5" fill="#475569" />
         <ellipse cx="134" cy="79" rx="3" ry="5" fill={accentHex} />
+      </svg>
+    );
+  }
+
+  if (category === 'uav') {
+    return (
+      <svg
+        viewBox="0 0 250 110"
+        className="w-52 h-24 sm:w-64 sm:h-28 drop-shadow-[0_14px_24px_rgba(0,0,0,0.5)]"
+        aria-hidden="true"
+      >
+        {/* Spinning rear pusher prop */}
+        <motion.rect
+          x="32"
+          y="42"
+          width="5"
+          height="32"
+          rx="2.5"
+          fill="#E2E8F0"
+          animate={{ scaleY: [1, 0.25, 1], opacity: [0.95, 0.5, 0.95] }}
+          transition={{ duration: 0.12, repeat: Infinity, ease: 'linear' }}
+          style={{ transformOrigin: '34px 58px' }}
+        />
+        {/* V-Tail */}
+        <path d="M36 54 L58 30 L72 30 L56 54 Z" fill={accentHex} />
+        {/* Slender UAV fuselage + bulbous SATCOM dome */}
+        <path
+          d="M36 54 L168 48 C184 36, 212 38, 228 56 C220 66, 198 68, 170 66 L36 62 Z"
+          fill={swatchHex}
+        />
+        {/* Under-chin targeting sensor */}
+        <circle cx="196" cy="68" r="6" fill="#0F172A" />
+        <circle cx="199" cy="68" r="2.5" fill="#38BDF8" />
+        {/* High-aspect swept wing + underwing pod */}
+        <path d="M98 58 L142 58 L108 92 L88 90 Z" fill={swatchHex} stroke={accentHex} strokeWidth="1.5" />
+        <rect x="114" y="69" width="28" height="4.5" rx="2" fill="#0F172A" />
+      </svg>
+    );
+  }
+
+  if (category === 'bomber') {
+    return (
+      <svg
+        viewBox="0 0 260 115"
+        className="w-56 h-24 sm:w-72 sm:h-28 drop-shadow-[0_16px_28px_rgba(0,0,0,0.58)]"
+        aria-hidden="true"
+      >
+        {/* Stealth heat exhaust trail */}
+        <motion.path
+          d="M66 56 L18 60 L66 64 Z"
+          fill="#FB923C"
+          animate={{ scaleX: [0.8, 1.25, 0.9], opacity: [0.75, 1, 0.7] }}
+          transition={{ duration: 0.18, repeat: Infinity }}
+          style={{ transformOrigin: '66px 60px' }}
+        />
+        {/* Iconic flying-wing B-2 / strategic bomber profile */}
+        <path
+          d="M32 60 L122 34 L240 58 L146 72 L112 88 L64 70 Z"
+          fill={swatchHex}
+          stroke={accentHex}
+          strokeWidth="2"
+        />
+        {/* Blended dorsal cockpit dome */}
+        <path d="M138 42 C164 38, 194 44, 212 54 L142 54 Z" fill={accentHex} fillOpacity="0.4" />
+        <path d="M174 44 L200 49 L194 54 L172 52 Z" fill="#38BDF8" />
       </svg>
     );
   }

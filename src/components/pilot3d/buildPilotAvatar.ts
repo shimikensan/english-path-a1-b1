@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { EquippedPilotGear } from '../../data/pilotGearCatalog';
+import { buildAnimalCompanion, isAnimalCompanion } from './buildAnimalCompanion';
 
 export interface PilotRigHandles {
   root: THREE.Group;
@@ -12,6 +13,11 @@ export interface PilotRigHandles {
   scarfTail: THREE.Object3D | null;
   companionOrbit: THREE.Group | null;
   companionSpinner: THREE.Object3D | null;
+  companionGroundGroup: THREE.Group | null;
+  companionTail: THREE.Object3D | null;
+  companionWingLeft: THREE.Object3D | null;
+  companionWingRight: THREE.Object3D | null;
+  companionHead: THREE.Object3D | null;
   wingLeft: THREE.Object3D | null;
   wingRight: THREE.Object3D | null;
   jetFlameLeft: THREE.Object3D | null;
@@ -940,102 +946,126 @@ export function buildPilotAvatar(equipped: EquippedPilotGear, isSoftwareGl: bool
     }
   }
 
-  // ==================== 9. ORBITING 3D COMPANION ====================
+  // ==================== 9. ORBITING & GROUNDED 3D COMPANIONS ====================
   let companionOrbit: THREE.Group | null = null;
   let companionSpinner: THREE.Object3D | null = null;
+  let companionGroundGroup: THREE.Group | null = null;
+  let companionTail: THREE.Object3D | null = null;
+  let companionWingLeft: THREE.Object3D | null = null;
+  let companionWingRight: THREE.Object3D | null = null;
+  let companionHead: THREE.Object3D | null = null;
 
   if (equipped.companion !== 'companion_none') {
-    companionOrbit = new THREE.Group();
-    companionOrbit.position.set(0, 1.95, 0);
-    root.add(companionOrbit);
+    if (isAnimalCompanion(equipped.companion)) {
+      const animalResult = buildAnimalCompanion(equipped.companion, {
+        root,
+        trackGeo,
+        trackMat,
+        makeMesh,
+        goldMat,
+        darkMetalMat,
+        eyeWhiteMat,
+        eyeDarkMat,
+      });
+      companionOrbit = animalResult.companionOrbit;
+      companionGroundGroup = animalResult.companionGroundGroup;
+      companionTail = animalResult.companionTail;
+      companionWingLeft = animalResult.companionWingLeft;
+      companionWingRight = animalResult.companionWingRight;
+      companionHead = animalResult.companionHead;
+    } else {
+      companionOrbit = new THREE.Group();
+      companionOrbit.position.set(0, 1.78, 0);
+      root.add(companionOrbit);
 
-    const petRoot = new THREE.Group();
-    petRoot.position.set(1.08, 0.22, 0.15);
-    companionOrbit.add(petRoot);
+      const petRoot = new THREE.Group();
+      petRoot.position.set(1.08, 0.22, 0.15);
+      companionOrbit.add(petRoot);
 
-    if (equipped.companion === 'companion_biplane') {
-      const planeOrange = trackMat(
-        new THREE.MeshPhysicalMaterial({ color: 0xff6b00, roughness: 0.22, metalness: 0.2, clearcoat: 0.85 })
-      );
-      const fuselage = makeMesh(trackGeo(new THREE.CylinderGeometry(0.06, 0.035, 0.42, 14)), planeOrange);
-      fuselage.rotation.x = Math.PI / 2;
-      petRoot.add(fuselage);
+      if (equipped.companion === 'companion_biplane') {
+        const planeOrange = trackMat(
+          new THREE.MeshPhysicalMaterial({ color: 0xff6b00, roughness: 0.22, metalness: 0.2, clearcoat: 0.85 })
+        );
+        const fuselage = makeMesh(trackGeo(new THREE.CylinderGeometry(0.06, 0.035, 0.42, 14)), planeOrange);
+        fuselage.rotation.x = Math.PI / 2;
+        petRoot.add(fuselage);
 
-      const topWing = makeMesh(trackGeo(new THREE.BoxGeometry(0.46, 0.02, 0.12)), goldMat);
-      topWing.position.set(0, 0.08, 0.03);
-      petRoot.add(topWing);
+        const topWing = makeMesh(trackGeo(new THREE.BoxGeometry(0.46, 0.02, 0.12)), goldMat);
+        topWing.position.set(0, 0.08, 0.03);
+        petRoot.add(topWing);
 
-      const botWing = makeMesh(trackGeo(new THREE.BoxGeometry(0.42, 0.02, 0.11)), planeOrange);
-      botWing.position.set(0, -0.04, 0.03);
-      petRoot.add(botWing);
+        const botWing = makeMesh(trackGeo(new THREE.BoxGeometry(0.42, 0.02, 0.11)), planeOrange);
+        botWing.position.set(0, -0.04, 0.03);
+        petRoot.add(botWing);
 
-      const tail = makeMesh(trackGeo(new THREE.BoxGeometry(0.02, 0.12, 0.1)), goldMat);
-      tail.position.set(0, 0.06, -0.18);
-      petRoot.add(tail);
+        const tail = makeMesh(trackGeo(new THREE.BoxGeometry(0.02, 0.12, 0.1)), goldMat);
+        tail.position.set(0, 0.06, -0.18);
+        petRoot.add(tail);
 
-      const prop = makeMesh(trackGeo(new THREE.BoxGeometry(0.22, 0.026, 0.015)), chromeMat);
-      prop.position.set(0, 0, 0.23);
-      petRoot.add(prop);
-      companionSpinner = prop;
-    } else if (equipped.companion === 'companion_drone') {
-      const eyeGlow = trackMat(
-        new THREE.MeshStandardMaterial({
-          color: 0x22d3ee,
-          emissive: 0x06b6d4,
-          emissiveIntensity: 2.0,
-          roughness: 0.1,
-        })
-      );
-      const hull = makeMesh(trackGeo(new THREE.SphereGeometry(0.13, 18, 14)), darkMetalMat);
-      hull.scale.set(1.15, 0.75, 1.15);
-      petRoot.add(hull);
+        const prop = makeMesh(trackGeo(new THREE.BoxGeometry(0.22, 0.026, 0.015)), chromeMat);
+        prop.position.set(0, 0, 0.23);
+        petRoot.add(prop);
+        companionSpinner = prop;
+      } else if (equipped.companion === 'companion_drone') {
+        const eyeGlow = trackMat(
+          new THREE.MeshStandardMaterial({
+            color: 0x22d3ee,
+            emissive: 0x06b6d4,
+            emissiveIntensity: 2.0,
+            roughness: 0.1,
+          })
+        );
+        const hull = makeMesh(trackGeo(new THREE.SphereGeometry(0.13, 18, 14)), darkMetalMat);
+        hull.scale.set(1.15, 0.75, 1.15);
+        petRoot.add(hull);
 
-      const eye = makeMesh(trackGeo(new THREE.SphereGeometry(0.055, 14, 12)), eyeGlow, false, false);
-      eye.position.set(0, 0, 0.12);
-      petRoot.add(eye);
+        const eye = makeMesh(trackGeo(new THREE.SphereGeometry(0.055, 14, 12)), eyeGlow, false, false);
+        eye.position.set(0, 0, 0.12);
+        petRoot.add(eye);
 
-      const rotorGroup = new THREE.Group();
-      for (const [rx, rz] of [
-        [-0.18, -0.18],
-        [0.18, -0.18],
-        [-0.18, 0.18],
-        [0.18, 0.18],
-      ]) {
-        const arm = makeMesh(trackGeo(new THREE.BoxGeometry(0.22, 0.02, 0.025)), chromeMat);
-        arm.position.set(rx * 0.55, 0.03, rz * 0.55);
-        arm.rotation.y = Math.atan2(rz, rx);
-        petRoot.add(arm);
+        const rotorGroup = new THREE.Group();
+        for (const [rx, rz] of [
+          [-0.18, -0.18],
+          [0.18, -0.18],
+          [-0.18, 0.18],
+          [0.18, 0.18],
+        ]) {
+          const arm = makeMesh(trackGeo(new THREE.BoxGeometry(0.22, 0.02, 0.025)), chromeMat);
+          arm.position.set(rx * 0.55, 0.03, rz * 0.55);
+          arm.rotation.y = Math.atan2(rz, rx);
+          petRoot.add(arm);
 
-        const disc = makeMesh(trackGeo(new THREE.TorusGeometry(0.075, 0.012, 8, 16)), eyeGlow, false, false);
-        disc.rotation.x = Math.PI / 2;
-        disc.position.set(rx, 0.06, rz);
-        rotorGroup.add(disc);
+          const disc = makeMesh(trackGeo(new THREE.TorusGeometry(0.075, 0.012, 8, 16)), eyeGlow, false, false);
+          disc.rotation.x = Math.PI / 2;
+          disc.position.set(rx, 0.06, rz);
+          rotorGroup.add(disc);
+        }
+        petRoot.add(rotorGroup);
+        companionSpinner = rotorGroup;
+      } else if (equipped.companion === 'companion_crystal') {
+        const gemMat = trackMat(
+          new THREE.MeshPhysicalMaterial({
+            color: 0x0ea5e9,
+            emissive: 0x0284c7,
+            emissiveIntensity: 0.9,
+            roughness: 0.08,
+            metalness: 0.2,
+            clearcoat: 1.0,
+          })
+        );
+        const crystal = makeMesh(trackGeo(new THREE.OctahedronGeometry(0.15, 0)), gemMat, false, false);
+        crystal.scale.set(0.85, 1.35, 0.85);
+        petRoot.add(crystal);
+
+        const ringGroup = new THREE.Group();
+        const ring1 = makeMesh(trackGeo(new THREE.TorusGeometry(0.24, 0.015, 10, 28)), goldMat, false, false);
+        ring1.rotation.x = Math.PI / 3;
+        const ring2 = makeMesh(trackGeo(new THREE.TorusGeometry(0.29, 0.012, 10, 28)), chromeMat, false, false);
+        ring2.rotation.y = Math.PI / 3;
+        ringGroup.add(ring1, ring2);
+        petRoot.add(ringGroup);
+        companionSpinner = ringGroup;
       }
-      petRoot.add(rotorGroup);
-      companionSpinner = rotorGroup;
-    } else if (equipped.companion === 'companion_crystal') {
-      const gemMat = trackMat(
-        new THREE.MeshPhysicalMaterial({
-          color: 0x0ea5e9,
-          emissive: 0x0284c7,
-          emissiveIntensity: 0.9,
-          roughness: 0.08,
-          metalness: 0.2,
-          clearcoat: 1.0,
-        })
-      );
-      const crystal = makeMesh(trackGeo(new THREE.OctahedronGeometry(0.15, 0)), gemMat, false, false);
-      crystal.scale.set(0.85, 1.35, 0.85);
-      petRoot.add(crystal);
-
-      const ringGroup = new THREE.Group();
-      const ring1 = makeMesh(trackGeo(new THREE.TorusGeometry(0.24, 0.015, 10, 28)), goldMat, false, false);
-      ring1.rotation.x = Math.PI / 3;
-      const ring2 = makeMesh(trackGeo(new THREE.TorusGeometry(0.29, 0.012, 10, 28)), chromeMat, false, false);
-      ring2.rotation.y = Math.PI / 3;
-      ringGroup.add(ring1, ring2);
-      petRoot.add(ringGroup);
-      companionSpinner = ringGroup;
     }
   }
 
@@ -1050,6 +1080,11 @@ export function buildPilotAvatar(equipped: EquippedPilotGear, isSoftwareGl: bool
     scarfTail,
     companionOrbit,
     companionSpinner,
+    companionGroundGroup,
+    companionTail,
+    companionWingLeft,
+    companionWingRight,
+    companionHead,
     wingLeft,
     wingRight,
     jetFlameLeft,

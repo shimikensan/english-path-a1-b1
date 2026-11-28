@@ -543,11 +543,37 @@ export function Pilot3DCanvas({
         }
 
         if (rig.companionOrbit) {
-          rig.companionOrbit.rotation.y = elapsed * 0.72;
-          rig.companionOrbit.position.y = Math.sin(elapsed * 2.6) * 0.07;
+          rig.companionOrbit.rotation.y = elapsed * 0.78;
+          rig.companionOrbit.position.y = 1.72 + Math.sin(elapsed * 2.8) * 0.09;
         }
         if (rig.companionSpinner) {
           rig.companionSpinner.rotation.z = elapsed * 14;
+        }
+        if (rig.companionGroundGroup) {
+          const petHop =
+            celebrateTimerRef.current > 0
+              ? Math.abs(Math.sin(elapsed * 12)) * 0.13
+              : Math.abs(Math.sin(elapsed * 2.4)) * 0.012;
+          rig.companionGroundGroup.position.y = petHop;
+        }
+        if (rig.companionTail) {
+          if (rig.companionWingLeft && rig.companionWingRight) {
+            // Flying parrot tail pitch
+            rig.companionTail.rotation.x = Math.sin(elapsed * 7.5) * 0.14;
+          } else {
+            // Grounded animal cheerful tail wag / swish
+            rig.companionTail.rotation.y = Math.sin(elapsed * 6.8) * 0.34;
+            rig.companionTail.rotation.z = Math.sin(elapsed * 4.2) * 0.12;
+          }
+        }
+        if (rig.companionHead) {
+          rig.companionHead.rotation.y = Math.sin(elapsed * 1.5) * 0.16;
+          rig.companionHead.rotation.z = Math.sin(elapsed * 1.1) * 0.06;
+        }
+        if (rig.companionWingLeft && rig.companionWingRight) {
+          const flap = Math.sin(elapsed * 13.5) * 0.56;
+          rig.companionWingLeft.rotation.z = flap;
+          rig.companionWingRight.rotation.z = -flap;
         }
       }
 
@@ -561,6 +587,9 @@ export function Pilot3DCanvas({
         }
         if (craft.mainRotor) {
           craft.mainRotor.rotation.y = elapsed * 14.5;
+        }
+        if (craft.coaxialRotor) {
+          craft.coaxialRotor.rotation.y = -elapsed * 15.2;
         }
         if (craft.tailRotor) {
           craft.tailRotor.rotation.x = elapsed * 22;

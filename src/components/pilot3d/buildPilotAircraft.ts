@@ -1,9 +1,14 @@
 import * as THREE from 'three';
+import {
+  buildMilitaryFleetAircraft,
+  isMilitaryFleetAircraft,
+} from './buildMilitaryAircraft';
 
 export interface AircraftRigHandles {
   root: THREE.Group;
   bodyGroup: THREE.Group;
   mainRotor: THREE.Object3D | null;
+  coaxialRotor: THREE.Object3D | null;
   tailRotor: THREE.Object3D | null;
   propeller: THREE.Object3D | null;
   energyRing: THREE.Object3D | null;
@@ -61,6 +66,7 @@ export function buildPilotAircraft(
   const navLights: THREE.MeshStandardMaterial[] = [];
 
   let mainRotor: THREE.Object3D | null = null;
+  let coaxialRotor: THREE.Object3D | null = null;
   let tailRotor: THREE.Object3D | null = null;
   let propeller: THREE.Object3D | null = null;
   let energyRing: THREE.Object3D | null = null;
@@ -124,9 +130,35 @@ export function buildPilotAircraft(
   };
 
   // =========================================================================
+  // 0. EXPANDED US & RUSSIAN MILITARY FLEET (UAV, Bombers, Fighters, Coaxial Ka-52)
+  // =========================================================================
+  if (isMilitaryFleetAircraft(aircraftId)) {
+    const mil = buildMilitaryFleetAircraft(aircraftId, {
+      bodyGroup,
+      trackGeo,
+      trackMat,
+      makeMesh,
+      darkMetal,
+      chromeMetal,
+      rubberMat,
+      afterburners,
+      addNavPair,
+      makeSweptWingShape,
+      makeTailFinShape,
+    });
+    if (mil.handled) {
+      mainRotor = mil.mainRotor ?? null;
+      coaxialRotor = mil.coaxialRotor ?? null;
+      propeller = mil.propeller ?? null;
+      isHovering = mil.isHovering ?? false;
+      baseY = mil.baseY ?? 0;
+    }
+  }
+
+  // =========================================================================
   // 1. HELICOPTERS (H-120 Scout & Viper-9 Rescue)
   // =========================================================================
-  if (aircraftId === 'aircraft_heli_scout' || aircraftId === 'aircraft_heli_rescue') {
+  else if (aircraftId === 'aircraft_heli_scout' || aircraftId === 'aircraft_heli_rescue') {
     const isRescue = aircraftId === 'aircraft_heli_rescue';
     isHovering = true;
     baseY = 0.16;
@@ -936,6 +968,7 @@ export function buildPilotAircraft(
     root,
     bodyGroup,
     mainRotor,
+    coaxialRotor,
     tailRotor,
     propeller,
     energyRing,

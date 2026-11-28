@@ -294,7 +294,7 @@ export function LevelBadgeShowcase({ items, onStartRoadmap }: LevelBadgeShowcase
             Bộ sưu tập Huy hiệu Phi công
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Hoàn thành 100% bài học của từng cấp độ để mở khóa huy hiệu tương ứng. Huy hiệu bạn đạt được sẽ tự động hiển thị trên hồ sơ cá nhân và Bảng xếp hạng học viên.
+            Hoàn thành 100% bài học của từng cấp độ để mở khóa huy hiệu tương ứng. Huy hiệu bạn đạt được sẽ tự động hiển thị trên hồ sơ cá nhân của bạn.
           </p>
         </div>
 

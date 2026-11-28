@@ -32,6 +32,7 @@ import {
   UserPlus,
   Users,
   Volume2,
+  VolumeX,
   X,
   XCircle,
   Zap,
@@ -77,6 +78,12 @@ import type {
   ToeicGroupVocabDoc,
   VocabularyItem,
 } from '../types';
+import {
+  playChallengeAcceptedSfx,
+  playChallengeDeclinedSfx,
+  playChallengeInviteChime,
+  useCockpitAudio,
+} from '../utils/cockpitAudio';
 import { shuffleArray } from '../utils/helpers';
 import { speakEnglish, type SpeechAccent } from '../utils/speech';
 import {
@@ -356,10 +363,34 @@ export function ToeicStudyGroupsPanel({
     };
   }, [activeGroupId, user?.uid]);
 
+  const { audioEnabled, toggleAudio } = useCockpitAudio();
+  const notifiedInGroupChallengeIdsRef = useRef<Set<string>>(new Set());
+
   const selectedChallenge = useMemo(
     () => challenges.find((c) => c.challengeId === selectedChallengeId) ?? null,
     [challenges, selectedChallengeId]
   );
+
+  // Trigger push-notification audio alert inside TOEICHubPage whenever a teammate sends a Quick Challenge invite
+  useEffect(() => {
+    if (!activeGroupId || !user?.uid || challenges.length === 0) return;
+    let newlyArrivedId: string | null = null;
+    for (const ch of challenges) {
+      const isPendingForMe =
+        ch.status !== 'finished' &&
+        ch.hostUid !== user.uid &&
+        !ch.participantUids.includes(user.uid) &&
+        !(ch.declinedUids ?? []).includes(user.uid) &&
+        (Boolean(ch.invitedUids?.includes(user.uid)) || Boolean(ch.isQuickChallenge));
+      if (isPendingForMe && !notifiedInGroupChallengeIdsRef.current.has(ch.challengeId)) {
+        notifiedInGroupChallengeIdsRef.current.add(ch.challengeId);
+        if (!newlyArrivedId) newlyArrivedId = ch.challengeId;
+      }
+    }
+    if (newlyArrivedId) {
+      playChallengeInviteChime({ challengeId: newlyArrivedId });
+    }
+  }, [activeGroupId, challenges, user?.uid]);
 
   // Reset local quiz cursor when switching challenge rooms
   useEffect(() => {
@@ -800,6 +831,7 @@ export function ToeicStudyGroupsPanel({
       setShowQuickChallengeModal(false);
       setGroupSubTab('challenges');
       setSelectedChallengeId(newId);
+      playChallengeAcceptedSfx();
       addToast(
         'success',
         invitedCount > 0
@@ -820,6 +852,7 @@ export function ToeicStudyGroupsPanel({
       if (!challenge.participantUids.includes(userProfile.uid)) {
         await joinGroupChallenge(activeGroup.groupId, challenge, userProfile);
       }
+      playChallengeAcceptedSfx();
       setGroupSubTab('challenges');
       setSelectedChallengeId(challenge.challengeId);
       addToast('success', `Đã chấp nhận lời mời vào phòng "${challenge.title}"!`);
@@ -835,6 +868,7 @@ export function ToeicStudyGroupsPanel({
     setBusyChallengeAction(true);
     try {
       await declineGroupChallenge(activeGroup.groupId, challenge, userProfile.uid);
+      playChallengeDeclinedSfx();
       addToast('info', `Đã từ chối lời mời thách đấu từ ${challenge.hostName}.`);
     } catch (err) {
       addToast('error', err instanceof Error ? err.message : 'Không thể từ chối lời mời lúc này.');
@@ -1079,6 +1113,39 @@ export function ToeicStudyGroupsPanel({
                 <span>Thách đấu nhanh (10 câu)</span>
               </button>
 
+              <div className="inline-flex items-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 overflow-hidden shrink-0">
+                <button
+                  type="button"
+                  onClick={toggleAudio}
+                  title={
+                    audioEnabled
+                      ? 'Đang bật chuông thông báo Thách đấu nhanh (nhấn để tắt)'
+                      : 'Đang tắt chuông thông báo (nhấn để bật)'
+                  }
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                    audioEnabled
+                      ? 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {audioEnabled ? (
+                    <Volume2 className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <VolumeX className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  <span>{audioEnabled ? 'Âm báo: Bật' : 'Âm báo: Tắt'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => playChallengeInviteChime({ forcePlay: true })}
+                  title="Nghe thử hiệu ứng âm thanh thông báo đẩy Thách đấu nhanh"
+                  className="inline-flex items-center gap-1 px-2.5 py-2 border-l border-slate-200 dark:border-slate-700 text-xs font-semibold text-[#D94E00] dark:text-[#FF8524] hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  <BellRing className="w-3.5 h-3.5 shrink-0" />
+                  <span>Thử chuông</span>
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={openBadgeStudioModal}
@@ -1173,9 +1240,14 @@ export function ToeicStudyGroupsPanel({
                 className="rounded-2xl border border-[#FF6B00]/50 bg-gradient-to-r from-orange-50 via-amber-50/70 to-orange-50 dark:from-orange-950/40 dark:via-slate-900 dark:to-orange-950/30 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5"
               >
                 <div className="flex items-start gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-[#FF6B00] text-white flex items-center justify-center shrink-0">
-                    <BellRing className="w-5 h-5" />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => playChallengeInviteChime({ forcePlay: true })}
+                    title="Phát lại âm thanh thông báo thách đấu"
+                    className="relative w-10 h-10 rounded-xl bg-[#FF6B00] hover:bg-[#FF7E1F] text-white flex items-center justify-center shrink-0 shadow-[0_0_16px_rgba(255,107,0,0.4)] transition-colors cursor-pointer"
+                  >
+                    <BellRing className="w-5 h-5 animate-bounce" />
+                  </button>
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-[#D94E00] dark:text-[#FF8524]">
                       <span>

@@ -70,8 +70,10 @@ const ALL_SLOT_ORDER: PilotGearSlot[] = [...PERSONAL_SLOT_ORDER, 'aircraft'];
 
 const AIRCRAFT_CATEGORY_ORDER: AircraftCategory[] = [
   'helicopter',
+  'uav',
   'civilian',
   'fighter',
+  'bomber',
   'spacecraft',
 ];
 
@@ -500,7 +502,7 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
               Cậu bé Pilot 3D & Gian hàng Phi đội
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Tích lũy Ngọc kiến thức qua thời gian học và từng bài học A1–C1 để nâng cấp Phi công và sở hữu bộ sưu tập máy bay 3D: từ trực thăng, máy bay dân dụng, tiêm kích siêu thanh đến tàu vũ trụ liên sao.
+              Tích lũy Ngọc kiến thức qua thời gian học và từng bài học A1–C1 để nâng cấp Phi công, nhận thú cưng đồng hành 3D và sở hữu phi đội máy bay chiến đấu huyền thoại từ Mỹ – Nga như UAV MQ-9 Reaper, B-2 Spirit, Su-57, Tu-160 đến tàu vũ trụ liên sao.
             </p>
           </div>
 
@@ -769,10 +771,10 @@ export function PilotHangarPage({ onOpenLesson, onNavigate }: PilotHangarPagePro
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                   <Rocket className="w-4 h-4 text-[#FF6B00]" />
-                  Gian hàng Máy bay 3D (4 Hạng)
+                  Gian hàng Máy bay 3D (6 Hạng)
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Từ Trực thăng, Máy bay dân dụng, Tiêm kích đến Tàu vũ trụ — nhấn "Xem thử 3D" để đưa ngay ra sàn bay.
+                  Đủ bộ Trực thăng, UAV không người lái, Tiêm kích &amp; Oanh tạc cơ chiến lược Mỹ – Nga (MQ-9 Reaper, B-2 Spirit, SR-71, Su-57, Tu-160...) — nhấn &ldquo;Xem thử 3D&rdquo; để đưa ngay ra sàn bay.
                 </p>
               </div>
 

@@ -8,6 +8,8 @@ import {
   Gem,
   Swords,
   Users,
+  Volume2,
+  VolumeX,
   X,
   XCircle,
   Zap,
@@ -21,7 +23,12 @@ import {
   subscribeMyToeicGroups,
 } from '../services/toeicGroupService';
 import type { ToeicGroupChallengeDoc, ToeicGroupDoc } from '../types';
-import { playChallengeInviteChime } from '../utils/cockpitAudio';
+import {
+  playChallengeAcceptedSfx,
+  playChallengeDeclinedSfx,
+  playChallengeInviteChime,
+  useCockpitAudio,
+} from '../utils/cockpitAudio';
 import { ToeicGroupBadgeEmblem } from './ToeicGroupBadgeEmblem';
 
 export interface ToeicChallengeNavTarget {
@@ -65,6 +72,7 @@ export function ToeicQuickChallengeNotifier({
   onAcceptChallenge,
 }: ToeicQuickChallengeNotifierProps) {
   const { firebaseUser, profile, addToast } = useApp();
+  const { audioEnabled, toggleAudio } = useCockpitAudio();
   const uid = firebaseUser?.emailVerified && profile?.uid ? profile.uid : null;
 
   const [myGroups, setMyGroups] = useState<ToeicGroupDoc[]>([]);
@@ -225,18 +233,36 @@ export function ToeicQuickChallengeNotifier({
     }
   }, [visibleInvites.length, activeIndex]);
 
-  // Play cockpit radar chime once per newly arriving invite
+  // Play push-notification radar bell chime once per newly arriving invite
   useEffect(() => {
     if (visibleInvites.length === 0) return;
-    let hasBrandNew = false;
+    let newestInvite: IncomingChallengeInvite | null = null;
     visibleInvites.forEach((inv) => {
       if (!alertedIdsRef.current.has(inv.challenge.challengeId)) {
         alertedIdsRef.current.add(inv.challenge.challengeId);
-        hasBrandNew = true;
+        if (!newestInvite) newestInvite = inv;
       }
     });
-    if (hasBrandNew) {
-      playChallengeInviteChime();
+    if (newestInvite) {
+      const target = newestInvite as IncomingChallengeInvite;
+      playChallengeInviteChime({ challengeId: target.challenge.challengeId });
+      // Optional native browser push notification when tab is in background & permission granted
+      if (
+        typeof document !== 'undefined' &&
+        document.hidden &&
+        typeof window !== 'undefined' &&
+        'Notification' in window &&
+        window.Notification.permission === 'granted'
+      ) {
+        try {
+          new window.Notification('Lời mời Thách đấu nhanh TOEIC!', {
+            body: `${target.challenge.hostName} (${target.group.name}) mời bạn thi ${target.challenge.questionCount} câu ngay bây giờ.`,
+            tag: `toeic-quick-${target.challenge.challengeId}`,
+          });
+        } catch {
+          // Ignore browser Notification API restrictions inside iframes
+        }
+      }
     }
   }, [visibleInvites]);
 
@@ -288,6 +314,7 @@ export function ToeicQuickChallengeNotifier({
     setBusyAction('accept');
     try {
       await joinGroupChallenge(group.groupId, challenge, profile);
+      playChallengeAcceptedSfx();
       setOptimisticHiddenIds((prev) => {
         const next = new Set(prev);
         next.add(challenge.challengeId);
@@ -314,6 +341,7 @@ export function ToeicQuickChallengeNotifier({
     setBusyAction('decline');
     try {
       await declineGroupChallenge(group.groupId, challenge, profile.uid);
+      playChallengeDeclinedSfx();
       setOptimisticHiddenIds((prev) => {
         const next = new Set(prev);
         next.add(challenge.challengeId);
@@ -426,6 +454,20 @@ export function ToeicQuickChallengeNotifier({
                 </button>
               </div>
             )}
+
+            <button
+              type="button"
+              onClick={toggleAudio}
+              title={audioEnabled ? 'Đang bật chuông báo thách đấu (nhấn để tắt)' : 'Đang tắt chuông báo (nhấn để bật)'}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                audioEnabled
+                  ? 'text-[#FF9B42] hover:bg-white/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/10'
+              }`}
+              aria-label={audioEnabled ? 'Tắt âm thanh thông báo thách đấu' : 'Bật âm thanh thông báo thách đấu'}
+            >
+              {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
 
             <button
               type="button"
